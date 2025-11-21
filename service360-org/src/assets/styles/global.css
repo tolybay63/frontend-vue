@@ -1,0 +1,15 @@
+@font-face {
+  font-family: 'SF Pro Text';
+  src: url('/fonts/SFProText-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+html, body {
+  font-family: 'SF Pro Text', sans-serif;
+  font-size: 14px;
+  background-color: #F8FAFC;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}

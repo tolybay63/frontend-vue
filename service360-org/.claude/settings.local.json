@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout 15 npm run dev:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)",
+      "Bash(rsync:*)",
+      "Bash(robocopy:*)",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ../service360-operations\")",
+      "Bash(for:*)",
+      "Bash(do echo \"$file\")",
+      "Bash(done)",
+      "Bash(xargs sed:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

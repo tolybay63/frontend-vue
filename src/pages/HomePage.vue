@@ -49,7 +49,7 @@
 
         <div class="step__actions">
           <button
-            class="btn"
+            class="btn-primary"
             type="button"
             @click="run"
             :disabled="!dataSource || planLoading"
@@ -64,7 +64,7 @@
           </button>
           <button
             v-if="isPlanSource"
-            class="btn btn--ghost"
+            class="btn-outline"
             type="button"
             @click="refreshPlanFields"
             :disabled="!hasPlanData || planLoading"
@@ -120,7 +120,7 @@
           <section class="config-panel">
             <div class="config-block">
               <input v-model="configName" placeholder="Название конфигурации" />
-              <button class="btn" type="button" @click="saveCurrentConfig">Сохранить конфигурацию</button>
+              <button class="btn-success" type="button" @click="saveCurrentConfig">Сохранить конфигурацию</button>
             </div>
             <div class="config-block">
               <select v-model="selectedConfigId">
@@ -130,7 +130,7 @@
                 </option>
               </select>
               <button
-                class="btn btn--ghost"
+                class="btn-outline"
                 type="button"
                 @click="loadSelectedConfig"
                 :disabled="!selectedConfigId"
@@ -138,7 +138,7 @@
                 Загрузить
               </button>
               <button
-                class="btn btn--ghost"
+                class="btn-danger"
                 type="button"
                 @click="deleteSelectedConfig"
                 :disabled="!selectedConfigId"
@@ -205,7 +205,7 @@
           <section class="metrics-panel">
             <header>
               <h3>Метрики сводной таблицы</h3>
-              <button class="btn btn--ghost" type="button" @click="addMetric">Добавить метрику</button>
+              <button class="btn-outline" type="button" @click="addMetric">Добавить метрику</button>
             </header>
             <div v-if="!pivotMetrics.length" class="muted">
               Добавьте хотя бы одну метрику (поле + агрегат), чтобы увидеть расчёты.
@@ -244,7 +244,7 @@
             <div class="filters-panel__actions">
               <span class="muted">Отметьте конкретные значения, чтобы сузить выборку.</span>
               <button
-                class="btn btn--ghost btn--sm"
+                class="btn-outline btn-sm"
                 type="button"
                 @click="resetFilterValues"
                 :disabled="!hasSelectedFilterValues"
@@ -345,7 +345,7 @@
               <span>После фильтрации: {{ filteredPlanRecords.length }}</span>
             </div>
             <button
-              class="btn btn--ghost btn--sm"
+              class="btn-outline btn-sm"
               type="button"
               @click="resetFilterValues"
               :disabled="!hasSelectedFilterValues"
@@ -388,7 +388,7 @@
 
         <div class="step__actions">
           <button
-            class="btn"
+            class="btn-primary"
             type="button"
             @click="saveTemplate"
             :disabled="!canUseVizSettings"
@@ -397,7 +397,7 @@
           </button>
           <button
             v-if="isPlanSource"
-            class="btn"
+            class="btn-outline"
             type="button"
             @click="exportToCsv"
             :disabled="!pivotReady"
@@ -456,7 +456,8 @@ const pivotConfig = reactive({
 })
 
 const filterValues = reactive({})
-const pivotMetrics = ref([])
+const pivotMetrics = reactive([])
+const pivotMetricsVersion = ref(0)
 
 const aggregatorOptions = [
   { value: 'count', label: 'Количество' },
@@ -490,11 +491,12 @@ watch(
         validKeys.includes(key),
       )
     })
-    pivotMetrics.value.forEach((metric) => {
+    pivotMetrics.forEach((metric) => {
       if (metric.fieldKey && !validKeys.includes(metric.fieldKey)) {
         metric.fieldKey = ''
       }
     })
+    pivotMetricsVersion.value += 1
   },
 )
 
@@ -514,9 +516,33 @@ watch(
 )
 
 watch(
+  () => planFields.value,
+  (fields) => {
+    if (fields.length && pivotMetrics.length === 1 && !pivotMetrics[0].fieldKey) {
+      const firstNumericField = fields.find((field) => field.type === 'number')
+      const firstFieldKey = firstNumericField?.key || fields[0]?.key
+      if (firstFieldKey) {
+        pivotMetrics[0].fieldKey = firstFieldKey
+        pivotMetrics[0].aggregator = firstNumericField ? 'sum' : 'count'
+        pivotMetricsVersion.value += 1
+      }
+    }
+  },
+  { deep: true },
+)
+
+watch(
   () => savedConfigs.value,
   (configs) => {
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs))
+  },
+  { deep: true },
+)
+
+watch(
+  pivotMetrics,
+  () => {
+    pivotMetricsVersion.value += 1
   },
   { deep: true },
 )
@@ -534,19 +560,20 @@ const selectedFilterFields = computed(() =>
     .filter(Boolean),
 )
 
-const activeMetrics = computed(() =>
-  pivotMetrics.value
+const activeMetrics = computed(() => {
+  pivotMetricsVersion.value
+  return pivotMetrics
     .map((metric) => {
       const field = planFieldsMap.value.get(metric.fieldKey)
-      if (!field) return null
+      if (!field || !metric.fieldKey) return null
       return {
         ...metric,
         label: aggregatorLabel(metric.aggregator, field),
         field,
       }
     })
-    .filter(Boolean),
-)
+    .filter(Boolean)
+})
 
 const filteredPlanRecords = computed(() => {
   if (!planRecords.value.length) return []
@@ -660,7 +687,8 @@ function resetPlanState() {
   replaceArray(pivotConfig.filters, [])
   replaceArray(pivotConfig.rows, [])
   replaceArray(pivotConfig.columns, [])
-  pivotMetrics.value.splice(0, pivotMetrics.value.length)
+  pivotMetrics.splice(0, pivotMetrics.length)
+  pivotMetricsVersion.value += 1
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
 }
 
@@ -797,6 +825,14 @@ function buildPivotView({ records, rows, columns, metrics }) {
   }
 }
 
+function ensureIndex(store, collection, entry) {
+  if (!store.has(entry.key)) {
+    store.set(entry.key, entry)
+    collection.push(entry)
+  }
+  return store.get(entry.key)
+}
+
 function flattenColumns(columnIndex, metrics) {
   const entries = []
   columnIndex.forEach((column) => {
@@ -922,8 +958,16 @@ function aggregatorLabel(aggregator, field) {
 }
 
 function ensureMetricExists() {
-  if (!pivotMetrics.value.length) {
-    pivotMetrics.value.push(createMetric())
+  if (!pivotMetrics.length) {
+    const firstNumericField = planFields.value.find((field) => field.type === 'number')
+    const firstFieldKey = firstNumericField?.key || planFields.value[0]?.key || ''
+    pivotMetrics.push(
+      createMetric({
+        fieldKey: firstFieldKey,
+        aggregator: firstNumericField ? 'sum' : 'count',
+      }),
+    )
+    pivotMetricsVersion.value += 1
   }
 }
 
@@ -938,14 +982,16 @@ function createMetric(overrides = {}) {
 }
 
 function addMetric() {
-  pivotMetrics.value.push(createMetric())
+  pivotMetrics.push(createMetric())
+  pivotMetricsVersion.value += 1
 }
 
 function removeMetric(metricId) {
-  if (pivotMetrics.value.length === 1) return
-  const index = pivotMetrics.value.findIndex((metric) => metric.id === metricId)
+  if (pivotMetrics.length === 1) return
+  const index = pivotMetrics.findIndex((metric) => metric.id === metricId)
   if (index >= 0) {
-    pivotMetrics.value.splice(index, 1)
+    pivotMetrics.splice(index, 1)
+    pivotMetricsVersion.value += 1
   }
 }
 
@@ -992,7 +1038,7 @@ function snapshotCurrentConfig() {
       rows: [...pivotConfig.rows],
       columns: [...pivotConfig.columns],
     },
-    metrics: pivotMetrics.value.map((metric) => ({ ...metric })),
+    metrics: pivotMetrics.map((metric) => ({ ...metric })),
     filterValues: Object.entries(filterValues).reduce((acc, [key, values]) => {
       acc[key] = [...values]
       return acc
@@ -1010,12 +1056,9 @@ function applyConfig(payload) {
   replaceArray(pivotConfig.filters, payload?.pivot?.filters || [])
   replaceArray(pivotConfig.rows, payload?.pivot?.rows || [])
   replaceArray(pivotConfig.columns, payload?.pivot?.columns || [])
-  pivotMetrics.value.splice(
-    0,
-    pivotMetrics.value.length,
-    ...(payload?.metrics || []).map((metric) => ({ ...metric })),
-  )
-  if (!pivotMetrics.value.length) ensureMetricExists()
+  pivotMetrics.splice(0, pivotMetrics.length, ...(payload?.metrics || []).map((metric) => ({ ...metric })))
+  pivotMetricsVersion.value += 1
+  if (!pivotMetrics.length) ensureMetricExists()
 
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
   Object.entries(payload?.filterValues || {}).forEach(([key, values]) => {
@@ -1115,9 +1158,9 @@ function createId() {
   gap: 24px;
 }
 .step {
-  border: 1px solid #e5e7eb;
-  border-radius: 18px;
-  background: #fff;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  border-radius: var(--s360-radius-lg, 16px);
+  background: var(--s360-color-surface, #fff);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1137,7 +1180,7 @@ function createId() {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: #111827;
+  background: var(--s360-color-primary, #2b6cb0);
   color: #fff;
   font-weight: 600;
   font-size: 18px;
@@ -1150,7 +1193,7 @@ function createId() {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #059669;
+  color: var(--s360-text-success, #198754);
   font-weight: 600;
 }
 .dot {
@@ -1161,7 +1204,7 @@ function createId() {
   background: currentColor;
 }
 .dot--success {
-  background: #059669;
+  background: var(--s360-text-success, #198754);
 }
 .step__body {
   display: flex;
@@ -1181,17 +1224,17 @@ function createId() {
 }
 .field__label {
   font-weight: 600;
-  color: #111827;
+  color: var(--s360-text-primary, #111827);
 }
 .field input,
 .field select,
 .config-block select,
 .config-block input {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--s360-color-border-subtle, #d1d5db);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 14px;
-  background: #fff;
+  background: var(--s360-color-surface, #fff);
   width: 100%;
 }
 .step__actions {
@@ -1199,29 +1242,7 @@ function createId() {
   flex-wrap: wrap;
   gap: 12px;
 }
-.btn {
-  border-radius: 10px;
-  border: none;
-  background: #111827;
-  color: #fff;
-  padding: 10px 20px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-.btn:hover:not(:disabled) {
-  background: #0f172a;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn--ghost {
-  background: #fff;
-  color: #111827;
-  border: 1px solid #d1d5db;
-}
-.btn--sm {
+.btn-sm {
   padding: 6px 14px;
   font-size: 13px;
 }
@@ -1232,7 +1253,7 @@ function createId() {
   font-size: 13px;
 }
 .muted {
-  color: #6b7280;
+  color: var(--s360-text-muted, #6b7280);
   font-size: 13px;
 }
 .config-panel {
@@ -1256,10 +1277,10 @@ function createId() {
   flex: 1 1 260px;
   max-height: 360px;
   overflow: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
-  background: #fafafa;
+  background: var(--s360-color-panel, #f8fafc);
 }
 .samples ul {
   list-style: none;
@@ -1271,7 +1292,7 @@ function createId() {
 }
 .samples li {
   padding-bottom: 6px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--s360-color-border-subtle, #f3f4f6);
   font-size: 13px;
 }
 .field-main {
@@ -1283,7 +1304,7 @@ function createId() {
 .key-tag {
   font-size: 11px;
   color: #374151;
-  background: #e5e7eb;
+  background: var(--s360-color-neutral-soft, #e5e7eb);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -1308,7 +1329,7 @@ function createId() {
 }
 .meta-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--s360-text-muted, #6b7280);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1319,10 +1340,10 @@ function createId() {
 }
 .chip {
   border-radius: 999px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--s360-color-border-subtle, #d1d5db);
   padding: 2px 10px;
   font-size: 12px;
-  background: #fff;
+  background: var(--s360-color-surface, #fff);
 }
 .samples li:last-child {
   border-bottom: none;
@@ -1335,10 +1356,10 @@ function createId() {
   gap: 12px;
 }
 .pivot-section {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
-  background: #fdfdfd;
+  background: var(--s360-color-panel, #fdfdfd);
   display: flex;
   flex-direction: column;
   min-height: 280px;
@@ -1361,7 +1382,7 @@ function createId() {
   font-size: 13px;
 }
 .metrics-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
 }
@@ -1386,10 +1407,10 @@ function createId() {
 }
 .metric-row select {
   min-width: 180px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--s360-color-border-subtle, #d1d5db);
   border-radius: 8px;
   padding: 8px;
-  background: #fff;
+  background: var(--s360-color-surface, #fff);
 }
 .metric-row .remove {
   border: 1px solid #f87171;
@@ -1401,7 +1422,7 @@ function createId() {
   cursor: pointer;
 }
 .filters-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
   display: flex;
@@ -1421,7 +1442,7 @@ function createId() {
   gap: 12px;
 }
 .filters-field {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 10px;
   padding: 10px;
 }
@@ -1453,11 +1474,11 @@ function createId() {
   gap: 4px;
 }
 .pivot-preview {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
   overflow: auto;
-  background: #fff;
+  background: var(--s360-color-surface, #fff);
 }
 .pivot-preview table {
   width: 100%;
@@ -1466,7 +1487,7 @@ function createId() {
 }
 .pivot-preview th,
 .pivot-preview td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   padding: 8px;
   text-align: right;
 }
@@ -1485,20 +1506,20 @@ function createId() {
   font-weight: 600;
 }
 .error {
-  color: #dc2626;
+  color: var(--s360-text-critical, #dc2626);
   font-size: 13px;
 }
 .result {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 12px;
   padding: 12px;
-  background: #f9fafb;
+  background: var(--s360-color-panel, #f9fafb);
 }
 .empty-state {
   border: 1px dashed #d1d5db;
   border-radius: 12px;
   padding: 16px;
-  background: #f9fafb;
+  background: var(--s360-color-panel, #f9fafb);
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -43,7 +43,7 @@
 
         <p v-if="authError" class="error">{{ authError }}</p>
 
-        <button class="submit" type="submit" :disabled="disableSubmit">
+        <button class="btn-primary btn-block" type="submit" :disabled="disableSubmit">
           {{ loading ? 'Вход...' : 'Войти' }}
         </button>
       </form>
@@ -106,7 +106,7 @@ async function onSubmit() {
   align-items: center;
   justify-content: center;
   padding: 32px 16px;
-  background: radial-gradient(circle at 20% 20%, #eef3ff, #f5f7fb 55%, #fefefe);
+  background: var(--s360-color-panel, #f8fafc);
   position: relative;
   text-align: center;
 }
@@ -124,29 +124,34 @@ async function onSubmit() {
   gap: 8px;
 }
 .lang {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  color: #6b7280;
+  color: var(--s360-text-muted, #6b7280);
   cursor: pointer;
   font-weight: 500;
+  border-radius: 999px;
+  padding: 6px 14px;
 }
 .lang.active {
-  color: #2563eb;
+  color: var(--s360-color-primary, #2b6cb0);
+  border-color: var(--s360-color-primary, #2b6cb0);
+  background: var(--s360-color-primary-soft, rgba(43,108,176,0.08));
 }
 .card {
   width: 100%;
   max-width: 420px;
-  background: #fff;
-  border-radius: 24px;
-  box-shadow: 0 24px 50px rgba(37, 99, 235, 0.1);
+  background: var(--s360-color-surface, #fff);
+  border-radius: var(--s360-radius-lg, 16px);
+  box-shadow: var(--s360-shadow-lg, 0 18px 40px rgba(43,108,176,0.06));
   padding: 48px 40px;
+  border: 1px solid var(--s360-color-border-subtle, #dee2e6);
 }
 .card h1 {
-  font-size: 24px;
+  font-size: var(--s360-font-title-lg, 24px);
   margin-bottom: 8px;
 }
 .card p {
-  color: #6b7280;
+  color: var(--s360-text-muted, #6b7280);
   margin-bottom: 24px;
 }
 .form {
@@ -157,40 +162,29 @@ async function onSubmit() {
 }
 .field span {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--s360-text-muted, #6b7280);
   margin-bottom: 6px;
   display: block;
 }
 .field input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--s360-color-border-subtle, #d1d5db);
   padding: 12px;
   font-size: 14px;
-  background: #f9fafb;
+  background: var(--s360-color-panel, #f9fafb);
 }
 .field input:focus {
   outline: none;
-  border-color: #2563eb;
-  background: #fff;
+  border-color: var(--s360-color-primary, #2b6cb0);
+  background: var(--s360-color-surface, #fff);
 }
-.submit {
+.btn-block {
   margin-top: 8px;
   width: 100%;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #2563eb, #1d4ed8);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
   padding: 14px;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
+  font-size: 15px;
   text-transform: uppercase;
-}
-.submit:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 .error {
   color: #dc2626;
@@ -199,7 +193,7 @@ async function onSubmit() {
 }
 .footer {
   margin-top: 16px;
-  color: #9ca3af;
+  color: var(--s360-text-muted, #9ca3af);
   font-size: 13px;
 }
 @media (max-width: 640px) {

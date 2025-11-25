@@ -88,20 +88,18 @@
         v-model="form.phone"
       />
 
-      <AppInput
+      <AppDatePicker
         id="dateBirth"
         label="Дата рождения"
         placeholder="Выберите дату рождения"
         v-model="form.dateBirth"
-        type="date"
       />
 
-      <AppInput
+      <AppDatePicker
         id="dateEmployment"
         label="Дата приёма на работу"
         placeholder="Выберите дату приёма"
         v-model="form.dateEmployment"
-        type="date"
       />
     </div>
   </ModalWrapper>
@@ -112,6 +110,7 @@ import { ref, onMounted } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
+import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 import {
   loadPositions,

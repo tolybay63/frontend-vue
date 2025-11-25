@@ -215,10 +215,10 @@ import WorkHeaderInfo from '@/shared/ui/WorkHeaderInfo.vue';
 import ExistingDataBlock from '@/shared/ui/ExistingDataBlock.vue';
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue';
 import { useNotificationStore } from '@/app/stores/notificationStore';
-import { 
-  loadInspectionEntriesForWorkPlan, saveFaultInfo, saveParameterInfo, 
-  fetchUserData, loadComponentsByTypObjectForSelect, loadDefectsByComponentForSelect, 
-  loadComponentParametersForSelect, loadFaultEntriesForInspection, 
+import {
+  loadInspectionEntriesForWorkPlan, saveFaultInfo, saveParameterInfo,
+  getUserData, loadComponentsByTypObjectForSelect, loadDefectsByComponentForSelect,
+  loadComponentParametersForSelect, loadFaultEntriesForInspection,
   loadParameterEntriesForInspection
 } from '@/shared/api/inspections/inspectionsApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -539,7 +539,7 @@ const saveWork = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
 
       const selectedDefect = defectOptions.value.find(d => d.value === (defectRecord.value.defectType.value || defectRecord.value.defectType));
       if (!selectedDefect) {
@@ -610,7 +610,7 @@ const saveWork = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
 
       const selectedParameter = parameterOptions.value.find(p => p.value === (parameterRecord.value.parameterType.value || parameterRecord.value.parameterType));
       if (!selectedParameter) { throw new Error('Выбранный параметр не найден'); }

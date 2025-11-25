@@ -1,31 +1,9 @@
 import axios from "axios";
+import { getUserData } from "../common/userCache";
 
 const API_REPAIR_URL = import.meta.env.VITE_REPAIR_URL;
-const AUTH_API_URL = import.meta.env.VITE_OBJECT_URL;
 const API_PERSONAL = import.meta.env.VITE_PERSONAL_URL;
 const API_RESOURCE_URL = import.meta.env.VITE_RESOURCE_URL;
-
-let userDataCache = null;
-
-const fetchUserData = async () => {
-  if (userDataCache) return userDataCache;
-
-  try {
-    const response = await axios.post(AUTH_API_URL, {
-      method: 'data/loadObjList',
-      params: ['Typ_Personnel', 'Prop_User', 'personnaldata']
-    });
-
-    const user = response.data?.result?.records?.[0];
-    if (!user) throw new Error('Данные пользователя не найдены');
-
-    userDataCache = user;
-    return user;
-  } catch (error) {
-    console.error('Ошибка при загрузке данных пользователя:', error);
-    throw error;
-  }
-};
 
 export async function loadTaskLog(date, periodType) {
   const objLocation = localStorage.getItem("objLocation");
@@ -116,7 +94,7 @@ export async function saveResourceFact(materialData) {
   }
 
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = new Date().toISOString().split('T')[0];
 
     const payload = {
@@ -158,7 +136,7 @@ export async function saveServiceFact(serviceData) {
   }
 
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = new Date().toISOString().split('T')[0];
 
     const payload = {
@@ -200,7 +178,7 @@ export async function addResourceMaterial(materialData, taskLogId, taskLogCls) {
   }
 
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = new Date().toISOString().split('T')[0];
 
     const payload = {
@@ -247,7 +225,7 @@ export async function addResourceTpService(serviceData, taskLogId, taskLogCls) {
   }
 
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = new Date().toISOString().split('T')[0];
 
     const payload = {
@@ -292,7 +270,7 @@ export async function addResourcePersonnel(personnelData, taskLogId, taskLogCls)
   }
 
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = new Date().toISOString().split('T')[0];
 
     const payload = {

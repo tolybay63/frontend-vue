@@ -5,11 +5,12 @@
       <h1>Журнал ресурсов</h1>
     </div>
 
-    <ResourceInfoSection 
-      v-if="recordData" 
+    <ResourceInfoSection
+      v-if="recordData"
       :recordData="recordData"
       :taskLogId="workLogId"
       :onTaskUpdated="onTaskUpdated"
+      :canUpdate="canUpdate"
     />
 
     <div class="cards-section" v-if="recordData">
@@ -61,6 +62,10 @@
           :rows="recordData.materials"
           :nameOptions="materialNameOptions"
           :unitOptions="unitOptions"
+          :isReadOnly="isReadOnly"
+          :canInsert="canInsert"
+          :canUpdate="canUpdate"
+          :canDelete="canDelete"
           @update:rows="recordData.materials = $event"
           @save-row="handleSaveRow"
           @delete-row="handleDeleteRow"
@@ -74,6 +79,10 @@
           :nameOptions="toolNameOptions"
           :unitOptions="unitOptions"
           :is-tool="true"
+          :isReadOnly="isReadOnly"
+          :canInsert="canInsert"
+          :canUpdate="canUpdate"
+          :canDelete="canDelete"
           @update:rows="recordData.tools = $event"
           @save-row="handleSaveRow"
           @delete-row="handleDeleteRow"
@@ -89,6 +98,10 @@
           :nameOptions="equipmentNameOptions"
           :unitOptions="unitOptions"
           :is-equipment="true"
+          :isReadOnly="isReadOnly"
+          :canInsert="canInsert"
+          :canUpdate="canUpdate"
+          :canDelete="canDelete"
           @update:rows="recordData.equipment = $event"
           @save-row="handleSaveRow"
           @delete-row="handleDeleteRow"
@@ -102,6 +115,10 @@
           title="Услуги"
           :rows="recordData.services"
           :nameOptions="serviceNameOptions"
+          :isReadOnly="isReadOnly"
+          :canInsert="canInsert"
+          :canUpdate="canUpdate"
+          :canDelete="canDelete"
           @update:rows="recordData.services = $event"
           @save-row="handleSaveRow"
           @delete-row="handleDeleteRow"
@@ -115,6 +132,10 @@
           :nameOptions="performerNameOptions"
           :unitOptions="performerUnitOptions"
           :is-performer="true"
+          :isReadOnly="isReadOnly"
+          :canInsert="canInsert"
+          :canUpdate="canUpdate"
+          :canDelete="canDelete"
           :performerNameOptions="performerNameOptionsForDropdown"
           @update:rows="recordData.performers = $event"
           @save-row="handleSaveRow"
@@ -134,24 +155,50 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import BackButton from '@/shared/ui/BackButton.vue';
 import ResourceCard from '@/features/resource-planning/components/ResourceCard.vue';
 import ResourceEditTable from '@/features/resource-planning/components/ResourceEditTable.vue';
 import ResourceInfoSection from '@/features/resource-planning/components/ResourceInfoSection.vue';
 import { loadObjTaskLog, saveResourceFact, saveServiceFact, addResourceMaterial, addResourceTpService, saveComplexPersonnel, deleteComplexPersonnel, saveComplexTool, saveComplexEquipment } from '@/shared/api/execution/executionApi';
-import { loadMaterials, loadUnits, loadExternalServices } from '@/shared/api/repairs/repairApi';
+import { loadMaterials, loadUnits, loadExternalServices, loadPositions, loadEquipmentTypes, loadToolTypes } from '@/shared/api/repairs/repairApi';
 import { useNotificationStore } from '@/app/stores/notificationStore';
+import { usePermissions } from '@/shared/api/permissions/usePermissions';
 
 const router = useRouter();
 const route = useRoute();
+const { hasPermission } = usePermissions();
 
 const recordData = ref(null);
 const isLoading = ref(true);
 const workLogId = ref(route.params.id);
 const activeTab = ref('materials');
 const notificationStore = useNotificationStore();
+
+// Проверка прав доступа
+const canInsert = computed(() => hasPermission('ftl:ins'));
+const canUpdate = computed(() => hasPermission('ftl:upd'));
+const canDelete = computed(() => hasPermission('ftl:del'));
+
+// Определяем, доступна ли страница только для чтения
+const isReadOnly = computed(() => {
+  if (!recordData.value) return true;
+
+  const hasFactStart = recordData.value.startDateFact && recordData.value.startDateFact !== '-';
+  const hasFactEnd = recordData.value.endDateFact && recordData.value.endDateFact !== '-';
+
+  // Если FactDateStart отсутствует -> только просмотр
+  if (!hasFactStart) {
+    return true;
+  }
+  // Если есть оба (задача завершена) -> только просмотр
+  if (hasFactEnd) {
+    return true;
+  }
+  // Если FactDateStart есть, а FactDateEnd нет -> разрешены действия
+  return false;
+});
 
 const materialNameOptions = ref([]);
 const unitOptions = ref([]);
@@ -600,54 +647,36 @@ const loadWorkLogData = async (id) => {
 // Загрузка справочников
 const loadDropdownOptions = async () => {
   try {
-    const [materials, units, services] = await Promise.all([
+    const [materials, units, services, positions, equipmentTypes, toolTypes] = await Promise.all([
       loadMaterials(),
       loadUnits(),
-      loadExternalServices()
+      loadExternalServices(),
+      loadPositions(),
+      loadEquipmentTypes(),
+      loadToolTypes()
     ]);
 
     materialNameOptions.value = materials;
     unitOptions.value = units;
     serviceNameOptions.value = services;
+    performerNameOptions.value = positions;
+    equipmentNameOptions.value = equipmentTypes;
+    toolNameOptions.value = toolTypes;
   } catch (error) {
     console.error('Ошибка загрузки справочников:', error);
     notificationStore.showNotification('Ошибка загрузки справочников', 'error');
   }
 };
 
-// Mock data for dropdowns in ResourceEditTable
-const toolNameOptions = ref([
-  { value: 'hammer', label: 'Молоток' },
-  { value: 'drill', label: 'Дрель' },
-  { value: 'saw', label: 'Пила' },
-]);
-
-const equipmentNameOptions = ref([
-  { value: 'excavator', label: 'Экскаватор' },
-  { value: 'bulldozer', label: 'Бульдозер' },
-  { value: 'crane', label: 'Кран' },
-]);
-
+// Справочники для дропдаунов
+const toolNameOptions = ref([]);
+const equipmentNameOptions = ref([]);
 const serviceNameOptions = ref([]);
-
-const performerNameOptions = ref([
-  { value: 'foreman', label: 'Бригадир' },
-  { value: 'worker', label: 'Рабочий' },
-  { value: 'engineer', label: 'Инженер' },
-]);
-
+const performerNameOptions = ref([]);
 const performerUnitOptions = ref([
   { value: 'person', label: 'чел.' },
 ]);
-
-// Опции для дропдауна исполнителей (ФИО конкретных людей)
-const performerNameOptionsForDropdown = ref([
-  { value: 'ivanov', label: 'Иванов Иван Иванович' },
-  { value: 'petrov', label: 'Петров Петр Петрович' },
-  { value: 'sidorov', label: 'Сидоров Сидор Сидорович' },
-  { value: 'kuznetsov', label: 'Кузнецов Алексей Михайлович' },
-  { value: 'smirnov', label: 'Смирнов Дмитрий Александрович' },
-]);
+const performerNameOptionsForDropdown = ref([]);
 
 onMounted(async () => {
   await loadDropdownOptions();

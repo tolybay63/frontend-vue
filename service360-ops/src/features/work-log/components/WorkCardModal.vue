@@ -190,7 +190,7 @@ import TabsHeader from '@/shared/ui/TabsHeader.vue';
 import WorkHeaderInfo from '@/shared/ui/WorkHeaderInfo.vue';
 import ExistingDataBlock from '@/shared/ui/ExistingDataBlock.vue';
 import { useNotificationStore } from '@/app/stores/notificationStore';
-import { loadInspectionEntriesForWorkPlan, saveInspectionInfo, saveFaultInfo, saveParameterInfo, fetchUserData, loadComponentsByTypObjectForSelect, loadDefectsByComponentForSelect, loadComponentParametersForSelect, loadFaultEntriesForInspection, loadParameterEntriesForInspection } from '@/shared/api/inspections/inspectionsApi';
+import { loadInspectionEntriesForWorkPlan, saveInspectionInfo, saveFaultInfo, saveParameterInfo, getUserData, loadComponentsByTypObjectForSelect, loadDefectsByComponentForSelect, loadComponentParametersForSelect, loadFaultEntriesForInspection, loadParameterEntriesForInspection } from '@/shared/api/inspections/inspectionsApi';
 import { formatDate, formatDateToISO } from '@/app/stores/date.js';
 
 const props = defineProps({
@@ -371,7 +371,7 @@ const saveWork = async () => {
   if (activeTab.value === 'info') {
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
 
       const formattedDate = formatDateToISO(newRecord.value.date);
 
@@ -470,7 +470,7 @@ const saveWork = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
 
       const selectedDefect = defectOptions.value.find(d => d.value === (defectRecord.value.defectType.value || defectRecord.value.defectType));
       
@@ -560,7 +560,7 @@ const saveWork = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
 
       const selectedParameter = parameterOptions.value.find(p => p.value === (parameterRecord.value.parameterType.value || parameterRecord.value.parameterType));
       

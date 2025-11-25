@@ -1,12 +1,9 @@
 import axios from "axios";
+import { getUserData } from "../common/userCache";
 
 const API_BASE_URL = import.meta.env.VITE_INCIDENTS_URL;
 const PLAN_URL = import.meta.env.VITE_PLAN_URL;
 const OBJECT_URL = import.meta.env.VITE_OBJECT_URL;
-
-async function fetchUserData() {
-  return { id: 1003, pv: 1087 }; 
-}
 
 function getAstanaISOString() {
   const now = new Date();
@@ -186,7 +183,7 @@ export async function loadWorksForIncidentObject(objObject) {
 
 export async function saveIncident(payloadData) {
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     
     const registrationDateTime = getAstanaISOString();
     const datePart = registrationDateTime.slice(0, 10);
@@ -247,7 +244,7 @@ export async function saveIncident(payloadData) {
 
 export async function updateIncident(payloadData) {
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     
     const registrationDateTime = getAstanaISOString();
     const datePart = registrationDateTime.slice(0, 10);
@@ -320,7 +317,7 @@ export async function assignWorkToIncident(incident, work, completionDate, selec
   }
   
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToYYYYMMDD(new Date());
     const planDateEnd = formatDateToYYYYMMDD(completionDate);
 

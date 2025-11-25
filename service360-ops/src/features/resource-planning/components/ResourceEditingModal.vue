@@ -241,7 +241,7 @@ import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
 import UiButton from '@/shared/ui/UiButton.vue'; 
 
 import { useNotificationStore } from '@/app/stores/notificationStore';
-import { fetchUserData } from '@/shared/api/inspections/inspectionsApi'; 
+import { getUserData } from '@/shared/api/inspections/inspectionsApi'; 
 import { 
   saveResourceMaterial, 
   loadResourceMaterialsForTaskLog,
@@ -405,7 +405,7 @@ const saveMaterials = async () => {
 
   isSaving.value = true;
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToISO(new Date());
 
     const savePromises = validRecords.map(async (material) => {
@@ -463,7 +463,7 @@ const saveServices = async () => {
 
   isSaving.value = true;
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToISO(new Date());
 
     const savePromises = validRecords.map(async (service) => {
@@ -519,7 +519,7 @@ const savePersonnel = async () => {
 
   isSaving.value = true;
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToISO(new Date());
 
     const savePromises = validRecords.map(async (personnel) => {
@@ -576,7 +576,7 @@ const saveEquipment = async () => {
 
   isSaving.value = true;
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToISO(new Date());
 
     const savePromises = validRecords.map(async (equipment) => {
@@ -633,7 +633,7 @@ const saveTools = async () => {
 
   isSaving.value = true;
   try {
-    const user = await fetchUserData();
+    const user = await getUserData();
     const today = formatDateToISO(new Date());
 
     const savePromises = validRecords.map(async (tool) => {

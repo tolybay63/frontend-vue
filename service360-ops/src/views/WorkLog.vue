@@ -110,11 +110,6 @@ const formatDateToString = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-/**
- * Преобразует строку даты (YYYY-MM-DD) в формат DD.MM.YYYY.
- * @param {string} dateStr - Строка даты.
- * @returns {string} Отформатированная дата или прочерк.
- */
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
   // Проверяем формат YYYY-MM-DD
@@ -125,11 +120,6 @@ const formatDate = (dateStr) => {
   return dateStr;
 };
 
-/**
- * Формирует информацию о датах (Начало и Конец) для ячейки таблицы.
- * @param {object} row - Объект с данными строки.
- * @returns {string} HTML-строка с датами.
- */
 const formatDateInfo = (row) => {
   const startDate = formatDate(row.PlanDateStart);
   const endDate = formatDate(row.PlanDateEnd);
@@ -249,24 +239,15 @@ const getRowClassFn = (row) => {
   return {};
 };
 
-// Обновленный массив столбцов с объединенными полями
 const columns = [
   { key: 'id', label: '№' },
   { key: 'generalInfo', label: 'Общая информация' },
-  { key: 'dateInfo', label: 'Дата', width: 150 }, // Колонка "Дата"
-  { key: 'volumeInfo', label: 'Объем', width: 100 }, // Колонка "Объем"
+  { key: 'dateInfo', label: 'Дата', width: 150 },
+  { key: 'volumeInfo', label: 'Объем', width: 100 }, 
   { key: 'objWorkPlan', label: 'Ссылка на план' },
 ];
 
 const tableActions = computed(() => [
-  {
-    label: 'Добавить запись',
-    icon: 'Plus',
-    onClick: () => {
-      console.log('Добавление новой записи в журнал работ...');
-    },
-    show: canInsert.value,
-  },
   {
     label: 'Экспорт',
     icon: 'Download',

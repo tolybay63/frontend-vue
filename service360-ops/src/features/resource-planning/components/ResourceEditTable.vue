@@ -3,7 +3,7 @@
     <div class="section-header">
       <h3 class="section-title">{{ title }}</h3>
       <!-- Кнопка "Добавить строку" для не-исполнителей, кроме инструментов и техники -->
-      <button v-if="!isPerformer && !isTool && !isEquipment" class="add-row-button" @click="addNewRow">
+      <button v-if="!isPerformer && !isTool && !isEquipment" class="add-row-button" @click="addNewRow" :disabled="isReadOnly || !canInsert">
         <Plus :size="18" />
         Добавить строку
       </button>
@@ -48,6 +48,7 @@
                   :modelValue="row.fact"
                   :min="0"
                   placeholder="0"
+                  :disabled="isReadOnly || !canUpdate"
                   @update:modelValue="updateExistingRow(index, $event)"
                   @click.stop
                   @mousedown.stop
@@ -59,6 +60,7 @@
                     :class="['icon-button', 'save']"
                     @click.stop="saveFact(index)"
                     title="Сохранить факт"
+                    :disabled="isReadOnly || !canUpdate"
                   >
                     <Check :size="18" />
                   </button>
@@ -98,6 +100,7 @@
                     <button
                       class="add-row-button small"
                       @click="openAddPerformerModal(index)"
+                      :disabled="isReadOnly || !canInsert"
                     >
                       <Plus :size="16" />
                       Добавить строку
@@ -129,6 +132,7 @@
                             :min="0"
                             :max="row.planHours"
                             placeholder="0"
+                            :disabled="isReadOnly || !canUpdate"
                             @update:modelValue="updateExistingPerformer(index, pIndex, 'time', $event)"
                           />
                         </div>
@@ -137,6 +141,7 @@
                             :class="['icon-button', 'save']"
                             @click.stop="savePerformerDetails(index, pIndex)"
                             title="Сохранить"
+                            :disabled="isReadOnly || !canUpdate"
                           >
                             <Check :size="18" />
                           </button>
@@ -144,6 +149,7 @@
                             :class="['icon-button', 'delete']"
                             @click.stop="deletePerformer(index, pIndex)"
                             title="Удалить исполнителя"
+                            :disabled="isReadOnly || !canDelete"
                           >
                             <Trash2 :size="18" />
                           </button>
@@ -168,6 +174,7 @@
                     <button
                       class="add-row-button small"
                       @click="openAddResourceModal(index)"
+                      :disabled="isReadOnly || !canInsert"
                     >
                       <Plus :size="16" />
                       Добавить строку
@@ -198,6 +205,7 @@
                             :modelValue="detail.quantity"
                             :min="0"
                             placeholder="0"
+                            :disabled="isReadOnly || !canUpdate"
                             @update:modelValue="updateExistingDetail(index, dIndex, 'quantity', $event)"
                           />
                         </div>
@@ -206,6 +214,7 @@
                             :class="['icon-button', 'save']"
                             @click.stop="saveResourceDetails(index, dIndex)"
                             title="Сохранить"
+                            :disabled="isReadOnly || !canUpdate"
                           >
                             <Check :size="18" />
                           </button>
@@ -213,6 +222,7 @@
                             :class="['icon-button', 'delete']"
                             @click.stop="deleteResourceDetail(index, dIndex)"
                             title="Удалить инструмент"
+                            :disabled="isReadOnly || !canDelete"
                           >
                             <Trash2 :size="18" />
                           </button>
@@ -237,6 +247,7 @@
                     <button
                       class="add-row-button small"
                       @click="openAddResourceModal(index)"
+                      :disabled="isReadOnly || !canInsert"
                     >
                       <Plus :size="16" />
                       Добавить строку
@@ -267,6 +278,7 @@
                             :modelValue="detail.time"
                             :min="0"
                             placeholder="0"
+                            :disabled="isReadOnly || !canUpdate"
                             @update:modelValue="updateExistingDetail(index, dIndex, 'time', $event)"
                           />
                         </div>
@@ -275,6 +287,7 @@
                             :class="['icon-button', 'save']"
                             @click.stop="saveResourceDetails(index, dIndex)"
                             title="Сохранить"
+                            :disabled="isReadOnly || !canUpdate"
                           >
                             <Check :size="18" />
                           </button>
@@ -282,6 +295,7 @@
                             :class="['icon-button', 'delete']"
                             @click.stop="deleteResourceDetail(index, dIndex)"
                             title="Удалить технику"
+                            :disabled="isReadOnly || !canDelete"
                           >
                             <Trash2 :size="18" />
                           </button>
@@ -306,6 +320,7 @@
                 v-model="newRow.name"
                 :options="nameOptions"
                 placeholder="Выберите наименование"
+                :disabled="isReadOnly"
               />
             </td>
             <td v-if="showUnitColumn">
@@ -314,6 +329,7 @@
                 v-model="newRow.unit"
                 :options="unitOptions"
                 placeholder="Выберите ед. изм."
+                :disabled="isReadOnly"
               />
             </td>
             <td v-else class="unit-empty">—</td>
@@ -323,6 +339,7 @@
                 :modelValue="newRow.fact"
                 :min="0"
                 placeholder="0"
+                :disabled="isReadOnly"
                 @update:modelValue="newRow.fact = $event"
               />
             </td>
@@ -332,7 +349,7 @@
                   :class="['icon-button', 'save']"
                   @click.stop="saveNewRow"
                   title="Сохранить"
-                  :disabled="!isNewRowValid"
+                  :disabled="!isNewRowValid || isReadOnly"
                 >
                   <Check :size="18" />
                 </button>
@@ -340,6 +357,7 @@
                   :class="['icon-button', 'delete']"
                   @click.stop="cancelNewRow"
                   title="Удалить"
+                  :disabled="isReadOnly"
                 >
                   <Trash2 :size="18" />
                 </button>
@@ -408,6 +426,10 @@ const props = defineProps({
   isTool: { type: Boolean, default: false },
   isEquipment: { type: Boolean, default: false },
   performerNameOptions: { type: Array, default: () => [] },
+  isReadOnly: { type: Boolean, default: false },
+  canInsert: { type: Boolean, default: false },
+  canUpdate: { type: Boolean, default: false },
+  canDelete: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:rows', 'save-row', 'add-row', 'save-performer', 'delete-performer', 'add-performer', 'save-resource', 'delete-resource']);
@@ -997,10 +1019,17 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.add-row-button:hover {
+.add-row-button:hover:not(:disabled) {
   background: #2563eb;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.add-row-button:disabled {
+  background: #e2e8f0;
+  color: #a0aec0;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .add-row-button.small {

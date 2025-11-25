@@ -1,29 +1,7 @@
 import axios from 'axios';
+import { getUserData } from '../common/userCache';
 
 const API_BASE_URL = import.meta.env.VITE_INSPECTIONS_URL;
-const AUTH_API_URL = import.meta.env.VITE_OBJECT_URL;
-
-let userDataCache = null;
-
-const fetchUserData = async () => {
-  if (userDataCache) return userDataCache;
-
-  try {
-    const response = await axios.post(AUTH_API_URL, {
-      method: 'data/loadObjList',
-      params: ['Typ_Personnel', 'Prop_User', 'personnaldata']
-    });
-
-    const user = response.data?.result?.records?.[0];
-    if (!user) throw new Error('Данные пользователя не найдены');
-
-    userDataCache = user;
-    return user;
-  } catch (error) {
-    console.error('Ошибка при загрузке данных пользователя:', error);
-    throw error;
-  }
-};
 
 const loadSections = async () => {
   try {
@@ -277,7 +255,7 @@ export {
   saveInspectionInfo,
   saveFaultInfo,
   saveParameterInfo,
-  fetchUserData,
+  getUserData,
   loadComponentsByTypObjectForSelect,
   loadDefectsByComponentForSelect,
   loadComponentParametersForSelect,

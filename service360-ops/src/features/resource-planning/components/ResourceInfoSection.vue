@@ -107,6 +107,10 @@ const props = defineProps({
   onTaskUpdated: {
     type: Function,
     required: true,
+  },
+  canUpdate: {
+    type: Boolean,
+    default: false,
   }
 });
 
@@ -123,6 +127,15 @@ const getFormattedDate = (date = new Date()) => {
 const buttonState = computed(() => {
   const hasFactStart = props.recordData.startDateFact && props.recordData.startDateFact !== '-';
   const hasFactEnd = props.recordData.endDateFact && props.recordData.endDateFact !== '-';
+
+  // Проверяем права доступа ftl:upd
+  if (!props.canUpdate) {
+    return {
+      text: 'Нет прав для управления задачей',
+      disabled: true,
+      actionType: 'no-permission'
+    };
+  }
 
   // Логика:
   // 1. Если FactDateStart отсутствует -> Начать задачу

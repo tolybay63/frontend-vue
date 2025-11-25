@@ -288,7 +288,7 @@ import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
 import UiButton from '@/shared/ui/UiButton.vue'; 
 
 import { useNotificationStore } from '@/app/stores/notificationStore';
-import { fetchUserData } from '@/shared/api/inspections/inspectionsApi'; 
+import { getUserData } from '@/shared/api/inspections/inspectionsApi'; 
 import { 
   loadTasks, 
   saveTaskLogPlan, 
@@ -492,7 +492,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const dataToSave = {
@@ -576,7 +576,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const savePromises = validRecords.map(async (material) => {
@@ -657,7 +657,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const savePromises = validRecords.map(async (service) => {
@@ -729,7 +729,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const savePromises = validRecords.map(async (personnel) => {
@@ -802,7 +802,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const savePromises = validRecords.map(async (equipment) => {
@@ -875,7 +875,7 @@ const saveData = async () => {
 
     isSaving.value = true;
     try {
-      const user = await fetchUserData();
+      const user = await getUserData();
       const today = formatDateToISO(new Date());
 
       const savePromises = validRecords.map(async (tool) => {

@@ -567,6 +567,7 @@ const saveWork = async () => {
         objUser: user.id,
         pvUser: user.pv,
         fullNameUser: user.fullName,
+        nameLocation: user.nameLocation,
         Description: defectRecord.value.note || '',
         CreationDateTime: currentDateTime
       };
@@ -639,6 +640,7 @@ const saveWork = async () => {
         objUser: user.id,
         pvUser: user.pv,
         fullNameUser: user.fullName,
+        nameLocation: user.nameLocation,
         Description: parameterRecord.value.note || '',
         CreationDateTime: currentDateTime
       };

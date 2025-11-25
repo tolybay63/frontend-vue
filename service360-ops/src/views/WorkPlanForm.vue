@@ -205,11 +205,11 @@ const handleConfirmComplete = async () => {
 
   try {
     const today = formatDateToISO(new Date());
-    
-    await completeThePlanWork(recordToComplete.value.id, today);
-    
+
+    await completeThePlanWork(recordToComplete.value.id, recordToComplete.value.cls, today);
+
     notificationStore.showNotification('Работа успешно завершена!', 'success');
-    
+
     await loadWorkPlanForDate();
 
   } catch (error) {
@@ -270,6 +270,7 @@ const loadWorkPlanForDate = async () => {
     tableData.value = records.map((record) => ({
       id: record.id,
       pv: record.pv,
+      cls: record.cls,
       name: record.fullNameWork || 'Без названия',
       place: record.nameSection || 'Не указано',
       objectType: record.nameClsObject || 'Неизвестно',

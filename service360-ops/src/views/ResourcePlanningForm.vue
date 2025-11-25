@@ -2,7 +2,7 @@
   <div class="plan-form-page">
     <div class="header">
       <BackButton @click="goBack" />
-      <h1>Запись в Журнал выполнения работ</h1>
+      <h1>Журнал планирования ресурсов</h1>
     </div>
     <div class="filters-section">
       <div class="filter-row">
@@ -206,11 +206,11 @@ const handleConfirmComplete = async () => {
 
   try {
     const today = formatDateToISO(new Date());
-    
-    await completeThePlanWork(recordToComplete.value.id, today);
-    
+
+    await completeThePlanWork(recordToComplete.value.id, recordToComplete.value.cls, today);
+
     notificationStore.showNotification('Работа успешно завершена!', 'success');
-    
+
     await loadWorkPlanForDate();
 
   } catch (error) {
@@ -241,7 +241,7 @@ const columns = [
         };
 
         return () => h(UiButton, {
-          text: 'Завершить планирование ресурсов',
+          text: 'Завершить работу',
           // onClick: onClickHandler,
           disabled: true,
         });
@@ -272,6 +272,7 @@ const loadWorkPlanForDate = async () => {
     tableData.value = records.map((record) => ({
       id: record.id,
       pv: record.pv,
+      cls: record.cls,
       name: record.fullNameWork || 'Без названия',
       place: record.nameSection || 'Не указано',
       objectType: record.nameClsObject || 'Неизвестно',

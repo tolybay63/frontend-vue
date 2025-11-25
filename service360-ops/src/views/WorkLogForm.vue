@@ -2,7 +2,7 @@
   <div class="plan-form-page">
     <div class="header">
       <BackButton @click="goBack" />
-      <h1>Журнал ресурсов</h1>
+      <h1>Карточка работы</h1>
     </div>
 
     <ResourceInfoSection

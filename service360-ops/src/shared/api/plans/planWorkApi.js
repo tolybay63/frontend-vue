@@ -89,13 +89,14 @@ const fetchObjectsForSelect = async (objWork) => {
 };
 
 // Обновленная функция для завершения работы
-const completeThePlanWork = async (id, date) => {
+const completeThePlanWork = async (id, cls, date) => {
   try {
     const response = await axios.post(DATA_API_URL, {
       method: 'data/completeThePlanWork',
       params: [
         {
           id: id,
+          cls: cls,
           date: date
         }
       ]

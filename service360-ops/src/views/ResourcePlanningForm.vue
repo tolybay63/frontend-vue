@@ -236,14 +236,13 @@ const columns = [
         const rowData = context.attrs.row; 
 
         const onClickHandler = (event) => {
-          event.stopPropagation(); 
-          openConfirmationModal(rowData); 
+          event.stopPropagation();
+          openConfirmationModal(rowData);
         };
 
         return () => h(UiButton, {
           text: 'Завершить работу',
-          // onClick: onClickHandler,
-          disabled: true,
+          onClick: onClickHandler,
         });
       },
     },

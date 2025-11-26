@@ -18,7 +18,7 @@
         label="Логин"
         placeholder="Введите логин"
         v-model="form.login"
-        :required="true"
+        :disabled="true"
       />
 
       <AppInput
@@ -71,6 +71,7 @@
         v-model="form.sex"
         :options="sexOptions"
         :loading="loadingSex"
+        :required="true"
       />
 
       <AppInput
@@ -79,6 +80,7 @@
         placeholder="Введите email"
         v-model="form.email"
         type="email"
+        :required="true"
       />
 
       <AppInput
@@ -86,6 +88,7 @@
         label="Телефон"
         placeholder="Введите телефон"
         v-model="form.phone"
+        :required="true"
       />
 
       <AppDatePicker
@@ -93,6 +96,7 @@
         label="Дата рождения"
         placeholder="Выберите дату рождения"
         v-model="form.dateBirth"
+        :required="true"
       />
 
       <AppDatePicker
@@ -100,6 +104,7 @@
         label="Дата приёма на работу"
         placeholder="Выберите дату приёма"
         v-model="form.dateEmployment"
+        :required="true"
       />
 
       <AppDatePicker
@@ -242,8 +247,10 @@ const loadSexData = async () => {
 const saveData = async () => {
   try {
     // Validate required fields
-    if (!form.value.tabNumber || !form.value.login || !form.value.secondName ||
-        !form.value.firstName || !form.value.position || !form.value.location) {
+    if (!form.value.tabNumber || !form.value.secondName ||
+        !form.value.firstName || !form.value.position ||
+        !form.value.location || !form.value.sex || !form.value.email ||
+        !form.value.phone || !form.value.dateBirth || !form.value.dateEmployment) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
       return
     }

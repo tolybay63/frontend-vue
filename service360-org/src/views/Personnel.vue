@@ -16,25 +16,25 @@
     @refresh="refreshTable"
   />
 
-  <!-- <ModalEditPersonnel
+  <ModalEditPersonnel
     v-if="isEditModalOpen"
     :personnelData="selectedPersonnel"
     @close="closeEditModal"
     @refresh="refreshTable"
-  /> -->
+  />
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue'
 import ModalAddPersonnel from '@/features/organization/components/ModalAddPersonnel.vue'
-// import ModalEditPersonnel from '@/features/organization/components/ModalEditPersonnel.vue'
+import ModalEditPersonnel from '@/features/organization/components/ModalEditPersonnel.vue'
 import { loadPersonnel } from '@/shared/api/organization/personnelService'
 
 const tableWrapperRef = ref(null)
 const isAddModalOpen = ref(false)
-// const isEditModalOpen = ref(false)
-// const selectedPersonnel = ref(null)
+const isEditModalOpen = ref(false)
+const selectedPersonnel = ref(null)
 
 const openAddModal = () => {
   isAddModalOpen.value = true
@@ -44,18 +44,18 @@ const closeAddModal = () => {
   isAddModalOpen.value = false
 }
 
-// const openEditModal = (personnelData) => {
-//   selectedPersonnel.value = personnelData
-//   isEditModalOpen.value = true
-// }
+const openEditModal = (personnelData) => {
+  selectedPersonnel.value = personnelData
+  isEditModalOpen.value = true
+}
 
-// const closeEditModal = () => {
-//   isEditModalOpen.value = false
-//   selectedPersonnel.value = null
-// }
+const closeEditModal = () => {
+  isEditModalOpen.value = false
+  selectedPersonnel.value = null
+}
 
 const handleRowDoubleClick = (rowData) => {
-  // openEditModal(rowData)
+  openEditModal(rowData)
   console.log('Double click:', rowData)
 }
 

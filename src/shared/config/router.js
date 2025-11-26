@@ -14,6 +14,7 @@ const routes = [
     meta: { public: true, layout: 'blank' },
   },
   { path: '/', component: HomePage },
+  { path: '/data', component: HomePage },
   { path: '/pages', component: PageManager },
   { path: '/pages/new', component: PageLayoutEditor },
   { path: '/pages/:pageId/edit', component: PageLayoutEditor, props: true },

@@ -6,10 +6,10 @@
       <header class="step__header">
         <div class="step__badge">1</div>
         <div>
-          <h2>Источник и параметры</h2>
+          <h2>Источник</h2>
           <p class="muted">
-            Выберите источник данных и задайте параметры выборки. Сначала загрузите таблицу,
-            чтобы перейти к следующему шагу.
+            Выберите источник данных и задайте параметры выборки. Сначала
+            загрузите таблицу, чтобы перейти к следующему шагу.
           </p>
         </div>
         <div
@@ -38,14 +38,19 @@
                 @search="handleSourceSearch"
               >
                 <template #action v-if="canCreateSourceFromSearch">
-                  <div class="select-action" @mousedown.prevent @click="startCreatingSource(pendingNewSourceName)">
+                  <div
+                    class="select-action"
+                    @mousedown.prevent
+                    @click="startCreatingSource(pendingNewSourceName)"
+                  >
                     Создать источник «{{ pendingNewSourceName }}»
                   </div>
                 </template>
               </n-select>
             </label>
             <p class="muted combobox__hint">
-              Найдите существующий источник или введите новое имя, чтобы создать его.
+              Найдите существующий источник или введите новое имя, чтобы создать
+              его.
             </p>
           </div>
 
@@ -87,23 +92,43 @@
           <div class="source-details-grid">
             <label class="field">
               <span class="field__label">Название источника</span>
-              <n-input v-model:value="sourceDraft.name" placeholder="Например: План на ноябрь" size="large" />
+              <n-input
+                v-model:value="sourceDraft.name"
+                placeholder="Например: План на ноябрь"
+                size="large"
+              />
             </label>
             <label class="field">
               <span class="field__label">URL</span>
-              <n-input v-model:value="sourceDraft.url" placeholder="/dtj/api/plan" size="large" />
+              <n-input
+                v-model:value="sourceDraft.url"
+                placeholder="/dtj/api/plan"
+                size="large"
+              />
             </label>
             <label class="field">
               <span class="field__label">Метод</span>
-              <n-select v-model:value="sourceDraft.httpMethod" :options="httpMethodOptions" size="large" />
+              <n-select
+                v-model:value="sourceDraft.httpMethod"
+                :options="httpMethodOptions"
+                size="large"
+              />
             </label>
           </div>
 
           <label class="field">
             <span class="field__label">Метод API</span>
-            <n-input v-model:value="rpcMethod" placeholder="data/loadPlan" size="large" />
-            <span class="muted" v-if="!structuredBodyAvailable && !hasPrimitiveParams">
-              Добавьте параметры в формате объекта в «Raw body», чтобы редактировать их по ключам.
+            <n-input
+              v-model:value="rpcMethod"
+              placeholder="data/loadPlan"
+              size="large"
+            />
+            <span
+              class="muted"
+              v-if="!structuredBodyAvailable && !hasPrimitiveParams"
+            >
+              Добавьте параметры в формате объекта в «Raw body», чтобы
+              редактировать их по ключам.
             </span>
           </label>
 
@@ -120,7 +145,11 @@
             v-else-if="hasPrimitiveParams"
             class="params-grid params-grid--compact"
           >
-            <label v-for="(value, index) in primitiveParams" :key="`primitive-${index}`" class="field">
+            <label
+              v-for="(value, index) in primitiveParams"
+              :key="`primitive-${index}`"
+              class="field"
+            >
               <span class="field__label">params[{{ index }}]</span>
               <n-input v-model:value="primitiveParams[index]" />
             </label>
@@ -176,7 +205,8 @@
 
         <div class="step__info" v-if="shouldShowDetails">
           <p class="muted">
-            {{ sourceDraft.httpMethod }} · {{ sourceDraft.url || 'URL не указан' }}
+            {{ sourceDraft.httpMethod }} ·
+            {{ sourceDraft.url || 'URL не указан' }}
           </p>
           <p class="muted" v-if="structuredBodyAvailable">
             Метод API: <strong>{{ rpcMethod || 'не указан' }}</strong>
@@ -194,24 +224,26 @@
             <button
               type="button"
               class="tab"
+              :class="{ 'tab--active': activeResultTab === 'preview' }"
+              @click="activeResultTab = 'preview'"
+            >
+              Просмотр
+            </button>
+            <button
+              type="button"
+              class="tab"
               :class="{ 'tab--active': activeResultTab === 'json' }"
               @click="activeResultTab = 'json'"
             >
               JSON
             </button>
-            <button
-              type="button"
-              class="tab"
-              :class="{ 'tab--active': activeResultTab === 'preview' }"
-              @click="activeResultTab = 'preview'"
-            >
-              Preview
-            </button>
           </div>
           <div class="tabs__body">
-            <pre v-if="activeResultTab === 'json'">{{ formattedResultJson }}</pre>
-            <div v-else class="preview-table">
-              <table v-if="previewColumns.length && previewRows.length" class="table-s360">
+            <div v-if="activeResultTab === 'preview'" class="preview-table">
+              <table
+                v-if="previewColumns.length && previewRows.length"
+                class="table-s360"
+              >
                 <thead>
                   <tr>
                     <th v-for="column in previewColumns" :key="column.key">
@@ -229,6 +261,7 @@
               </table>
               <p v-else class="muted">Нет данных для предпросмотра.</p>
             </div>
+            <pre v-else>{{ formattedResultJson }}</pre>
           </div>
         </div>
       </div>
@@ -242,9 +275,10 @@
       <header class="step__header">
         <div class="step__badge">2</div>
         <div>
-          <h2>Настройте сводную таблицу</h2>
+          <h2>Макет</h2>
           <p class="muted">
-            Выберите поля для фильтров, строк и столбцов, задайте агрегации и сразу увидите результат ниже.
+            Выберите поля для фильтров, строк и столбцов, задайте агрегации и
+            сразу увидите результат ниже.
           </p>
         </div>
         <div class="step__header-actions">
@@ -277,12 +311,22 @@
           <section class="config-panel">
             <div class="config-block">
               <input v-model="configName" placeholder="Название конфигурации" />
-              <button class="btn-success" type="button" @click="saveCurrentConfig">Сохранить конфигурацию</button>
+              <button
+                class="btn-success"
+                type="button"
+                @click="saveCurrentConfig"
+              >
+                Сохранить конфигурацию
+              </button>
             </div>
             <div class="config-block">
               <select v-model="selectedConfigId">
                 <option value="">Выберите конфигурацию</option>
-                <option v-for="cfg in savedConfigs" :key="cfg.id" :value="cfg.id">
+                <option
+                  v-for="cfg in savedConfigs"
+                  :key="cfg.id"
+                  :value="cfg.id"
+                >
                   {{ cfg.name }}
                 </option>
               </select>
@@ -310,7 +354,8 @@
               <div class="step__subheader">
                 <h3>Доступные поля</h3>
                 <span class="muted">
-                  Название, ключ и примеры реальных значений из загруженной таблицы
+                  Название, ключ и примеры реальных значений из загруженной
+                  таблицы
                 </span>
               </div>
               <ul>
@@ -320,7 +365,10 @@
                     <span class="key-tag">{{ field.key }}</span>
                   </div>
                   <div class="field-meta">
-                    <span>Тип: {{ field.type === 'number' ? 'Число' : 'Текст' }}</span>
+                    <span
+                      >Тип:
+                      {{ field.type === 'number' ? 'Число' : 'Текст' }}</span
+                    >
                     <span>
                       Пример:
                       <code>{{ field.sample }}</code>
@@ -343,7 +391,11 @@
             </section>
 
             <section class="pivot-grid">
-              <div v-for="section in pivotSections" :key="section.key" class="pivot-section">
+              <div
+                v-for="section in pivotSections"
+                :key="section.key"
+                class="pivot-section"
+              >
                 <div class="pivot-title">{{ section.title }}</div>
                 <div class="field-list">
                   <label
@@ -351,11 +403,18 @@
                     :key="`${section.key}-${field.key}`"
                     class="field-option"
                   >
-                    <input type="checkbox" :value="field.key" v-model="pivotConfig[section.key]" />
+                    <input
+                      type="checkbox"
+                      :value="field.key"
+                      v-model="pivotConfig[section.key]"
+                    />
                     <span>{{ getFieldDisplayName(field) }}</span>
                   </label>
                 </div>
-                <div v-if="pivotConfig[section.key].length" class="selected-fields">
+                <div
+                  v-if="pivotConfig[section.key].length"
+                  class="selected-fields"
+                >
                   <div
                     v-for="(fieldKey, index) in pivotConfig[section.key]"
                     :key="`${section.key}-selected-${fieldKey}`"
@@ -375,7 +434,9 @@
                         class="btn-outline btn-xs"
                         type="button"
                         @click="moveField(section.key, index, 1)"
-                        :disabled="index === pivotConfig[section.key].length - 1"
+                        :disabled="
+                          index === pivotConfig[section.key].length - 1
+                        "
                       >
                         ↓
                       </button>
@@ -400,23 +461,36 @@
           <section class="alias-panel" v-if="renamableFields.length">
             <h3>Переименовать заголовки</h3>
             <div class="alias-grid">
-              <label v-for="field in renamableFields" :key="`alias-${field.key}`">
+              <label
+                v-for="field in renamableFields"
+                :key="`alias-${field.key}`"
+              >
                 <span>{{ field.displayLabel }}</span>
-                <input v-model="headerOverrides[field.key]" placeholder="Введите название" />
+                <input
+                  v-model="headerOverrides[field.key]"
+                  placeholder="Введите название"
+                />
               </label>
             </div>
           </section>
 
-        <section class="metrics-panel">
+          <section class="metrics-panel">
             <header>
               <h3>Метрики сводной таблицы</h3>
-              <button class="btn-outline" type="button" @click="addMetric">Добавить метрику</button>
+              <button class="btn-outline" type="button" @click="addMetric">
+                Добавить метрику
+              </button>
             </header>
             <div v-if="!pivotMetrics.length" class="muted">
-              Добавьте хотя бы одну метрику (поле + агрегат), чтобы увидеть расчёты.
+              Добавьте хотя бы одну метрику (поле + агрегат), чтобы увидеть
+              расчёты.
             </div>
             <div class="metrics-list">
-              <div v-for="metric in pivotMetrics" :key="metric.id" class="metric-row">
+              <div
+                v-for="metric in pivotMetrics"
+                :key="metric.id"
+                class="metric-row"
+              >
                 <select v-model="metric.fieldKey">
                   <option disabled value="">Поле</option>
                   <option
@@ -428,7 +502,11 @@
                   </option>
                 </select>
                 <select v-model="metric.aggregator">
-                  <option v-for="agg in aggregatorOptions" :key="agg.value" :value="agg.value">
+                  <option
+                    v-for="agg in aggregatorOptions"
+                    :key="agg.value"
+                    :value="agg.value"
+                  >
                     {{ agg.label }}
                   </option>
                 </select>
@@ -444,36 +522,48 @@
             </div>
           </section>
 
-        <div v-if="selectedFilterFields.length" class="filters-panel">
-          <h3>Значения фильтров</h3>
-          <div class="filters-panel__actions">
-            <span class="muted">Отметьте конкретные значения, чтобы сузить выборку.</span>
-            <button
-              class="btn-outline btn-sm"
-              type="button"
-              @click="resetFilterValues"
-              :disabled="!hasSelectedFilterValues"
-            >
-              Сбросить значения
-            </button>
-          </div>
-          <div class="filters-grid">
-            <div v-for="field in selectedFilterFields" :key="field.key" class="filters-field">
-              <div class="filter-title">{{ field.displayLabel }}</div>
-              <MultiSelectDropdown
-                v-model="filterValues[field.key]"
-                :options="fieldValueOptions(field)"
-                placeholder="Выберите значения"
-              />
+          <div v-if="selectedFilterFields.length" class="filters-panel">
+            <h3>Значения фильтров</h3>
+            <div class="filters-panel__actions">
+              <span class="muted"
+                >Отметьте конкретные значения, чтобы сузить выборку.</span
+              >
+              <button
+                class="btn-outline btn-sm"
+                type="button"
+                @click="resetFilterValues"
+                :disabled="!hasSelectedFilterValues"
+              >
+                Сбросить значения
+              </button>
+            </div>
+            <div class="filters-grid">
+              <div
+                v-for="field in selectedFilterFields"
+                :key="field.key"
+                class="filters-field"
+              >
+                <div class="filter-title">{{ field.displayLabel }}</div>
+                <MultiSelectDropdown
+                  v-model="filterValues[field.key]"
+                  :options="fieldValueOptions(field)"
+                  placeholder="Выберите значения"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
           <div
-            v-if="dimensionValueOptions.rows.length || dimensionValueOptions.columns.length"
+            v-if="
+              dimensionValueOptions.rows.length ||
+              dimensionValueOptions.columns.length
+            "
             class="dimension-panel"
           >
-            <div v-if="dimensionValueOptions.rows.length" class="dimension-group">
+            <div
+              v-if="dimensionValueOptions.rows.length"
+              class="dimension-group"
+            >
               <div class="dimension-title">Фильтр значений строк</div>
               <div class="dimension-fields">
                 <div
@@ -481,7 +571,9 @@
                   :key="`row-values-${field.key}`"
                   class="dimension-field"
                 >
-                  <div class="dimension-field__title">{{ field.displayLabel }}</div>
+                  <div class="dimension-field__title">
+                    {{ field.displayLabel }}
+                  </div>
                   <MultiSelectDropdown
                     v-model="dimensionValueFilters.rows[field.key]"
                     :options="fieldValueOptions(field)"
@@ -491,7 +583,10 @@
               </div>
             </div>
 
-            <div v-if="dimensionValueOptions.columns.length" class="dimension-group">
+            <div
+              v-if="dimensionValueOptions.columns.length"
+              class="dimension-group"
+            >
               <div class="dimension-title">Фильтр значений столбцов</div>
               <div class="dimension-fields">
                 <div
@@ -499,7 +594,9 @@
                   :key="`column-values-${field.key}`"
                   class="dimension-field"
                 >
-                  <div class="dimension-field__title">{{ field.displayLabel }}</div>
+                  <div class="dimension-field__title">
+                    {{ field.displayLabel }}
+                  </div>
                   <MultiSelectDropdown
                     v-model="dimensionValueFilters.columns[field.key]"
                     :options="fieldValueOptions(field)"
@@ -514,7 +611,10 @@
             <p v-for="note in pivotWarnings" :key="note">{{ note }}</p>
           </div>
 
-          <div v-else-if="pivotView && pivotView.rows.length" class="pivot-preview">
+          <div
+            v-else-if="pivotView && pivotView.rows.length"
+            class="pivot-preview"
+          >
             <div class="step__subheader">
               <h3>Сводная таблица</h3>
               <span class="muted">Обновляется при изменении полей</span>
@@ -527,7 +627,9 @@
                       Строки
                       <span
                         class="resize-handle"
-                        @mousedown.prevent="startColumnResize('__rows__', $event)"
+                        @mousedown.prevent="
+                          startColumnResize('__rows__', $event)
+                        "
                       ></span>
                     </div>
                   </th>
@@ -537,18 +639,20 @@
                     :style="columnStyle(column.key)"
                   >
                     <div class="th-content">
-                      <div
-                        v-if="column.levels?.length"
-                        class="column-levels"
-                      >
-                        <span v-for="(level, idx) in column.levels" :key="`${column.key}-lvl-${idx}`">
+                      <div v-if="column.levels?.length" class="column-levels">
+                        <span
+                          v-for="(level, idx) in column.levels"
+                          :key="`${column.key}-lvl-${idx}`"
+                        >
                           {{ level.fieldLabel }}: {{ level.value }}
                         </span>
                       </div>
                       <div class="column-metric">{{ column.label }}</div>
                       <span
                         class="resize-handle"
-                        @mousedown.prevent="startColumnResize(column.key, $event)"
+                        @mousedown.prevent="
+                          startColumnResize(column.key, $event)
+                        "
                       ></span>
                     </div>
                   </th>
@@ -562,9 +666,16 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in tableRows" :key="row.key" :style="rowStyle(row.key)">
+                <tr
+                  v-for="row in tableRows"
+                  :key="row.key"
+                  :style="rowStyle(row.key)"
+                >
                   <td class="row-label">
-                    <div class="row-tree" :style="{ paddingLeft: `${row.depth * 18}px` }">
+                    <div
+                      class="row-tree"
+                      :style="{ paddingLeft: `${row.depth * 18}px` }"
+                    >
                       <button
                         v-if="row.hasChildren"
                         class="row-toggle"
@@ -598,9 +709,15 @@
                   </td>
                 </tr>
               </tbody>
-              <tfoot v-if="pivotOptions.showColumnTotals || pivotOptions.showRowTotals">
+              <tfoot
+                v-if="
+                  pivotOptions.showColumnTotals || pivotOptions.showRowTotals
+                "
+              >
                 <tr>
-                  <td v-if="pivotOptions.showColumnTotals">Итого по столбцам</td>
+                  <td v-if="pivotOptions.showColumnTotals">
+                    Итого по столбцам
+                  </td>
                   <td
                     v-for="column in pivotView.columns"
                     :key="`total-${column.key}`"
@@ -624,13 +741,16 @@
           <div v-else class="empty-state">
             <h4>Нет данных для этой комбинации полей</h4>
             <p>
-              Проверьте выбранные значения фильтров и метрик. Если фильтры не нужны, очистите их —
-              таблица построится по всем загруженным строкам.
+              Проверьте выбранные значения фильтров и метрик. Если фильтры не
+              нужны, очистите их — таблица построится по всем загруженным
+              строкам.
             </p>
             <ul class="empty-state__tips">
               <li>Попробуйте выбрать другие поля в строках или столбцах.</li>
               <li>Очистите значения фильтров, чтобы вернуть все записи.</li>
-              <li>Убедитесь, что в источнике есть данные за заданный период.</li>
+              <li>
+                Убедитесь, что в источнике есть данные за заданный период.
+              </li>
             </ul>
             <div class="empty-state__meta">
               <span>Загружено строк: {{ planRecords.length }}</span>
@@ -658,9 +778,10 @@
       <header class="step__header">
         <div class="step__badge">3</div>
         <div>
-          <h2>Визуализация и выдача</h2>
+          <h2>Вид</h2>
           <p class="muted">
-            После настройки сводной таблицы выберите вид диаграммы или выгрузите результат.
+            После настройки сводной таблицы выберите вид диаграммы или выгрузите
+            результат.
           </p>
         </div>
       </header>
@@ -746,10 +867,20 @@
       />
     </div>
     <div v-if="dictionaryGroups.length" class="dictionary-groups">
-      <section v-for="group in dictionaryGroups" :key="group.title" class="dictionary-group">
-        <header class="dictionary-group__title">{{ group.title || 'Без группы' }}</header>
+      <section
+        v-for="group in dictionaryGroups"
+        :key="group.title"
+        class="dictionary-group"
+      >
+        <header class="dictionary-group__title">
+          {{ group.title || 'Без группы' }}
+        </header>
         <div class="dictionary-group__list">
-          <div v-for="item in group.items" :key="item.key" class="dictionary-row">
+          <div
+            v-for="item in group.items"
+            :key="item.key"
+            class="dictionary-row"
+          >
             <div class="dictionary-row__meta">
               <div class="dictionary-row__key">{{ item.key }}</div>
               <div class="dictionary-row__hint">{{ item.sourceLabel }}</div>
@@ -809,7 +940,7 @@ const rpcMethod = ref('')
 const bodyParams = reactive({})
 const bodyParamTypes = reactive({})
 const primitiveParams = ref([])
-const activeResultTab = ref('json')
+const activeResultTab = ref('preview')
 const detailsVisible = ref(false)
 const paramContainerType = ref('array')
 const showDictionaryModal = ref(false)
@@ -821,7 +952,8 @@ const planFields = ref([])
 const planLoading = ref(false)
 const planError = ref('')
 const selectedSource = computed(
-  () => dataSources.value.find((source) => source.id === dataSource.value) || null,
+  () =>
+    dataSources.value.find((source) => source.id === dataSource.value) || null,
 )
 const sourceOptions = computed(() =>
   dataSources.value.map((source) => ({
@@ -830,7 +962,9 @@ const sourceOptions = computed(() =>
   })),
 )
 const pivotSourceIds = computed(() =>
-  dataSources.value.filter((source) => source.supportsPivot !== false).map((source) => source.id),
+  dataSources.value
+    .filter((source) => source.supportsPivot !== false)
+    .map((source) => source.id),
 )
 const isPivotSource = computed(() => {
   if (isCreatingSource.value) return true
@@ -842,10 +976,18 @@ const hasResultData = computed(() => {
   if (value && typeof value === 'object') return Object.keys(value).length > 0
   return Boolean(value)
 })
-const hasPlanData = computed(() => isPivotSource.value && planFields.value.length > 0)
-const hasSourceContext = computed(() => Boolean(selectedSource.value) || isCreatingSource.value)
-const shouldShowDetails = computed(() => hasSourceContext.value && detailsVisible.value)
-const canCreateSourceFromSearch = computed(() => Boolean(pendingNewSourceName.value))
+const hasPlanData = computed(
+  () => isPivotSource.value && planFields.value.length > 0,
+)
+const hasSourceContext = computed(
+  () => Boolean(selectedSource.value) || isCreatingSource.value,
+)
+const shouldShowDetails = computed(
+  () => hasSourceContext.value && detailsVisible.value,
+)
+const canCreateSourceFromSearch = computed(() =>
+  Boolean(pendingNewSourceName.value),
+)
 const canSaveSource = computed(() => {
   if (!shouldShowDetails.value) return false
   const hasName = Boolean(sourceDraft.name?.trim())
@@ -912,7 +1054,9 @@ const dictionaryGroups = computed(() => {
     })
     return [...groupMap.entries()].map(([title, items]) => ({
       title,
-      items: items.sort((a, b) => a.key.localeCompare(b.key, 'ru', { sensitivity: 'base' })),
+      items: items.sort((a, b) =>
+        a.key.localeCompare(b.key, 'ru', { sensitivity: 'base' }),
+      ),
     }))
   }
   const alphaMap = new Map()
@@ -941,12 +1085,17 @@ const formattedResultJson = computed(() => {
   }
 })
 const previewColumns = computed(() => {
-  if (planFields.value.length) return planFields.value
+  if (planFields.value.length) {
+    return planFields.value.map((field) => ({
+      ...field,
+      label: getFieldDisplayName(field),
+    }))
+  }
   const firstRecord = planRecords.value[0]
   if (firstRecord && typeof firstRecord === 'object') {
     return Object.keys(firstRecord).map((key) => ({
       key,
-      label: FIELD_ALIASES[key] || humanizeKey(key),
+      label: getFieldDisplayNameByKey(key),
     }))
   }
   return []
@@ -1002,7 +1151,14 @@ const aggregatorOptions = [
   { value: 'avg', label: 'Среднее' },
 ]
 const supportedChartTypes = ['bar', 'line', 'pie']
-const chartPalette = ['#2b6cb0', '#f97316', '#0ea5e9', '#10b981', '#ef4444', '#8b5cf6']
+const chartPalette = [
+  '#2b6cb0',
+  '#f97316',
+  '#0ea5e9',
+  '#10b981',
+  '#ef4444',
+  '#8b5cf6',
+]
 
 const CONFIG_STORAGE_KEY = 'report-pivot-configs'
 const savedConfigs = ref(loadSavedConfigs())
@@ -1019,7 +1175,10 @@ watch(
       }
       return
     }
-    if (!isCreatingSource.value && !list.find((item) => item.id === dataSource.value)) {
+    if (
+      !isCreatingSource.value &&
+      !list.find((item) => item.id === dataSource.value)
+    ) {
       dataSource.value = list[0].id
     }
   },
@@ -1110,10 +1269,16 @@ watch(
       let container = 'array'
       if (Array.isArray(parsed.params)) {
         const firstEntry = parsed.params[0]
-        if (firstEntry && typeof firstEntry === 'object' && !Array.isArray(firstEntry)) {
+        if (
+          firstEntry &&
+          typeof firstEntry === 'object' &&
+          !Array.isArray(firstEntry)
+        ) {
           paramPayload = firstEntry
         } else if (parsed.params.length) {
-          primitiveParams.value = parsed.params.map((item) => formatPrimitiveParam(item))
+          primitiveParams.value = parsed.params.map((item) =>
+            formatPrimitiveParam(item),
+          )
         }
       } else if (parsed.params && typeof parsed.params === 'object') {
         paramPayload = parsed.params
@@ -1272,7 +1437,11 @@ watch(
 watch(
   () => planFields.value,
   (fields) => {
-    if (fields.length && pivotMetrics.length === 1 && !pivotMetrics[0].fieldKey) {
+    if (
+      fields.length &&
+      pivotMetrics.length === 1 &&
+      !pivotMetrics[0].fieldKey
+    ) {
       const firstNumericField = fields.find((field) => field.type === 'number')
       const firstFieldKey = firstNumericField?.key || fields[0]?.key
       if (firstFieldKey) {
@@ -1287,7 +1456,9 @@ watch(
 
 watch(
   () => {
-    const metricKeys = pivotMetrics.map((metric) => metric.fieldKey).filter(Boolean)
+    const metricKeys = pivotMetrics
+      .map((metric) => metric.fieldKey)
+      .filter(Boolean)
     return [
       ...pivotConfig.rows,
       ...pivotConfig.columns,
@@ -1410,8 +1581,18 @@ const filteredPlanRecords = computed(() => {
       return selectedValues.includes(normalizedRecordValue)
     })
     if (!basicFiltersMatch) return false
-    if (!matchesFieldValues(record, pivotConfig.rows, dimensionValueFilters.rows)) return false
-    if (!matchesFieldValues(record, pivotConfig.columns, dimensionValueFilters.columns)) return false
+    if (
+      !matchesFieldValues(record, pivotConfig.rows, dimensionValueFilters.rows)
+    )
+      return false
+    if (
+      !matchesFieldValues(
+        record,
+        pivotConfig.columns,
+        dimensionValueFilters.columns,
+      )
+    )
+      return false
     return true
   })
 })
@@ -1428,10 +1609,7 @@ const pivotWarnings = computed(() => {
     messages.push('Добавьте хотя бы одну метрику.')
   }
   activeMetrics.value.forEach((metric) => {
-    if (
-      metric.field.type !== 'number' &&
-      metric.aggregator !== 'count'
-    ) {
+    if (metric.field.type !== 'number' && metric.aggregator !== 'count') {
       messages.push(
         `Метрика «${metric.label}» требует числовое поле. Выберите другое поле или агрегат.`,
       )
@@ -1452,7 +1630,9 @@ const pivotView = computed(() => {
     headerOverrides,
   })
 })
-const pivotReady = computed(() => Boolean(pivotView.value && pivotView.value.rows.length))
+const pivotReady = computed(() =>
+  Boolean(pivotView.value && pivotView.value.rows.length),
+)
 const canUseVizSettings = computed(() =>
   isPivotSource.value ? pivotReady.value : hasResultData.value,
 )
@@ -1565,7 +1745,9 @@ const chartConfig = computed(() => {
     datasets = view.rowTotalHeaders.map((header, index) => {
       const color = chartPalette[index % chartPalette.length]
       const data = view.rows.map((row) => {
-        const total = row.totals.find((item) => item.metricId === header.metricId)
+        const total = row.totals.find(
+          (item) => item.metricId === header.metricId,
+        )
         return typeof total?.value === 'number' ? Number(total.value) : 0
       })
       return {
@@ -1593,7 +1775,9 @@ const chartConfig = computed(() => {
 
   if (vizType.value === 'pie') {
     const pieDataset = datasets[0]
-    const pieColors = labels.map((_, idx) => chartPalette[idx % chartPalette.length])
+    const pieColors = labels.map(
+      (_, idx) => chartPalette[idx % chartPalette.length],
+    )
     return {
       data: {
         labels,
@@ -1676,14 +1860,17 @@ async function executeCurrentSource() {
 
 function saveTemplate() {
   if (!isPivotSource.value) {
-    alert('Сохранение шаблонов доступно только для источников плана и параметров.')
+    alert(
+      'Сохранение шаблонов доступно только для источников плана и параметров.',
+    )
     return
   }
   if (!pivotReady.value) {
     alert('Постройте сводную таблицу, прежде чем сохранять шаблон.')
     return
   }
-  const suggestedName = configName.value || `Конфигурация ${new Date().toLocaleDateString()}`
+  const suggestedName =
+    configName.value || `Конфигурация ${new Date().toLocaleDateString()}`
   const name = prompt('Название шаблона', suggestedName)
   if (!name) return
   const description = prompt('Описание шаблона (опционально)', '')
@@ -1714,7 +1901,7 @@ async function loadPlanFields() {
     planRecords.value = records
     planFields.value = extractFieldDescriptors(records)
     ensureMetricExists()
-    activeResultTab.value = 'json'
+    activeResultTab.value = 'preview'
   } catch (err) {
     planError.value =
       err?.response?.data?.message ||
@@ -1765,7 +1952,7 @@ function resetPlanState() {
   planFields.value = []
   planError.value = ''
   result.value = null
-  activeResultTab.value = 'json'
+  activeResultTab.value = 'preview'
   primitiveParams.value = []
   replaceArray(pivotConfig.filters, [])
   replaceArray(pivotConfig.rows, [])
@@ -1773,8 +1960,12 @@ function resetPlanState() {
   pivotMetrics.splice(0, pivotMetrics.length)
   pivotMetricsVersion.value += 1
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
-  Object.keys(dimensionValueFilters.rows).forEach((key) => delete dimensionValueFilters.rows[key])
-  Object.keys(dimensionValueFilters.columns).forEach((key) => delete dimensionValueFilters.columns[key])
+  Object.keys(dimensionValueFilters.rows).forEach(
+    (key) => delete dimensionValueFilters.rows[key],
+  )
+  Object.keys(dimensionValueFilters.columns).forEach(
+    (key) => delete dimensionValueFilters.columns[key],
+  )
   Object.keys(columnWidths).forEach((key) => delete columnWidths[key])
   Object.keys(rowHeights).forEach((key) => delete rowHeights[key])
   resetRowCollapse()
@@ -1792,7 +1983,8 @@ function extractRecordsFromResponse(payload) {
   if (Array.isArray(payload.records)) return payload.records
   if (Array.isArray(payload.data)) return payload.data
   if (Array.isArray(payload.result)) return payload.result
-  if (payload.result && Array.isArray(payload.result.records)) return payload.result.records
+  if (payload.result && Array.isArray(payload.result.records))
+    return payload.result.records
   return []
 }
 
@@ -1828,7 +2020,8 @@ function extractFieldDescriptors(records) {
     sample: descriptor.sample || '—',
     values: Array.from(descriptor.values),
     type:
-      descriptor.numericCount > 0 && descriptor.numericCount === descriptor.total
+      descriptor.numericCount > 0 &&
+      descriptor.numericCount === descriptor.total
         ? 'number'
         : 'string',
   }))
@@ -1857,8 +2050,11 @@ function aggregatorLabel(aggregator, field) {
 
 function ensureMetricExists() {
   if (!pivotMetrics.length) {
-    const firstNumericField = planFields.value.find((field) => field.type === 'number')
-    const firstFieldKey = firstNumericField?.key || planFields.value[0]?.key || ''
+    const firstNumericField = planFields.value.find(
+      (field) => field.type === 'number',
+    )
+    const firstFieldKey =
+      firstNumericField?.key || planFields.value[0]?.key || ''
     pivotMetrics.push(
       createMetric({
         fieldKey: firstFieldKey,
@@ -2053,7 +2249,9 @@ function saveCurrentConfig() {
   }
   const payload = snapshotCurrentConfig()
   const normalizedName = configName.value.trim()
-  const existingIndex = savedConfigs.value.findIndex((cfg) => cfg.name === normalizedName)
+  const existingIndex = savedConfigs.value.findIndex(
+    (cfg) => cfg.name === normalizedName,
+  )
   const entry = {
     id: existingIndex >= 0 ? savedConfigs.value[existingIndex].id : createId(),
     name: normalizedName,
@@ -2107,7 +2305,10 @@ function snapshotCurrentConfig() {
       const field = planFieldsMap.value.get(metric.fieldKey)
       return {
         ...metric,
-        fieldLabel: headerOverrides[metric.fieldKey]?.trim() || field?.label || metric.fieldKey,
+        fieldLabel:
+          headerOverrides[metric.fieldKey]?.trim() ||
+          field?.label ||
+          metric.fieldKey,
       }
     }),
     filtersMeta,
@@ -2122,19 +2323,24 @@ function snapshotCurrentConfig() {
     options: {
       showRowTotals: pivotOptions.showRowTotals,
       showColumnTotals: pivotOptions.showColumnTotals,
-      headerOverrides: Object.entries(headerOverrides).reduce((acc, [key, value]) => {
-        if (value && value.trim()) {
-          acc[key] = value.trim()
-        }
-        return acc
-      }, {}),
+      headerOverrides: Object.entries(headerOverrides).reduce(
+        (acc, [key, value]) => {
+          if (value && value.trim()) {
+            acc[key] = value.trim()
+          }
+          return acc
+        },
+        {},
+      ),
     },
     fieldMeta,
   }
 }
 
 function loadSelectedConfig() {
-  const entry = savedConfigs.value.find((cfg) => cfg.id === selectedConfigId.value)
+  const entry = savedConfigs.value.find(
+    (cfg) => cfg.id === selectedConfigId.value,
+  )
   if (!entry) return
   applyConfig(entry.payload)
 }
@@ -2143,7 +2349,11 @@ function applyConfig(payload) {
   replaceArray(pivotConfig.filters, payload?.pivot?.filters || [])
   replaceArray(pivotConfig.rows, payload?.pivot?.rows || [])
   replaceArray(pivotConfig.columns, payload?.pivot?.columns || [])
-  pivotMetrics.splice(0, pivotMetrics.length, ...(payload?.metrics || []).map((metric) => ({ ...metric })))
+  pivotMetrics.splice(
+    0,
+    pivotMetrics.length,
+    ...(payload?.metrics || []).map((metric) => ({ ...metric })),
+  )
   pivotMetricsVersion.value += 1
   if (!pivotMetrics.length) ensureMetricExists()
 
@@ -2162,19 +2372,25 @@ function applyConfig(payload) {
     payload?.dimensionValues?.columns || {},
   )
   pivotOptions.showRowTotals =
-    payload?.options?.showRowTotals === undefined ? true : Boolean(payload.options.showRowTotals)
+    payload?.options?.showRowTotals === undefined
+      ? true
+      : Boolean(payload.options.showRowTotals)
   pivotOptions.showColumnTotals =
     payload?.options?.showColumnTotals === undefined
       ? true
       : Boolean(payload.options.showColumnTotals)
   Object.keys(headerOverrides).forEach((key) => delete headerOverrides[key])
-  Object.entries(payload?.options?.headerOverrides || {}).forEach(([key, value]) => {
-    headerOverrides[key] = value
-  })
+  Object.entries(payload?.options?.headerOverrides || {}).forEach(
+    ([key, value]) => {
+      headerOverrides[key] = value
+    },
+  )
 }
 
 function deleteSelectedConfig() {
-  const index = savedConfigs.value.findIndex((cfg) => cfg.id === selectedConfigId.value)
+  const index = savedConfigs.value.findIndex(
+    (cfg) => cfg.id === selectedConfigId.value,
+  )
   if (index >= 0) {
     savedConfigs.value.splice(index, 1)
     selectedConfigId.value = ''
@@ -2209,8 +2425,16 @@ function swapPivotAxes() {
   replaceArray(pivotConfig.rows, prevColumns)
   replaceArray(pivotConfig.columns, prevRows)
 
-  applyFilterSnapshot(dimensionValueFilters.rows, pivotConfig.rows, prevColumnFilters)
-  applyFilterSnapshot(dimensionValueFilters.columns, pivotConfig.columns, prevRowFilters)
+  applyFilterSnapshot(
+    dimensionValueFilters.rows,
+    pivotConfig.rows,
+    prevColumnFilters,
+  )
+  applyFilterSnapshot(
+    dimensionValueFilters.columns,
+    pivotConfig.columns,
+    prevRowFilters,
+  )
 
   Object.keys(columnWidths).forEach((key) => delete columnWidths[key])
   Object.keys(rowHeights).forEach((key) => delete rowHeights[key])
@@ -2231,16 +2455,16 @@ function exportToCsv() {
   URL.revokeObjectURL(url)
 }
 
-function buildCsvFromPivot(view, options = { showRowTotals: true, showColumnTotals: true }) {
+function buildCsvFromPivot(
+  view,
+  options = { showRowTotals: true, showColumnTotals: true },
+) {
   const header = ['Строки', ...view.columns.map((col) => col.label)]
   if (options.showRowTotals) {
     header.push(...view.rowTotalHeaders.map((total) => total.label))
   }
   const rows = view.rows.map((row) => {
-    const cells = [
-      row.label,
-      ...row.cells.map((cell) => cell.display),
-    ]
+    const cells = [row.label, ...row.cells.map((cell) => cell.display)]
     if (options.showRowTotals) {
       cells.push(...row.totals.map((total) => total.display))
     }
@@ -2253,7 +2477,9 @@ function buildCsvFromPivot(view, options = { showRowTotals: true, showColumnTota
     totalsRow.push(...view.columns.map(() => ''))
   }
   if (options.showRowTotals) {
-    totalsRow.push(...view.rowTotalHeaders.map((total) => view.grandTotals[total.metricId]))
+    totalsRow.push(
+      ...view.rowTotalHeaders.map((total) => view.grandTotals[total.metricId]),
+    )
   }
 
   return [header, ...rows, totalsRow]
@@ -2391,12 +2617,12 @@ function normalizeDictionaryUrl(value) {
 
 <style scoped>
 .page {
-  padding: 32px clamp(16px, 6vw, 72px);
+  padding: 0 16px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: min(1200px, 100%);
   margin: 0 auto;
-  max-width: 1320px;
   box-sizing: border-box;
 }
 .step {
@@ -2407,6 +2633,7 @@ function normalizeDictionaryUrl(value) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 .step--disabled {
   opacity: 0.55;
@@ -2415,8 +2642,13 @@ function normalizeDictionaryUrl(value) {
 .step__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: left;
   gap: 20px;
+}
+.step__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .step__badge {
   width: 42px;
@@ -2452,6 +2684,7 @@ function normalizeDictionaryUrl(value) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 .source-panel {
   display: flex;
@@ -2541,9 +2774,11 @@ function normalizeDictionaryUrl(value) {
 .result-tabs {
   border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
   border-radius: 14px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+  overflow-x: auto;
 }
 .tabs {
   display: flex;
@@ -2567,7 +2802,8 @@ function normalizeDictionaryUrl(value) {
 .tabs__body {
   padding: 12px;
   max-height: 360px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: auto;
 }
 .tabs__body pre {
   margin: 0;
@@ -2575,7 +2811,12 @@ function normalizeDictionaryUrl(value) {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 }
 .preview-table {
+  width: 100%;
   overflow-x: auto;
+}
+.preview-table table {
+  width: max(100%, 1200px);
+  table-layout: auto;
 }
 .dictionary-modal :global(.n-card) {
   max-width: 720px;

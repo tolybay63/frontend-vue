@@ -33,18 +33,8 @@
     </header>
 
     <div class="body">
-      <aside class="sider" :class="{ collapsed: asideCollapsed }">
+      <aside class="sider" :class="{ collapsed: asideCollapsed }" :style="siderStyle">
         <nav class="sider__nav">
-          <RouterLink
-            v-for="item in navLinks"
-            :key="item.to"
-            :to="item.to"
-            class="sider__link"
-            active-class="is-active"
-          >
-            <span :class="['sider__icon', `icon-${item.icon}`]" />
-            <span class="sider__label">{{ item.label }}</span>
-          </RouterLink>
           <div v-if="navPages.length" class="sider__section">
             <div class="sider__section-title">Дашборды</div>
             <RouterLink
@@ -60,8 +50,38 @@
               }}</span>
             </RouterLink>
           </div>
+          <div class="sider__section">
+            <button
+              class="sider__section-toggle"
+              type="button"
+              @click="constructorOpen = !constructorOpen"
+            >
+              <span>Конструктор представлений</span>
+              <span class="chevron" :class="{ 'is-open': constructorOpen }" />
+            </button>
+            <transition name="fade">
+              <div v-show="constructorOpen" class="sider__submenu">
+                <RouterLink
+                  v-for="item in navLinks"
+                  :key="item.to"
+                  :to="item.to"
+                  replace
+                  class="sider__link sider__link--nested"
+                  active-class="is-active"
+                >
+                  <span :class="['sider__icon', `icon-${item.icon}`]" />
+                  <span class="sider__label">{{ item.label }}</span>
+                </RouterLink>
+              </div>
+            </transition>
+          </div>
         </nav>
       </aside>
+      <div
+        class="sider-resizer"
+        :class="{ 'is-disabled': asideCollapsed }"
+        @mousedown="startResize"
+      />
 
       <main class="workspace">
         <slot />
@@ -71,7 +91,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import logoUrl from '@/shared/assets/logo.png'
@@ -85,9 +105,18 @@ const { user } = storeToRefs(authStore)
 const pageStore = usePageBuilderStore()
 const navPages = computed(() => pageStore.pages)
 const asideCollapsed = ref(false)
+const constructorOpen = ref(true)
+const siderWidth = ref(248)
+const siderStyle = computed(() => {
+  if (asideCollapsed.value) return { width: '84px' }
+  return { width: `${siderWidth.value}px` }
+})
+const minSiderWidth = 180
+const maxSiderWidth = 360
+let cleanupResize = null
 
 const navLinks = [
-  { to: '/', label: 'Данные', icon: 'home' },
+  { to: '/data', label: 'Данные', icon: 'home' },
   { to: '/templates', label: 'Представления', icon: 'layers' },
   { to: '/pages', label: 'Страницы', icon: 'layout' },
 ]
@@ -105,6 +134,29 @@ const currentPage = computed(() => {
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value
 }
+
+function startResize(event) {
+  if (asideCollapsed.value) return
+  const startX = event.clientX
+  const startWidth = siderWidth.value
+  const onMove = (e) => {
+    const delta = e.clientX - startX
+    const next = Math.max(minSiderWidth, Math.min(maxSiderWidth, startWidth + delta))
+    siderWidth.value = next
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    cleanupResize = null
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+  cleanupResize = onUp
+}
+
+onBeforeUnmount(() => {
+  if (cleanupResize) cleanupResize()
+})
 
 async function handleLogout() {
   await authStore.logout()
@@ -236,14 +288,14 @@ async function handleLogout() {
   min-height: calc(100vh - 70px);
 }
 .sider {
-  width: 248px;
   background: #fff;
   border-right: 1px solid #e5e7eb;
-  padding: 24px 18px;
+  padding: 16px 12px;
   transition: width 0.2s ease;
+  box-sizing: border-box;
 }
 .sider.collapsed {
-  width: 84px;
+  width: 84px !important;
 }
 .sider__nav {
   display: flex;
@@ -262,6 +314,39 @@ async function handleLogout() {
   color: #9ca3af;
   letter-spacing: 0.06em;
   padding: 0 8px;
+}
+.sider__section-toggle {
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #9ca3af;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.sider__submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+}
+.chevron {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  mask-size: contain;
+  background: currentColor;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+.chevron.is-open {
+  transform: rotate(0deg);
 }
 .sider__link {
   display: flex;
@@ -291,6 +376,9 @@ async function handleLogout() {
 .sider__label {
   flex: 1;
 }
+.sider__link--nested {
+  padding-left: 18px;
+}
 .sider.collapsed .sider__label,
 .sider.collapsed .sider__section-title {
   display: none;
@@ -298,13 +386,27 @@ async function handleLogout() {
 .sider.collapsed .sider__link {
   justify-content: center;
 }
+.sider-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+.sider-resizer:hover,
+.sider-resizer.is-disabled {
+  background: rgba(15, 23, 42, 0.08);
+}
+.sider-resizer.is-disabled {
+  cursor: not-allowed;
+}
 .workspace {
   flex: 1;
   padding: 32px;
   background: #f5f6f8;
 }
 .workspace > :first-child {
-  max-width: var(--s360-container-max-width);
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
 }
 .logout {

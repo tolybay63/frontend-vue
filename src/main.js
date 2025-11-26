@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import router from './shared/config/router'
 import App from './app/App.vue'
 import { useAuthStore } from '@/shared/stores/auth'
+import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 
 // базовые стили/токены из NSI
 import './shared/styles/tokens.css'
@@ -13,6 +14,7 @@ const pinia = createPinia()
 app.use(pinia)
 
 const authStore = useAuthStore(pinia)
+const pageStore = usePageBuilderStore(pinia)
 
 router.beforeEach(async (to) => {
   await authStore.checkSession()
@@ -34,6 +36,13 @@ router.beforeEach(async (to) => {
       loginRoute.query = { redirect: redirectFullPath }
     }
     return loginRoute
+  }
+
+  if (to.path === '/' && pageStore.pages.length) {
+    const firstPage = pageStore.pages[0]
+    if (firstPage?.id) {
+      return { path: `/dash/${firstPage.id}`, replace: true }
+    }
   }
 
   return true

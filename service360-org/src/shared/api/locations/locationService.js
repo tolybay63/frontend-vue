@@ -65,3 +65,64 @@ export async function saveLocation(form, multiOptions) {
     throw error;
   }
 }
+
+export async function updateLocation(form, multiOptions) {
+  const now = formatDateForBackend(new Date());
+  const raw = form.rawData;
+
+  const multiObjects = form.multipleSelect.map(id => {
+    const match = multiOptions.find(opt => opt.value === id);
+    return {
+      id: match?.value,
+      cls: match?.cls,
+      name: match?.label,
+      pv: match?.pv,
+    };
+  });
+
+  const payload = {
+    id: raw.id,
+    cls: raw.cls,
+    name: form.name,
+    parent: form.parent?.value || raw.parent || null,
+    idAddress: raw.idAddress,
+    Address: form.address || '',
+    idPhone: raw.idPhone,
+    Phone: form.phone || '',
+    objObjectTypeMulti: multiObjects,
+    idStartKm: raw.idStartKm,
+    StartKm: form.coordinates.coordStartKm || null,
+    idFinishKm: raw.idFinishKm,
+    FinishKm: form.coordinates.coordEndKm || null,
+    idStageLength: raw.idStageLength,
+    StageLength: form.distance === 'Неверные данные' ? 0 : Number(form.distance) || 0,
+    idRegion: raw.idRegion,
+    fvRegion: form.region?.id,
+    pvRegion: form.region?.pv,
+    idIsActive: raw.idIsActive,
+    fvIsActive: form.active?.id,
+    pvIsActive: form.active?.pv,
+    idDescription: raw.idDescription,
+    Description: form.description || '',
+    idCreatedAt: raw.idCreatedAt,
+    CreatedAt: raw.CreatedAt || '',
+    idUpdatedAt: raw.idUpdatedAt,
+    UpdatedAt: now,
+  };
+
+  console.log('Update Payload:', payload);
+
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveLocation',
+      params: ['upd', payload],
+    });
+
+    console.log('Response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error during updateLocation request:', error.response?.data || error.message);
+    throw error;
+  }
+}
+

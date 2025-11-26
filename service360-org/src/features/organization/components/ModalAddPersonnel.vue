@@ -82,7 +82,7 @@
         :required="true"
       />
 
-      <AppInput
+      <PhoneInput
         id="phone"
         label="Телефон"
         placeholder="Введите телефон"
@@ -115,6 +115,7 @@ import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
+import PhoneInput from '@/shared/ui/FormControls/PhoneInput.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 import {
   loadPositions,

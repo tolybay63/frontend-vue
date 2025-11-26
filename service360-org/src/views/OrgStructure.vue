@@ -12,10 +12,17 @@
         :childrenMap="childrenMap"
         :expandedRows="expandedRows"
         @toggleExpand="toggleRowExpand"
+        @row-dblclick="handleRowDoubleClick"
       />
     </div>
 
-    <ModalOrgStructure v-if="isCreateModalOpen" @close="closeCreateModal" />
+    <ModalOrgStructure v-if="isCreateModalOpen" @close="closeCreateModal" @update-table="fetchData" />
+    <ModalEditOrgStructure
+      v-if="isEditModalOpen"
+      :locationData="selectedLocation"
+      @close="closeEditModal"
+      @update-table="fetchData"
+    />
   </div>
 </template>
 
@@ -24,6 +31,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { usePermissions } from '@/shared/api/auth/usePermissions'
 import TableActions from '@/app/layouts/Table/TableActions.vue'
 import ModalOrgStructure from '@/features/org-structure/components/ModalOrgStructure.vue'
+import ModalEditOrgStructure from '@/features/org-structure/components/ModalEditOrgStructure.vue'
 import OrgStructureTree from '@/features/org-structure/components/OrgStructureTree.vue'
 import { loadLocation } from '@/shared/api/locations/locationService'
 
@@ -32,6 +40,8 @@ const organizationData = ref([])
 const expandedRows = ref([])
 const childrenMap = ref({})
 const isCreateModalOpen = ref(false)
+const isEditModalOpen = ref(false)
+const selectedLocation = ref(null)
 
 const isMobile = ref(window.innerWidth <= 768)
 const updateIsMobile = () => {
@@ -50,6 +60,21 @@ const openCreateModal = () => {
 
 const closeCreateModal = () => {
   isCreateModalOpen.value = false
+}
+
+const openEditModal = (locationData) => {
+  selectedLocation.value = locationData
+  isEditModalOpen.value = true
+}
+
+const closeEditModal = () => {
+  isEditModalOpen.value = false
+  selectedLocation.value = null
+}
+
+const handleRowDoubleClick = (rowData) => {
+  openEditModal(rowData)
+  console.log('Double click:', rowData)
 }
 
 const toggleRowExpand = (id) => {

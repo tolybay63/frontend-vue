@@ -7,8 +7,8 @@
     >
 
       <div class="tree-node" :style="{ paddingLeft: `${level * 24}px` }">
-        <div class="node-card" :class="{ expanded: isExpanded(node.id) }">
-          
+        <div class="node-card" :class="{ expanded: isExpanded(node.id) }" @dblclick="handleDoubleClick(node)">
+
           <div class="node-header" @click="hasChildren(node) && toggleExpand(node.id)">
             
             <div class="header-main-info-mobile">
@@ -68,6 +68,7 @@
           :expandedRows="expandedRows"
           :level="level + 1"
           @toggleExpand="toggleExpand"
+          @row-dblclick="handleDoubleClick"
         />
       </div>
     </div>
@@ -87,11 +88,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['toggleExpand'])
+const emit = defineEmits(['toggleExpand', 'row-dblclick'])
 
 const toggleExpand = (id) => emit('toggleExpand', id)
 const isExpanded = (id) => props.expandedRows.includes(id)
 const hasChildren = (node) => props.childrenMap[node.id]?.length > 0
+const handleDoubleClick = (node) => emit('row-dblclick', node)
 </script>
 
 <style scoped>

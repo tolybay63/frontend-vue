@@ -215,7 +215,7 @@
                 <thead>
                   <tr>
                     <th v-for="column in previewColumns" :key="column.key">
-                      {{ column.label }}
+                      {{ getFieldDisplayName(column) }}
                     </th>
                   </tr>
                 </thead>
@@ -247,9 +247,25 @@
             Выберите поля для фильтров, строк и столбцов, задайте агрегации и сразу увидите результат ниже.
           </p>
         </div>
-        <div v-if="pivotReady" class="step__status">
-          <span class="dot dot--success"></span>
-          Таблица готова
+        <div class="step__header-actions">
+          <div v-if="pivotReady" class="step__status">
+            <span class="dot dot--success"></span>
+            Таблица готова
+          </div>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                quaternary
+                circle
+                size="large"
+                @click="openDictionary"
+                aria-label="Редактор словаря"
+              >
+                <span class="icon icon-dictionary" />
+              </n-button>
+            </template>
+            Настроить словарь полей
+          </n-tooltip>
         </div>
       </header>
 
@@ -300,7 +316,7 @@
               <ul>
                 <li v-for="field in planFields" :key="field.key">
                   <div class="field-main">
-                    <strong>{{ field.label }}</strong>
+                    <strong>{{ getFieldDisplayName(field) }}</strong>
                     <span class="key-tag">{{ field.key }}</span>
                   </div>
                   <div class="field-meta">
@@ -336,7 +352,7 @@
                     class="field-option"
                   >
                     <input type="checkbox" :value="field.key" v-model="pivotConfig[section.key]" />
-                    <span>{{ field.label }}</span>
+                    <span>{{ getFieldDisplayName(field) }}</span>
                   </label>
                 </div>
                 <div v-if="pivotConfig[section.key].length" class="selected-fields">
@@ -709,16 +725,57 @@
       </div>
     </article>
   </section>
+
+  <n-modal
+    v-model:show="showDictionaryModal"
+    preset="card"
+    title="Словарь полей"
+    class="dictionary-modal"
+  >
+    <div class="dictionary-toolbar">
+      <n-input
+        v-model:value="dictionarySearch"
+        placeholder="Поиск по ключу или названию"
+        size="large"
+        clearable
+      />
+      <n-select
+        v-model:value="dictionaryGrouping"
+        :options="dictionaryGroupOptions"
+        size="large"
+      />
+    </div>
+    <div v-if="dictionaryGroups.length" class="dictionary-groups">
+      <section v-for="group in dictionaryGroups" :key="group.title" class="dictionary-group">
+        <header class="dictionary-group__title">{{ group.title || 'Без группы' }}</header>
+        <div class="dictionary-group__list">
+          <div v-for="item in group.items" :key="item.key" class="dictionary-row">
+            <div class="dictionary-row__meta">
+              <div class="dictionary-row__key">{{ item.key }}</div>
+              <div class="dictionary-row__hint">{{ item.sourceLabel }}</div>
+            </div>
+            <n-input
+              :value="item.currentLabel"
+              placeholder="Введите понятное название"
+              @update:value="updateDictionaryLabel(item.key, $event)"
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+    <p v-else class="muted">Поля появятся после загрузки данных.</p>
+  </n-modal>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { NButton, NTooltip, NSelect, NInput } from 'naive-ui'
+import { NButton, NTooltip, NSelect, NInput, NModal } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import { useDataSourcesStore } from '@/shared/stores/dataSources'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
+import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import {
   buildPivotView,
   humanizeKey,
@@ -728,6 +785,7 @@ import {
 } from '@/shared/lib/pivotUtils'
 
 const dataSourcesStore = useDataSourcesStore()
+const fieldDictionaryStore = useFieldDictionaryStore()
 const dataSources = computed(() => dataSourcesStore.sources)
 const dataSource = ref('')
 const vizType = ref('table')
@@ -754,6 +812,9 @@ const primitiveParams = ref([])
 const activeResultTab = ref('json')
 const detailsVisible = ref(false)
 const paramContainerType = ref('array')
+const showDictionaryModal = ref(false)
+const dictionaryGrouping = ref('alphabet')
+const dictionarySearch = ref('')
 
 const planRecords = ref([])
 const planFields = ref([])
@@ -812,6 +873,61 @@ const detailsTooltipLabel = computed(() =>
 const detailsIconClass = computed(() =>
   shouldShowDetails.value ? 'icon-close' : 'icon-gear',
 )
+const dictionaryGroupOptions = [
+  { label: 'По алфавиту', value: 'alphabet' },
+  { label: 'По URL', value: 'url' },
+]
+const dictionaryKeys = computed(() => {
+  const unique = new Set()
+  planFields.value.forEach((field) => unique.add(field.key))
+  fieldDictionaryStore.entries.forEach((entry) => unique.add(entry.key))
+  return [...unique]
+})
+const filteredDictionaryKeys = computed(() => {
+  const search = dictionarySearch.value.trim().toLowerCase()
+  if (!search) return dictionaryKeys.value
+  return dictionaryKeys.value.filter((key) => {
+    const friendly = (dictionaryLabelValue(key) || '').toLowerCase()
+    const raw = getRawFieldLabel(key).toLowerCase()
+    return (
+      key.toLowerCase().includes(search) ||
+      friendly.includes(search) ||
+      raw.includes(search)
+    )
+  })
+})
+const dictionaryGroups = computed(() => {
+  const keys = [...filteredDictionaryKeys.value]
+  if (!keys.length) return []
+  if (dictionaryGrouping.value === 'url') {
+    const groupMap = new Map()
+    const fallback = normalizeDictionaryUrl(sourceDraft.url) || 'Без URL'
+    keys.forEach((key) => {
+      const entry = fieldDictionaryStore.entryMap[key]
+      const urls = entry?.urls?.length ? entry.urls : [fallback]
+      urls.forEach((url) => {
+        if (!groupMap.has(url)) groupMap.set(url, [])
+        groupMap.get(url).push(buildDictionaryItem(key))
+      })
+    })
+    return [...groupMap.entries()].map(([title, items]) => ({
+      title,
+      items: items.sort((a, b) => a.key.localeCompare(b.key, 'ru', { sensitivity: 'base' })),
+    }))
+  }
+  const alphaMap = new Map()
+  keys
+    .sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }))
+    .forEach((key) => {
+      const letter = key.charAt(0).toUpperCase() || '#'
+      if (!alphaMap.has(letter)) alphaMap.set(letter, [])
+      alphaMap.get(letter).push(buildDictionaryItem(key))
+    })
+  return [...alphaMap.entries()].map(([title, items]) => ({
+    title,
+    items,
+  }))
+})
 const httpMethodOptions = HTTP_METHODS.map((method) => ({
   label: method,
   value: method,
@@ -1531,6 +1647,10 @@ function toggleDetails() {
   detailsVisible.value = !detailsVisible.value
 }
 
+function openDictionary() {
+  showDictionaryModal.value = true
+}
+
 function saveCurrentSource() {
   if (!canSaveSource.value) return
   const payload = {
@@ -2181,12 +2301,16 @@ function createId() {
 
 function getFieldDisplayName(field) {
   if (!field) return ''
+  const dictionaryLabel = dictionaryLabelValue(field.key)
+  if (dictionaryLabel) return dictionaryLabel
   const override = headerOverrides[field.key]
   if (override && override.trim()) return override.trim()
   return field.label || humanizeKey(field.key)
 }
 
 function getFieldDisplayNameByKey(key = '') {
+  const dictionaryLabel = dictionaryLabelValue(key)
+  if (dictionaryLabel) return dictionaryLabel
   const field = planFieldsMap.value.get(key)
   if (!field) {
     const override = headerOverrides[key]
@@ -2225,6 +2349,43 @@ function flattenRowTree(nodes = [], collapsedState = {}) {
   }
   walk(nodes)
   return result
+}
+
+function dictionaryLabelValue(key) {
+  return fieldDictionaryStore.labelMap[key] || ''
+}
+
+function updateDictionaryLabel(key, value = '') {
+  fieldDictionaryStore.saveEntry({
+    key,
+    label: value,
+    url: sourceDraft.url,
+  })
+}
+
+function buildDictionaryItem(key) {
+  return {
+    key,
+    currentLabel: dictionaryLabelValue(key),
+    sourceLabel: getRawFieldLabel(key),
+  }
+}
+
+function getRawFieldLabel(key) {
+  return FIELD_ALIASES[key] || humanizeKey(key)
+}
+
+function normalizeDictionaryUrl(value) {
+  if (!value || typeof value !== 'string') return ''
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(value, window.location.origin)
+      return url.pathname
+    } catch {
+      return value.trim()
+    }
+  }
+  return value.trim()
 }
 </script>
 
@@ -2415,6 +2576,52 @@ function flattenRowTree(nodes = [], collapsedState = {}) {
 }
 .preview-table {
   overflow-x: auto;
+}
+.dictionary-modal :global(.n-card) {
+  max-width: 720px;
+}
+.dictionary-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dictionary-toolbar .n-input,
+.dictionary-toolbar .n-select {
+  flex: 1;
+  min-width: 220px;
+}
+.dictionary-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.dictionary-group__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.dictionary-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+}
+.dictionary-row:last-child {
+  border-bottom: none;
+}
+.dictionary-row__meta {
+  min-width: 220px;
+}
+.dictionary-row__key {
+  font-weight: 600;
+  font-size: 13px;
+}
+.dictionary-row__hint {
+  font-size: 12px;
+  color: var(--s360-text-muted, #6b7280);
 }
 .form-grid {
   display: grid;

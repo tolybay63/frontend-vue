@@ -140,7 +140,6 @@ export async function savePersonnel(personnelData) {
       UserSecondName: personnelData.secondName,
       UserFirstName: personnelData.firstName,
       UserMiddleName: personnelData.middleName,
-      login: personnelData.login,
       UserEmail: personnelData.email || '',
       UserPhone: personnelData.phone || '',
       UserDateBirth: personnelData.dateBirth ? formatDateForBackend(new Date(personnelData.dateBirth)) : '',
@@ -155,6 +154,11 @@ export async function savePersonnel(personnelData) {
       pvUser: userData?.pv || null,
       CreatedAt: today,
       UpdatedAt: today,
+    }
+
+    // Добавляем login только если он не пустой
+    if (personnelData.login && personnelData.login.trim()) {
+      payload.login = personnelData.login
     }
 
     console.log('Отправка данных для сохранения сотрудника:', payload)
@@ -193,7 +197,6 @@ export async function updatePersonnel(personnelData) {
       UserFirstName: personnelData.firstName,
       idUserMiddleName: raw.idUserMiddleName,
       UserMiddleName: personnelData.middleName,
-      login: personnelData.login,
       idUserEmail: raw.idUserEmail,
       UserEmail: personnelData.email || '',
       idUserPhone: raw.idUserPhone,
@@ -222,6 +225,11 @@ export async function updatePersonnel(personnelData) {
       UpdatedAt: today,
     }
 
+    // Добавляем login только если он не пустой
+    if (personnelData.login && personnelData.login.trim()) {
+      payload.login = personnelData.login
+    }
+
     console.log('Отправка данных для обновления сотрудника:', payload)
 
     const response = await axios.post(API_PERSONNEL_URL, {
@@ -233,6 +241,23 @@ export async function updatePersonnel(personnelData) {
     return response.data
   } catch (error) {
     console.error('Ошибка при обновлении сотрудника:', error)
+    throw error
+  }
+}
+
+export async function deletePersonnel(id, hasLogin) {
+  try {
+    console.log('Отправка запроса на удаление сотрудника:', { id, hasLogin })
+
+    const response = await axios.post(API_PERSONNEL_URL, {
+      method: 'data/deleteObjWithProperties',
+      params: [id, hasLogin]
+    })
+
+    console.log('Ответ от сервера:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Ошибка при удалении сотрудника:', error)
     throw error
   }
 }

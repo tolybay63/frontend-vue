@@ -2,7 +2,10 @@
   <ModalWrapper
     title="Редактировать сотрудника"
     @close="closeModal"
+    :show-save="true"
+    :show-delete="true"
     @save="saveData"
+    @delete="handleDelete"
   >
     <div class="form-section">
       <AppInput
@@ -114,22 +117,31 @@
         v-model="form.dateDismissal"
       />
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление сотрудника"
+      message="Вы действительно хотите удалить этого сотрудника?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false" />
   </ModalWrapper>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import PhoneInput from '@/shared/ui/FormControls/PhoneInput.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 import {
   loadPositions,
   loadLocations,
   loadUserSex,
-  updatePersonnel
+  updatePersonnel,
+  deletePersonnel
 } from '@/shared/api/organization/personnelService'
 
 const props = defineProps({
@@ -139,8 +151,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'refresh'])
+const emit = defineEmits(['close', 'refresh', 'deleted'])
 const notificationStore = useNotificationStore()
+
+const showConfirmModal = ref(false)
 
 // Helper function to format date from backend to input format
 const formatDateForInput = (dateString) => {
@@ -275,6 +289,30 @@ const saveData = async () => {
 // Close modal
 const closeModal = () => {
   emit('close')
+}
+
+// Delete handlers
+const handleDelete = () => {
+  if (!props.personnelData?.id) {
+    notificationStore.showNotification('Не удалось получить ID сотрудника для удаления.', 'error')
+    return
+  }
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    // Определяем есть ли логин у сотрудника
+    const hasLogin = !!(props.personnelData.login && props.personnelData.login.trim())
+
+    await deletePersonnel(props.personnelData.id, hasLogin)
+    notificationStore.showNotification('Сотрудник успешно удален!', 'success')
+    emit('deleted')
+  } catch (error) {
+    console.error('Ошибка при удалении сотрудника:', error)
+    notificationStore.showNotification('Ошибка при удалении сотрудника.', 'error')
+  }
 }
 
 // Initialize

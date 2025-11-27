@@ -21,6 +21,7 @@
     :personnelData="selectedPersonnel"
     @close="closeEditModal"
     @refresh="refreshTable"
+    @deleted="handleDeleted"
   />
 </template>
 
@@ -63,6 +64,11 @@ const refreshTable = () => {
   if (tableWrapperRef.value && tableWrapperRef.value.refreshTable) {
     tableWrapperRef.value.refreshTable()
   }
+}
+
+const handleDeleted = () => {
+  refreshTable()
+  closeEditModal()
 }
 
 const tableActions = [

@@ -22,6 +22,7 @@
       :locationData="selectedLocation"
       @close="closeEditModal"
       @update-table="fetchData"
+      @deleted="handleDeleted"
     />
   </div>
 </template>
@@ -75,6 +76,11 @@ const closeEditModal = () => {
 const handleRowDoubleClick = (rowData) => {
   openEditModal(rowData)
   console.log('Double click:', rowData)
+}
+
+const handleDeleted = () => {
+  fetchData()
+  closeEditModal()
 }
 
 const toggleRowExpand = (id) => {

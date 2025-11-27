@@ -126,3 +126,20 @@ export async function updateLocation(form, multiOptions) {
   }
 }
 
+export async function deleteLocation(id) {
+  try {
+    console.log('Отправка запроса на удаление организационной структуры:', { id })
+
+    const response = await axios.post(API_URL, {
+      method: 'data/deleteObjWithProperties',
+      params: [id]
+    })
+
+    console.log('Ответ от сервера:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Ошибка при удалении организационной структуры:', error)
+    throw error
+  }
+}
+

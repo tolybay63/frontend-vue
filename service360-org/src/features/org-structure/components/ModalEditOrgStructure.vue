@@ -1,5 +1,12 @@
 <template>
-  <ModalWrapper title="Редактировать организационную структуру" @close="closeModal" @save="saveData">
+  <ModalWrapper
+    title="Редактировать организационную структуру"
+    @close="closeModal"
+    :show-save="true"
+    :show-delete="true"
+    @save="saveData"
+    @delete="handleDelete"
+  >
     <div class="form-section">
 
       <AppInput
@@ -102,6 +109,13 @@
         />
       </div>
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление организационной структуры"
+      message="Вы действительно хотите удалить эту организационную структуру?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false" />
   </ModalWrapper>
 </template>
 
@@ -113,6 +127,7 @@ import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import PhoneInput from '@/shared/ui/FormControls/PhoneInput.vue'
 import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
 import MultipleSelect from '@/shared/ui/FormControls/MultipleSelect.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 
 import {
   fetchParentDepartments,
@@ -122,7 +137,7 @@ import {
   loadTypes
 } from '@/shared/api/organization/organizationService'
 
-import { updateLocation } from '@/shared/api/locations/locationService'
+import { updateLocation, deleteLocation } from '@/shared/api/locations/locationService'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 
 const props = defineProps({
@@ -132,9 +147,11 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'update-table'])
+const emit = defineEmits(['close', 'update-table', 'deleted'])
 
 const notificationStore = useNotificationStore()
+
+const showConfirmModal = ref(false)
 
 // Helper function to parse coordinates from km to km+pk
 const parseKmToPkFormat = (kmValue) => {
@@ -216,6 +233,27 @@ const handleActivityTypeChange = (selectedOption) => {
       coordEndPk: null
     }
     form.value.distance = ''
+  }
+}
+
+// Delete handlers
+const handleDelete = () => {
+  if (!props.locationData?.id) {
+    notificationStore.showNotification('Не удалось получить ID организационной структуры для удаления.', 'error')
+    return
+  }
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    await deleteLocation(props.locationData.id)
+    notificationStore.showNotification('Организационная структура успешно удалена!', 'success')
+    emit('deleted')
+  } catch (error) {
+    console.error('Ошибка при удалении организационной структуры:', error)
+    notificationStore.showNotification('Ошибка при удалении организационной структуры.', 'error')
   }
 }
 

@@ -25,6 +25,10 @@ export async function sendDataSourceRequest({ url, method = 'GET', body, headers
 
   const payload = preparePayload(body)
   if (payload) {
+    if (normalizedMethod === 'GET') {
+      config.method = 'POST'
+      config.headers['X-HTTP-Method-Override'] = 'GET'
+    }
     config.data = payload
   }
 

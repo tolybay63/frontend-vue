@@ -899,7 +899,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { NButton, NTooltip, NSelect, NInput, NModal } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
@@ -946,6 +946,10 @@ const paramContainerType = ref('array')
 const showDictionaryModal = ref(false)
 const dictionaryGrouping = ref('alphabet')
 const dictionarySearch = ref('')
+
+onMounted(() => {
+  dataSourcesStore.fetchRemoteSources()
+})
 
 const planRecords = ref([])
 const planFields = ref([])
@@ -1835,7 +1839,7 @@ function openDictionary() {
   showDictionaryModal.value = true
 }
 
-function saveCurrentSource() {
+async function saveCurrentSource() {
   if (!canSaveSource.value) return
   const payload = {
     id: sourceDraft.id,
@@ -1848,10 +1852,14 @@ function saveCurrentSource() {
     },
     supportsPivot: sourceDraft.supportsPivot !== false,
   }
-  const id = dataSourcesStore.saveSource(payload)
-  dataSource.value = id
-  isCreatingSource.value = false
-  pendingNewSourceName.value = ''
+  try {
+    const id = await dataSourcesStore.saveSource(payload)
+    dataSource.value = id
+    isCreatingSource.value = false
+    pendingNewSourceName.value = ''
+  } catch (err) {
+    alert('Не удалось сохранить источник. Проверьте соединение или попробуйте позже.')
+  }
 }
 
 async function executeCurrentSource() {
@@ -1923,17 +1931,23 @@ function resolveCurrentRequestPayload() {
   }
   const method = sourceDraft.httpMethod?.toUpperCase?.() || 'POST'
   const headers = sourceDraft.headers || { 'Content-Type': 'application/json' }
+  const parseBody = () => {
+    if (!sourceDraft.rawBody?.trim()) return { value: null, isValid: true }
+    try {
+      return { value: JSON.parse(sourceDraft.rawBody), isValid: true }
+    } catch {
+      return { value: null, isValid: false }
+    }
+  }
 
   if (method === 'GET') {
-    if (!sourceDraft.rawBody?.trim()) {
-      return { url, method, headers }
-    }
-    try {
-      return { url, method, headers, body: JSON.parse(sourceDraft.rawBody) }
-    } catch {
+    const parsed = parseBody()
+    if (!parsed.isValid) {
       planError.value = 'Параметры GET-запроса должны быть корректным JSON.'
       return null
     }
+    if (!parsed.value) return { url, method, headers }
+    return { url, method, headers, body: parsed.value }
   }
 
   if (!sourceDraft.rawBody?.trim()) {
@@ -1944,7 +1958,12 @@ function resolveCurrentRequestPayload() {
     planError.value = 'Исправьте JSON в поле Raw body.'
     return null
   }
-  return { url, method, headers, body: sourceDraft.rawBody }
+  const parsed = parseBody()
+  if (!parsed.isValid || !parsed.value) {
+    planError.value = 'Тело запроса должно быть валидным JSON-объектом.'
+    return null
+  }
+  return { url, method, headers, body: parsed.value }
 }
 
 function resetPlanState() {

@@ -132,6 +132,9 @@ export async function savePersonnel(personnelData) {
   try {
     const today = formatDateForBackend(new Date())
 
+    // Get user data for objUser and pvUser
+    const userData = await getUserData()
+
     const payload = {
       TabNumber: personnelData.tabNumber,
       UserSecondName: personnelData.secondName,
@@ -148,6 +151,8 @@ export async function savePersonnel(personnelData) {
       pvPosition: personnelData.position.pv,
       objLocation: personnelData.location.value,
       pvLocation: personnelData.location.pv,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null,
       CreatedAt: today,
       UpdatedAt: today,
     }
@@ -173,6 +178,9 @@ export async function updatePersonnel(personnelData) {
 
     // Используем rawData напрямую
     const raw = personnelData.rawData
+
+    // Get user data for objUser and pvUser (кто изменяет запись)
+    const userData = await getUserData()
 
     const payload = {
       id: raw.id,
@@ -205,6 +213,9 @@ export async function updatePersonnel(personnelData) {
       idLocation: raw.idLocation,
       objLocation: personnelData.location.value,
       pvLocation: personnelData.location.pv,
+      idUser: raw.idUser,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null,
       idCreatedAt: raw.idCreatedAt,
       CreatedAt: raw.CreatedAt || '',
       idUpdatedAt: raw.idUpdatedAt,

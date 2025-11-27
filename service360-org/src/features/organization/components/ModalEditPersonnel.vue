@@ -263,7 +263,12 @@ const saveData = async () => {
     emit('refresh')
     closeModal()
   } catch (error) {
-    notificationStore.showNotification(error.message || 'Ошибка при обновлении сотрудника', 'error')
+    // Check if error is about existing login
+    if (error.response?.data?.error?.message === 'loginExists') {
+      notificationStore.showNotification('Логин уже существует. Пожалуйста, используйте другой логин', 'error')
+    } else {
+      notificationStore.showNotification(error.message || 'Ошибка при обновлении сотрудника', 'error')
+    }
   }
 }
 

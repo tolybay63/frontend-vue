@@ -33,7 +33,7 @@ export async function saveLocation(form, multiOptions) {
 
   const payload = {
     name: form.name,
-    cls: form.activityType,
+    cls: form.activityType?.value || form.activityType,
     parent: form.parent?.value || null,
     Address: form.address,
     Phone: form.phone,

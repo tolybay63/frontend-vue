@@ -26,8 +26,8 @@
         placeholder="Выберите вид деятельности"
         :options="activityOptions"
         :loading="loadingActivities"
-        :value="form.activityType"
-        @update:value="val => { form.activityType = val; handleActivityTypeChange(val) }"
+        v-model="form.activityType"
+        @update:value="handleActivityTypeChange"
         :required="true"
         :disabled="true" />
 
@@ -40,7 +40,7 @@
         :loading="loadingRegions"
         :required="true" />
 
-      <div class="col-span-2" v-if="form.activityType === 1069">
+      <div class="col-span-2" v-if="form.activityType?.value === 1069">
         <h4 class="section-title">Дополнительная информация</h4>
         <div class="coordinate-grid">
           <AppInput
@@ -58,7 +58,7 @@
         </div>
       </div>
 
-      <div class="col-span-2" v-if="form.activityType === 1070">
+      <div class="col-span-2" v-if="form.activityType?.value === 1070">
         <h4 class="section-title">Дополнительная информация</h4>
         <div class="coordinate-grid">
           <CoordinateInputs
@@ -151,7 +151,7 @@ const finishCoords = parseKmToPkFormat(props.locationData.FinishKm)
 const form = ref({
   name: props.locationData.name || '',
   parent: null,
-  activityType: props.locationData.cls || '',
+  activityType: null,
   region: null,
   address: props.locationData.Address || '',
   phone: props.locationData.Phone || '',
@@ -204,7 +204,8 @@ const saveData = async () => {
   }
 }
 
-const handleActivityTypeChange = (selectedId) => {
+const handleActivityTypeChange = (selectedOption) => {
+  const selectedId = selectedOption?.value
   if (selectedId === 1069 || selectedId === 1070) {
     form.value.address = ''
     form.value.phone = ''
@@ -282,7 +283,7 @@ onMounted(async () => {
     if (props.locationData.cls) {
       const selectedActivity = activityOptions.value.find(opt => opt.value === props.locationData.cls)
       if (selectedActivity) {
-        form.value.activityType = selectedActivity.value
+        form.value.activityType = selectedActivity
       }
     }
   } catch (e) {

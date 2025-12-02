@@ -4,6 +4,7 @@ import router from './shared/config/router'
 import App from './app/App.vue'
 import { useAuthStore } from '@/shared/stores/auth'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
+import { useNavigationStore } from '@/shared/stores/navigation'
 
 // базовые стили/токены из NSI
 import './shared/styles/tokens.css'
@@ -15,6 +16,7 @@ app.use(pinia)
 
 const authStore = useAuthStore(pinia)
 const pageStore = usePageBuilderStore(pinia)
+const navigationStore = useNavigationStore(pinia)
 
 router.beforeEach(async (to) => {
   await authStore.checkSession()
@@ -42,6 +44,12 @@ router.beforeEach(async (to) => {
     const firstPage = pageStore.pages[0]
     if (firstPage?.id) {
       return { path: `/dash/${firstPage.id}`, replace: true }
+    }
+  }
+
+  if (to.path === '/data' || to.path === '/') {
+    if (!navigationStore.consumeDataAccess()) {
+      return { path: '/templates', replace: true }
     }
   }
 

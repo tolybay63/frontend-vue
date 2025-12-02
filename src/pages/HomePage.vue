@@ -1,6 +1,11 @@
 <template>
   <section class="page">
-    <h1>Данные</h1>
+    <div class="page-heading">
+      <h1>Данные</h1>
+      <button class="btn-outline" type="button" @click="returnToViews">
+        Вернуться к представлениям
+      </button>
+    </div>
 
     <article class="step">
       <header class="step__header">
@@ -201,6 +206,21 @@
                 </n-button>
               </template>
               Отправить запрос
+            </n-tooltip>
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!canDeleteSource"
+                  aria-label="Удалить источник"
+                  @click="deleteCurrentSource"
+                >
+                  <span class="icon icon-trash" />
+                </n-button>
+              </template>
+              Удалить источник
             </n-tooltip>
           </div>
         </div>
@@ -891,6 +911,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { NButton, NTooltip, NSelect, NInput, NModal } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
 import PivotLayout from '@/components/PivotLayout.vue'
@@ -902,12 +923,14 @@ import {
   saveComplexMetric,
   saveReportPresentation,
   deleteComplexEntity,
+  deleteObjectWithProperties,
   ROW_TOTAL_META,
   COLUMN_TOTAL_META,
 } from '@/shared/api/report'
 import { fetchFactorValues } from '@/shared/api/objects'
 import { useDataSourcesStore } from '@/shared/stores/dataSources'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
+import { useNavigationStore } from '@/shared/stores/navigation'
 import {
   buildPivotView,
   humanizeKey,
@@ -917,6 +940,7 @@ import {
 
 const dataSourcesStore = useDataSourcesStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
+const navigationStore = useNavigationStore()
 const dataSources = computed(() => dataSourcesStore.sources)
 const dataSource = ref('')
 const vizType = ref('table')
@@ -952,6 +976,20 @@ const paramContainerType = ref('array')
 const showDictionaryModal = ref(false)
 const dictionaryGrouping = ref('alphabet')
 const dictionarySearch = ref('')
+const router = useRouter()
+const route = useRoute()
+const routePrefill = reactive({
+  sourceId: '',
+  configId: '',
+  presentationId: '',
+  appliedSource: true,
+  appliedConfig: true,
+  appliedPresentation: true,
+  executedSource: true,
+  loadedConfig: true,
+  loadedPresentation: true,
+})
+const hasRoutePrefill = ref(false)
 
 onMounted(() => {
   dataSourcesStore.fetchRemoteSources()
@@ -961,6 +999,30 @@ onMounted(() => {
   fetchVisualizationTypes()
 })
 
+function returnToViews() {
+  router.push('/templates')
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    const sourceId = extractRouteParam(query.sourceId)
+    const configId = extractRouteParam(query.configId)
+    const presentationId = extractRouteParam(query.presentationId)
+    routePrefill.sourceId = sourceId
+    routePrefill.configId = configId
+    routePrefill.presentationId = presentationId
+    routePrefill.appliedSource = !sourceId
+    routePrefill.appliedConfig = !configId
+    routePrefill.appliedPresentation = !presentationId
+    routePrefill.executedSource = !sourceId
+    routePrefill.loadedConfig = !configId
+    routePrefill.loadedPresentation = !presentationId
+    hasRoutePrefill.value = Boolean(sourceId || configId || presentationId)
+  },
+  { immediate: true },
+)
+
 const planRecords = ref([])
 const planFields = ref([])
 const planLoading = ref(false)
@@ -969,6 +1031,15 @@ const selectedSource = computed(
   () =>
     dataSources.value.find((source) => source.id === dataSource.value) || null,
 )
+const canDeleteSource = computed(() => {
+  if (!selectedSource.value || isCreatingSource.value) return false
+  const remoteId = toNumericValue(
+    selectedSource.value.remoteMeta?.id ??
+      selectedSource.value.remoteMeta?.Id ??
+      selectedSource.value.remoteMeta?.ID,
+  )
+  return Number.isFinite(remoteId)
+})
 const sourceOptions = computed(() =>
   dataSources.value.map((source) => ({
     label: source.name,
@@ -1299,6 +1370,17 @@ watch(
       }
       return
     }
+    if (!routePrefill.appliedSource && routePrefill.sourceId) {
+      const match = list.find(
+        (item) => String(item.id) === routePrefill.sourceId,
+      )
+      if (match) {
+        dataSource.value = match.id
+        routePrefill.sourceId = ''
+      }
+      routePrefill.appliedSource = true
+      if (match) return
+    }
     if (
       !isCreatingSource.value &&
       !list.find((item) => item.id === dataSource.value)
@@ -1325,6 +1407,102 @@ watch(
     detailsVisible.value = false
   },
   { immediate: true },
+)
+
+watch(filteredConfigs, (list) => {
+  if (!list.length) return
+  if (!routePrefill.appliedConfig && routePrefill.configId) {
+    const match = list.find(
+      (cfg) =>
+        cfg.id === routePrefill.configId ||
+        String(cfg.remoteId ?? cfg.remoteMeta?.id) === routePrefill.configId,
+    )
+    if (match) {
+      selectedConfigId.value = match.id
+      routePrefill.configId = ''
+    }
+    routePrefill.appliedConfig = true
+  }
+})
+
+watch(filteredPresentations, (list) => {
+  if (!list.length) return
+  if (!routePrefill.appliedPresentation && routePrefill.presentationId) {
+    const match = list.find(
+      (entry) =>
+        entry.id === routePrefill.presentationId ||
+        String(entry.remoteMeta?.id ?? entry.remoteId) === routePrefill.presentationId,
+    )
+    if (match) {
+      selectedPresentationId.value = match.id
+      routePrefill.presentationId = ''
+    }
+    routePrefill.appliedPresentation = true
+  }
+})
+
+watch(
+  () =>
+    hasRoutePrefill.value &&
+    routePrefill.appliedSource &&
+    !routePrefill.executedSource &&
+    Boolean(dataSource.value) &&
+    !isCreatingSource.value,
+  async (shouldRun) => {
+    if (!shouldRun) return
+    routePrefill.executedSource = true
+    try {
+      await executeCurrentSource()
+    } catch (err) {
+      console.warn('Failed to auto execute source', err)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () =>
+    hasRoutePrefill.value &&
+    routePrefill.appliedConfig &&
+    !routePrefill.loadedConfig &&
+    Boolean(selectedConfigId.value) &&
+    configsReady.value,
+  (shouldRun) => {
+    if (!shouldRun) return
+    routePrefill.loadedConfig = true
+    loadLayoutConfig()
+  },
+  { immediate: true },
+)
+
+watch(
+  () =>
+    hasRoutePrefill.value &&
+    routePrefill.appliedPresentation &&
+    !routePrefill.loadedPresentation &&
+    canLoadPresentation.value,
+  (shouldRun) => {
+    if (!shouldRun) return
+    routePrefill.loadedPresentation = true
+    loadPresentationRecord()
+  },
+  { immediate: true },
+)
+
+watch(
+  () =>
+    routePrefill.appliedSource &&
+    routePrefill.appliedConfig &&
+    routePrefill.appliedPresentation &&
+    routePrefill.executedSource &&
+    routePrefill.loadedConfig &&
+    routePrefill.loadedPresentation &&
+    hasRoutePrefill.value,
+  (ready) => {
+    if (!ready) return
+    clearRoutePrefill()
+    hasRoutePrefill.value = false
+  },
 )
 
 watch(
@@ -2132,6 +2310,39 @@ async function saveCurrentSource() {
   }
 }
 
+async function deleteCurrentSource() {
+  const source = selectedSource.value
+  if (!source) return
+  const remoteId = toNumericValue(
+    source.remoteMeta?.id || source.remoteMeta?.Id || source.remoteMeta?.ID,
+  )
+  if (!Number.isFinite(remoteId)) {
+    alert('Удалить можно только источник, сохранённый на сервере.')
+    return
+  }
+  if (
+    !confirm(
+      `Удалить источник «${source.name || 'Без названия'}»? Это действие нельзя отменить.`,
+    )
+  ) {
+    return
+  }
+  try {
+    await deleteObjectWithProperties(remoteId)
+    dataSourcesStore.removeSource(source.id)
+    if (dataSource.value === source.id) {
+      dataSource.value = ''
+      resetSourceDraft()
+      planRecords.value = []
+      planFields.value = []
+      result.value = null
+    }
+  } catch (err) {
+    console.warn('Failed to delete data source', err)
+    alert('Не удалось удалить источник. Попробуйте позже.')
+  }
+}
+
 async function executeCurrentSource() {
   await loadPlanFields()
 }
@@ -2497,6 +2708,39 @@ function autoSelectVisualizationType() {
 function toNumericValue(value) {
   const num = Number(value)
   return Number.isFinite(num) ? num : null
+}
+
+function extractRouteParam(value) {
+  if (Array.isArray(value)) {
+    return value.length ? String(value[0]).trim() : ''
+  }
+  if (value === null || typeof value === 'undefined') return ''
+  const str = String(value).trim()
+  return str
+}
+
+function clearRoutePrefill() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.sourceId
+  delete nextQuery.configId
+  delete nextQuery.presentationId
+  const hadParams =
+    'sourceId' in route.query ||
+    'configId' in route.query ||
+    'presentationId' in route.query
+  if (hadParams) {
+    navigationStore.allowDataAccess()
+    router.replace({ query: nextQuery })
+  }
+  routePrefill.sourceId = ''
+  routePrefill.configId = ''
+  routePrefill.presentationId = ''
+  routePrefill.appliedSource = true
+  routePrefill.appliedConfig = true
+  routePrefill.appliedPresentation = true
+  routePrefill.executedSource = true
+  routePrefill.loadedConfig = true
+  routePrefill.loadedPresentation = true
 }
 
 function ensureMetricExists() {
@@ -3439,41 +3683,29 @@ async function deleteSelectedConfig() {
     (cfg) => cfg.id === selectedConfigId.value,
   )
   if (!entry) return
-  const idsToRemove = collectDeleteIds(entry.remoteMeta, entry.metrics)
-  for (const id of idsToRemove) {
-    await deleteComplexEntity(id)
+  const remoteId = toNumericValue(
+    entry.remoteMeta?.id ?? entry.remoteMeta?.Id ?? entry.remoteId,
+  )
+  if (!Number.isFinite(remoteId)) {
+    alert('Не удалось определить идентификатор конфигурации.')
+    return
   }
-  selectedConfigId.value = ''
-  currentConfigMeta.value = null
-  await fetchReportConfigs(getCurrentParentId())
-}
-
-function collectDeleteIds(meta = {}, metrics = []) {
-  const ids = new Set()
-  const keys = [
-    'id',
-    'idRow',
-    'idFilter',
-    'idCol',
-    'idRowVal',
-    'idFilterVal',
-    'idColVal',
-    'idRowTotal',
-    'idColTotal',
-    'idCreatedAt',
-    'idUpdatedAt',
-  ]
-  keys.forEach((key) => {
-    const value = Number(meta[key])
-    if (Number.isFinite(value)) {
-      ids.add(value)
-    }
-  })
-  metrics.forEach((metric) => {
-    const remoteId = Number(metric.remoteMeta?.idMetricsComplex)
-    if (Number.isFinite(remoteId)) ids.add(remoteId)
-  })
-  return [...ids]
+  if (
+    !confirm(
+      `Удалить конфигурацию «${entry.name || 'Без названия'}»? Это действие нельзя отменить.`,
+    )
+  ) {
+    return
+  }
+  try {
+    await deleteObjectWithProperties(remoteId)
+    selectedConfigId.value = ''
+    currentConfigMeta.value = null
+    await fetchReportConfigs(getCurrentParentId())
+  } catch (err) {
+    console.warn('Failed to delete configuration', err)
+    alert('Не удалось удалить конфигурацию. Попробуйте позже.')
+  }
 }
 
 function replaceArray(target, next) {
@@ -3754,6 +3986,19 @@ function normalizeDictionaryUrl(value) {
   width: min(1200px, 100%);
   margin: 0 auto;
   box-sizing: border-box;
+}
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+}
+.page-heading h1 {
+  margin: 0;
+}
+.page-heading button {
+  white-space: nowrap;
 }
 .step {
   border: 1px solid var(--s360-color-border-subtle, #ebe8e5);

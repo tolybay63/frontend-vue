@@ -115,7 +115,6 @@ const maxSiderWidth = 360
 let cleanupResize = null
 
 const navLinks = [
-  { to: '/data', label: 'Данные', icon: 'home' },
   { to: '/templates', label: 'Представления', icon: 'layers' },
   { to: '/pages', label: 'Страницы', icon: 'layout' },
 ]

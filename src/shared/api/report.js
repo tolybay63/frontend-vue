@@ -31,6 +31,13 @@ export async function loadReportPresentations() {
   return []
 }
 
+export async function loadReportSources() {
+  const data = await callReportMethod('report/loadReportSource', [0])
+  if (Array.isArray(data?.result?.records)) return data.result.records
+  if (Array.isArray(data?.result)) return data.result
+  return []
+}
+
 export async function saveReportConfiguration(operation, payload) {
   const data = await callReportMethod('report/saveReportConfiguration', [operation, payload])
   if (Array.isArray(data?.result?.records)) return data.result.records[0]
@@ -55,6 +62,11 @@ export async function saveReportPresentation(operation, payload) {
 export async function deleteComplexEntity(id) {
   if (!id) return null
   return callReportMethod('report/deleteComplexData', [id])
+}
+
+export async function deleteObjectWithProperties(id) {
+  if (!id) return null
+  return callReportMethod('report/deleteObjWithProperties', [id])
 }
 
 export const ROW_TOTAL_META = { fv: 1074, pv: 1565 }

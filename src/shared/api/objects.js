@@ -14,9 +14,14 @@ export async function callObjectsMethod(method, params = []) {
   return data
 }
 
-export async function fetchMethodTypeRecords() {
-  const data = await callObjectsMethod('data/loadFactorValForSelect', ['Prop_MethodTyp'])
+export async function fetchFactorValues(factorCode) {
+  if (!factorCode) return []
+  const data = await callObjectsMethod('data/loadFactorValForSelect', [factorCode])
   return extractRecords(data)
+}
+
+export function fetchMethodTypeRecords() {
+  return fetchFactorValues('Prop_MethodTyp')
 }
 
 function extractRecords(payload) {

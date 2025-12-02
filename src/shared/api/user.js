@@ -51,8 +51,30 @@ function extractFirstRecord(payload) {
 
 function extractRecords(payload) {
   if (!payload || typeof payload !== 'object') return []
-  if (Array.isArray(payload.result?.records)) return payload.result.records
-  if (Array.isArray(payload.result)) return payload.result
-  if (Array.isArray(payload.records)) return payload.records
+  const candidates = [
+    payload.result?.records,
+    payload.result,
+    payload.records,
+  ]
+  for (const candidate of candidates) {
+    const normalized = normalizeRecordCollection(candidate)
+    if (normalized.length) return normalized
+  }
+  return []
+}
+
+function normalizeRecordCollection(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (typeof value === 'object') {
+    const keys = Object.keys(value)
+    const isIndexed = keys.every((key) => /^\d+$/.test(key))
+    if (isIndexed) {
+      return keys
+        .sort((a, b) => Number(a) - Number(b))
+        .map((key) => value[key])
+    }
+    return [value]
+  }
   return []
 }

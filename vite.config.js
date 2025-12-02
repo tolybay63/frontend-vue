@@ -1,6 +1,7 @@
+/* eslint-env node */
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 
 const proxyPaths = ['/api', '/auth', '/userapi', '/dtj', '/userinfo']
 
@@ -25,7 +26,7 @@ export default defineConfig(({ mode }) => {
       proxy: serverProxy,
     },
     resolve: {
-      alias: { '@': path.resolve(__dirname, 'src') },
+      alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
   }
 })

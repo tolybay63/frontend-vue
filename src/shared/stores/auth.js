@@ -27,21 +27,37 @@ export const useAuthStore = defineStore('auth', {
     async loadPersonalInfo(userId) {
       if (!userId) {
         this.personalInfo = null
+        clearStorage('personnalInfo')
+        clearStorage('objUser')
+        clearStorage('pvUser')
         return null
       }
       try {
         const { data } = await fetchPersonalInfoRequest(userId)
         const [record] = data?.result?.records || []
         this.personalInfo = record || null
+        persistJson('personnalInfo', data || record || null)
+        if (record) {
+          persistValue('objUser', record.objUser)
+          persistValue('pvUser', record.pvUser)
+        } else {
+          clearStorage('objUser')
+          clearStorage('pvUser')
+        }
       } catch (err) {
         console.warn('Не удалось получить персональные данные', err)
         this.personalInfo = null
+        clearStorage('personnalInfo')
+        clearStorage('objUser')
+        clearStorage('pvUser')
       }
       return this.personalInfo
     },
     async loadUser() {
       const { data } = await fetchCurrentUserRequest()
       this.user = data?.result || null
+      persistJson('curUser', data || this.user || null)
+      persistValue('userId', this.user?.id)
       await this.loadPersonalInfo(this.user?.id)
       return this.user
     },
@@ -65,7 +81,15 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        await loginRequest(credentials)
+        const { data } = await loginRequest(credentials)
+        persistJson('userAuth', data ?? 'error')
+        if (data !== 'ok') {
+          throw new Error(
+            typeof data === 'string'
+              ? data
+              : 'Авторизация не подтверждена сервером',
+          )
+        }
         await this.loadUser()
         this.initialized = true
       } catch (err) {
@@ -85,7 +109,36 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.user = null
         this.initialized = true
+        clearStorage('userAuth')
+        clearStorage('curUser')
+        clearStorage('personnalInfo')
+        clearStorage('userId')
+        clearStorage('objUser')
+        clearStorage('pvUser')
       }
     },
   },
 })
+
+function persistJson(key, value) {
+  if (typeof window === 'undefined') return
+  if (value == null) {
+    window.localStorage.removeItem(key)
+    return
+  }
+  window.localStorage.setItem(key, JSON.stringify(value))
+}
+
+function persistValue(key, value) {
+  if (typeof window === 'undefined') return
+  if (value == null) {
+    window.localStorage.removeItem(key)
+    return
+  }
+  window.localStorage.setItem(key, JSON.stringify(value))
+}
+
+function clearStorage(key) {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(key)
+}

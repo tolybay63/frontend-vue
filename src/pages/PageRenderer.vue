@@ -117,13 +117,14 @@
                         ></span>
                       </div>
                     </th>
-                    <th
-                      v-for="total in containerState(container.id).view.rowTotalHeaders"
-                      :key="`row-total-${total.metricId}`"
-                      v-if="shouldShowRowTotals(container)"
-                    >
-                      {{ total.label }}
-                    </th>
+                    <template v-if="shouldShowRowTotals(container)">
+                      <th
+                        v-for="total in containerState(container.id).view.rowTotalHeaders"
+                        :key="`row-total-${total.metricId}`"
+                      >
+                        {{ total.label }}
+                      </th>
+                    </template>
                   </tr>
                 </thead>
                 <tbody>
@@ -157,35 +158,38 @@
                     <td v-for="cell in row.cells" :key="cell.key" class="cell">
                       {{ cell.display }}
                     </td>
-                    <td
-                      v-for="total in row.totals"
-                      :key="`row-${row.key}-${total.metricId}`"
-                      class="total"
-                      v-if="shouldShowRowTotals(container)"
-                    >
-                      {{ total.display }}
-                    </td>
+                    <template v-if="shouldShowRowTotals(container)">
+                      <td
+                        v-for="total in row.totals"
+                        :key="`row-${row.key}-${total.metricId}`"
+                        class="total"
+                      >
+                        {{ total.display }}
+                      </td>
+                    </template>
                   </tr>
                 </tbody>
                 <tfoot v-if="shouldShowRowTotals(container) || shouldShowColumnTotals(container)">
                   <tr>
                     <td v-if="shouldShowColumnTotals(container)">Итого по столбцам</td>
-                    <td
-                      v-for="column in containerState(container.id).view.columns"
-                      :key="`total-${column.key}`"
-                      class="total"
-                      v-if="shouldShowColumnTotals(container)"
-                    >
-                      {{ column.totalDisplay }}
-                    </td>
-                    <td
-                      v-for="total in containerState(container.id).view.rowTotalHeaders"
-                      :key="`grand-${total.metricId}`"
-                      class="grand-total"
-                      v-if="shouldShowRowTotals(container)"
-                    >
-                      {{ containerState(container.id).view.grandTotals[total.metricId] }}
-                    </td>
+                    <template v-if="shouldShowColumnTotals(container)">
+                      <td
+                        v-for="column in containerState(container.id).view.columns"
+                        :key="`total-${column.key}`"
+                        class="total"
+                      >
+                        {{ column.totalDisplay }}
+                      </td>
+                    </template>
+                    <template v-if="shouldShowRowTotals(container)">
+                      <td
+                        v-for="total in containerState(container.id).view.rowTotalHeaders"
+                        :key="`grand-${total.metricId}`"
+                        class="grand-total"
+                      >
+                        {{ containerState(container.id).view.grandTotals[total.metricId] }}
+                      </td>
+                    </template>
                   </tr>
                 </tfoot>
               </table>
@@ -780,6 +784,7 @@ async function hydrateContainer(container) {
       metrics,
       fieldMeta: templateFieldMetaMap(tpl),
       headerOverrides: tpl.snapshot?.options?.headerOverrides || {},
+      sorts: tpl.snapshot?.sorts || {},
     })
     if (!view || !view.rows.length) {
       state.error = 'Нет данных после применения фильтров.'

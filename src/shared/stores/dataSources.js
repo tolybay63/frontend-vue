@@ -6,6 +6,7 @@ import { fetchMethodTypeRecords } from '@/shared/api/objects'
 import { fetchCurrentUserRecord, fetchPersonnelInfo } from '@/shared/api/user'
 
 const STORAGE_KEY = 'report-data-sources'
+const USER_CONTEXT_KEY = 'report-user-context'
 
 const defaultSources = [
   {
@@ -67,6 +68,64 @@ function persistSources(list) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
 }
 
+function loadUserContext() {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(USER_CONTEXT_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (hasValidUserContext(parsed)) return parsed
+    }
+  } catch (err) {
+    console.warn('Failed to load user context', err)
+  }
+  return null
+}
+
+function persistUserContext(context) {
+  if (typeof window === 'undefined') return
+  if (!context) {
+    window.localStorage.removeItem(USER_CONTEXT_KEY)
+    return
+  }
+  window.localStorage.setItem(USER_CONTEXT_KEY, JSON.stringify(context))
+}
+
+function loadExternalUserContext() {
+  if (typeof window === 'undefined') return null
+  try {
+    const curRaw = window.localStorage.getItem('curUser')
+    const personRaw = window.localStorage.getItem('personnalInfo')
+    const curParsed = parseMaybeJson(curRaw)
+    const personParsed = parseMaybeJson(personRaw)
+    const currentUser = curParsed?.result || curParsed
+    const personnel = extractPersonRecord(personParsed)
+    const context = buildUserContext(currentUser, personnel)
+    return hasValidUserContext(context) ? context : null
+  } catch (err) {
+    console.warn('Failed to parse external user context', err)
+    return null
+  }
+}
+
+function parseMaybeJson(raw) {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function extractPersonRecord(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  if (Array.isArray(payload)) return payload[0]
+  if (Array.isArray(payload.result?.records)) return payload.result.records[0]
+  if (Array.isArray(payload.records)) return payload.records[0]
+  if (payload.result) return payload.result
+  return payload
+}
+
 function createId(prefix = 'source') {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
@@ -82,7 +141,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
     methodTypes: [],
     methodTypesLoaded: false,
     methodTypesLoading: false,
-    userContext: null,
+    userContext: loadUserContext(),
     userLoading: false,
   }),
   getters: {
@@ -162,14 +221,24 @@ export const useDataSourcesStore = defineStore('dataSources', {
         this.methodTypesLoading = false
       }
     },
-    async fetchUserContext() {
-      if (this.userContext) return this.userContext
-      if (this._userContextPromise) {
+    async fetchUserContext(force = false) {
+      if (!force && hasValidUserContext(this.userContext)) {
+        return this.userContext
+      }
+      if (!force) {
+        const external = loadExternalUserContext()
+        if (external) {
+          this.userContext = external
+          persistUserContext(external)
+          return this.userContext
+        }
+      }
+      if (this._userContextPromise && !force) {
         await this._userContextPromise
         return this.userContext
       }
       this.userLoading = true
-      this._userContextPromise = (async () => {
+      const runner = async () => {
         try {
           const currentUser = await fetchCurrentUserRecord()
           const personnelId =
@@ -183,15 +252,26 @@ export const useDataSourcesStore = defineStore('dataSources', {
             personnelInfo = await fetchPersonnelInfo(personnelId)
           }
           this.userContext = buildUserContext(currentUser, personnelInfo)
+          if (!hasValidUserContext(this.userContext)) {
+            const external = loadExternalUserContext()
+            if (external) this.userContext = external
+          }
+          persistUserContext(hasValidUserContext(this.userContext) ? this.userContext : null)
         } catch (err) {
           console.warn('Failed to fetch user context', err)
           if (!this.userContext) {
             this.userContext = null
           }
+          persistUserContext(this.userContext)
         } finally {
           this.userLoading = false
         }
-      })()
+      }
+      if (force) {
+        await runner()
+        return this.userContext
+      }
+      this._userContextPromise = runner()
       try {
         await this._userContextPromise
       } finally {
@@ -394,4 +474,12 @@ function buildUserContext(currentUser, personnelInfo) {
 
 function pickUserValue(preferred, fallback) {
   return toNumericId(preferred) || toNumericId(fallback) || null
+}
+
+function hasValidUserContext(context) {
+  if (!context) return false
+  return (
+    Number.isFinite(Number(context.objUser)) &&
+    Number.isFinite(Number(context.pvUser))
+  )
 }

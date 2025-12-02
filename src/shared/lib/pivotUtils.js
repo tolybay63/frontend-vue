@@ -35,6 +35,11 @@ export function humanizeKey(key = '') {
     .replace(/^./, (char) => char.toUpperCase())
 }
 
+const VALUE_COLLATOR =
+  typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
+    ? new Intl.Collator('ru-RU', { sensitivity: 'base', numeric: true })
+    : null
+
 function normalizeFieldMetaMap(fieldMeta) {
   if (!fieldMeta) return new Map()
   if (fieldMeta instanceof Map) return fieldMeta
@@ -148,14 +153,18 @@ function ensureIndex(store, collection, entry) {
 }
 
 export function buildPivotView({
-  records,
-  rows,
-  columns,
-  metrics,
+  records = [],
+  rows = [],
+  columns = [],
+  metrics = [],
   fieldMeta,
   headerOverrides = {},
+  sorts = {},
 }) {
   const fieldMetaMap = normalizeFieldMetaMap(fieldMeta)
+  const rowSortConfig = normalizeSortConfig(rows, sorts?.rows)
+  const columnSortConfig = normalizeSortConfig(columns, sorts?.columns)
+  const primaryMetric = metrics[0] || null
   const rowIndex = []
   const rowMap = new Map()
   const columnIndex = []
@@ -166,6 +175,7 @@ export function buildPivotView({
   const grandMetricTotals = new Map()
   const rowPrefixColumnBuckets = new Map()
   const rowPrefixMetricBuckets = new Map()
+  const columnPrefixMetricBuckets = new Map()
   const rowLevelMeta = new Map()
 
   records.forEach((record) => {
@@ -193,10 +203,35 @@ export function buildPivotView({
           getRowColumnBucket(rowPrefixColumnBuckets, level.pathKey, columnEntryKey),
           value,
         )
-        pushValue(getRowMetricBucket(rowPrefixMetricBuckets, level.pathKey, metric.id), value)
+        pushValue(
+          getPrefixMetricBucket(rowPrefixMetricBuckets, level.pathKey, metric.id),
+          value,
+        )
+      })
+      columnEntry.levels.forEach((level) => {
+        pushValue(
+          getPrefixMetricBucket(columnPrefixMetricBuckets, level.pathKey, metric.id),
+          value,
+        )
       })
     })
   })
+
+  if (columnIndex.length > 1 && columnSortConfig.size) {
+    sortDimensionIndex(columnIndex, columns, columnSortConfig, {
+      prefixMetricBuckets: columnPrefixMetricBuckets,
+      metricId: primaryMetric?.id,
+      metricAggregator: primaryMetric?.aggregator,
+    })
+  }
+
+  if (rowIndex.length > 1 && rowSortConfig.size) {
+    sortDimensionIndex(rowIndex, rows, rowSortConfig, {
+      prefixMetricBuckets: rowPrefixMetricBuckets,
+      metricId: primaryMetric?.id,
+      metricAggregator: primaryMetric?.aggregator,
+    })
+  }
 
   const columnEntries = columnIndex.length
     ? flattenColumns(columnIndex, metrics)
@@ -271,6 +306,13 @@ export function buildPivotView({
     metrics,
   })
 
+  if (rowTree.length && rowSortConfig.size) {
+    sortRowTreeByConfig(rowTree, rowSortConfig, {
+      metricId: primaryMetric?.id,
+      metricAggregator: primaryMetric?.aggregator,
+    })
+  }
+
   return {
     rows: rowsResult,
     columns: columnsResult,
@@ -287,7 +329,7 @@ function getRowColumnBucket(store, levelKey, columnEntryKey) {
   return columnMap.get(columnEntryKey)
 }
 
-function getRowMetricBucket(store, levelKey, metricId) {
+function getPrefixMetricBucket(store, levelKey, metricId) {
   if (!store.has(levelKey)) store.set(levelKey, new Map())
   const metricMap = store.get(levelKey)
   if (!metricMap.has(metricId)) metricMap.set(metricId, createBucket())
@@ -345,4 +387,134 @@ function buildRowTree({ levelMeta, columnBuckets, metricBuckets, columnEntries, 
   })
 
   return orderedMeta.filter((meta) => !meta.parentKey).map((meta) => nodes.get(meta.pathKey))
+}
+
+function normalizeSortConfig(dimensions = [], state = {}) {
+  const map = new Map()
+  if (!Array.isArray(dimensions) || !dimensions.length) {
+    return map
+  }
+  dimensions.forEach((key) => {
+    const entry = state?.[key]
+    if (!entry) return
+    const config = {}
+    const valueDirection = normalizeDirection(entry.value)
+    const metricDirection = normalizeDirection(entry.metric)
+    if (valueDirection) config.value = valueDirection
+    if (metricDirection) config.metric = metricDirection
+    if (config.value || config.metric) {
+      map.set(key, config)
+    }
+  })
+  return map
+}
+
+function normalizeDirection(value) {
+  return value === 'asc' || value === 'desc' ? value : null
+}
+
+function sortDimensionIndex(entries, dimensions, config, options = {}) {
+  if (!Array.isArray(entries) || !entries.length) return
+  if (!config?.size) return
+  const orderedKeys = (dimensions || []).filter((key) => config.has(key))
+  if (!orderedKeys.length) return
+  const metricId = options.metricId
+  const metricAggregator = options.metricAggregator
+  const prefixMetricBuckets = options.prefixMetricBuckets
+
+  entries.sort((left, right) => {
+    for (const fieldKey of orderedKeys) {
+      const sortEntry = config.get(fieldKey)
+      if (!sortEntry) continue
+      const leftLevel = findLevelEntry(left, fieldKey)
+      const rightLevel = findLevelEntry(right, fieldKey)
+      if (sortEntry.metric && metricId && prefixMetricBuckets) {
+        const leftMetric = resolvePrefixMetricValue(
+          prefixMetricBuckets,
+          leftLevel,
+          metricId,
+          metricAggregator,
+        )
+        const rightMetric = resolvePrefixMetricValue(
+          prefixMetricBuckets,
+          rightLevel,
+          metricId,
+          metricAggregator,
+        )
+        const metricComparison = compareNumbers(leftMetric, rightMetric, sortEntry.metric)
+        if (metricComparison !== 0) return metricComparison
+      }
+      if (sortEntry.value) {
+        const valueComparison = compareStrings(leftLevel?.value, rightLevel?.value, sortEntry.value)
+        if (valueComparison !== 0) return valueComparison
+      }
+    }
+    return 0
+  })
+}
+
+function findLevelEntry(entry, fieldKey) {
+  if (!entry?.levels || !entry.levels.length) return null
+  return entry.levels.find((level) => level.fieldKey === fieldKey) || null
+}
+
+function resolvePrefixMetricValue(store, level, metricId, aggregator) {
+  if (!store || !level?.pathKey || !metricId || !aggregator) return null
+  const metricMap = store.get(level.pathKey)
+  if (!metricMap) return null
+  const bucket = metricMap.get(metricId)
+  if (!bucket) return null
+  return finalizeBucket(bucket, aggregator)
+}
+
+function compareStrings(left, right, direction = 'asc') {
+  const a = typeof left === 'string' ? left : left != null ? String(left) : ''
+  const b = typeof right === 'string' ? right : right != null ? String(right) : ''
+  const result = VALUE_COLLATOR ? VALUE_COLLATOR.compare(a, b) : a.localeCompare(b)
+  return direction === 'desc' ? -result : result
+}
+
+function compareNumbers(left, right, direction = 'asc') {
+  const a = typeof left === 'number' ? left : Number.isFinite(left) ? Number(left) : null
+  const b = typeof right === 'number' ? right : Number.isFinite(right) ? Number(right) : null
+  if (a === null && b === null) return 0
+  if (a === null) return direction === 'asc' ? 1 : -1
+  if (b === null) return direction === 'asc' ? -1 : 1
+  if (a === b) return 0
+  return direction === 'asc' ? a - b : b - a
+}
+
+function sortRowTreeByConfig(nodes, sortConfig, options = {}) {
+  if (!Array.isArray(nodes) || !nodes.length || !sortConfig?.size) return
+  const fieldKey = nodes[0]?.fieldKey
+  const config = fieldKey ? sortConfig.get(fieldKey) : null
+  if (config) {
+    nodes.sort((a, b) => compareTreeNodes(a, b, config, options))
+  }
+  nodes.forEach((node) => {
+    if (node.children?.length) {
+      sortRowTreeByConfig(node.children, sortConfig, options)
+    }
+  })
+}
+
+function compareTreeNodes(a, b, config, { metricId }) {
+  if (config.metric && metricId) {
+    const metricComparison = compareNumbers(
+      pickMetricValue(a.totals, metricId),
+      pickMetricValue(b.totals, metricId),
+      config.metric,
+    )
+    if (metricComparison !== 0) return metricComparison
+  }
+  if (config.value) {
+    return compareStrings(a.label, b.label, config.value)
+  }
+  return 0
+}
+
+function pickMetricValue(totals = [], metricId) {
+  if (!Array.isArray(totals) || !metricId) return null
+  const entry = totals.find((total) => total.metricId === metricId)
+  return typeof entry?.value === 'number' ? entry.value : entry?.value ?? null
 }

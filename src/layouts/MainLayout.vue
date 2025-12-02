@@ -92,13 +92,12 @@
 
 <script setup>
 import { computed, ref, onBeforeUnmount } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import logoUrl from '@/shared/assets/logo.png'
 import { useAuthStore } from '@/shared/stores/auth'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 
-const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
@@ -120,16 +119,6 @@ const navLinks = [
   { to: '/templates', label: 'Представления', icon: 'layers' },
   { to: '/pages', label: 'Страницы', icon: 'layout' },
 ]
-
-const currentPage = computed(() => {
-  if (route.path === '/') return ''
-  const navMatch = navLinks.find((link) => link.to === route.path)
-  if (navMatch) return navMatch.label
-  const pageMatch = navPages.value.find(
-    (page) => `/dash/${page.id}` === route.path,
-  )
-  return pageMatch ? pageMatch.menuTitle || pageMatch.pageTitle : ''
-})
 
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value

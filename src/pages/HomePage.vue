@@ -39,7 +39,7 @@
                 size="large"
                 @search="handleSourceSearch"
               >
-                <template #action v-if="canCreateSourceFromSearch">
+                <template v-if="canCreateSourceFromSearch" #action>
                   <div
                     class="select-action"
                     @mousedown.prevent
@@ -63,9 +63,9 @@
                   quaternary
                   circle
                   size="large"
-                  @click="executeCurrentSource"
                   :disabled="!canSendRequest || planLoading"
                   aria-label="Отправить запрос"
+                  @click="executeCurrentSource"
                 >
                   <span class="icon icon-send" />
                 </n-button>
@@ -78,9 +78,9 @@
                   quaternary
                   circle
                   size="large"
-                  @click="toggleDetails"
                   :disabled="!canToggleDetails"
                   aria-label="Переключить детали"
+                  @click="toggleDetails"
                 >
                   <span class="icon" :class="detailsIconClass" />
                 </n-button>
@@ -126,8 +126,8 @@
               size="large"
             />
             <span
-              class="muted"
               v-if="!structuredBodyAvailable && !hasPrimitiveParams"
+              class="muted"
             >
               Добавьте параметры в формате объекта в «Raw body», чтобы
               редактировать их по ключам.
@@ -178,9 +178,9 @@
                   quaternary
                   circle
                   size="large"
-                  @click="saveCurrentSource"
                   :disabled="!canSaveSource"
                   aria-label="Сохранить источник"
+                  @click="saveCurrentSource"
                 >
                   <span class="icon icon-save" />
                 </n-button>
@@ -193,9 +193,9 @@
                   quaternary
                   circle
                   size="large"
-                  @click="executeCurrentSource"
                   :disabled="!canSendRequest || planLoading"
                   aria-label="Отправить запрос"
+                  @click="executeCurrentSource"
                 >
                   <span class="icon icon-send" />
                 </n-button>
@@ -205,15 +205,15 @@
           </div>
         </div>
 
-        <div class="step__info" v-if="shouldShowDetails">
+        <div v-if="shouldShowDetails" class="step__info">
           <p class="muted">
             {{ sourceDraft.httpMethod }} ·
             {{ sourceDraft.url || 'URL не указан' }}
           </p>
-          <p class="muted" v-if="structuredBodyAvailable">
+          <p v-if="structuredBodyAvailable" class="muted">
             Метод API: <strong>{{ rpcMethod || 'не указан' }}</strong>
           </p>
-          <p class="muted" v-if="hasPlanData">
+          <p v-if="hasPlanData" class="muted">
             Загружено записей: <strong>{{ planRecords.length }}</strong>
           </p>
         </div>
@@ -294,8 +294,8 @@
                 quaternary
                 circle
                 size="large"
-                @click="openDictionary"
                 aria-label="Редактор словаря"
+                @click="openDictionary"
               >
                 <span class="icon icon-dictionary" />
               </n-button>
@@ -324,7 +324,7 @@
                   size="large"
                   @search="handleConfigSearch"
                 >
-                  <template #action v-if="pendingConfigName">
+                  <template v-if="pendingConfigName" #action>
                     <div
                       class="select-action"
                       @mousedown.prevent
@@ -356,22 +356,22 @@
                 </template>
                 Загрузить конфигурацию
               </n-tooltip>
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <n-button
-                  quaternary
-                  circle
-                  size="large"
-                  @click="toggleLayoutDetails"
-                  aria-label="Настройки макета"
-                >
-                  <span class="icon" :class="layoutDetailsIcon" />
-                </n-button>
-              </template>
-              {{ layoutDetailsTooltip }}
-            </n-tooltip>
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    quaternary
+                    circle
+                    size="large"
+                    aria-label="Настройки макета"
+                    @click="toggleLayoutDetails"
+                  >
+                    <span class="icon" :class="layoutDetailsIcon" />
+                  </n-button>
+                </template>
+                {{ layoutDetailsTooltip }}
+              </n-tooltip>
+            </div>
           </div>
-        </div>
 
           <div
             v-if="layoutDetailsVisible"
@@ -389,10 +389,10 @@
                     quaternary
                     circle
                     size="large"
-                    @click="saveCurrentConfig"
                     :disabled="configSaving"
                     :loading="configSaving"
                     aria-label="Сохранить конфигурацию"
+                    @click="saveCurrentConfig"
                   >
                     <span class="icon icon-save" />
                   </n-button>
@@ -405,9 +405,9 @@
                     quaternary
                     circle
                     size="large"
-                    @click="deleteSelectedConfig"
                     :disabled="!selectedConfigId"
                     aria-label="Удалить конфигурацию"
+                    @click="deleteSelectedConfig"
                   >
                     <span class="icon icon-trash" />
                   </n-button>
@@ -477,7 +477,9 @@
                     class="column-field-group"
                   >
                     <span class="column-field-label">Метрика</span>
-                    <span class="column-field-value">{{ group.metric.label }}</span>
+                    <span class="column-field-value">{{
+                      group.metric.label
+                    }}</span>
                   </th>
                   <th
                     v-if="hasRowTotals"
@@ -506,8 +508,12 @@
                           :style="columnStyle(cell.styleKey)"
                           class="column-field-group"
                         >
-                          <span class="column-field-label">{{ headerRow.fieldLabel }}</span>
-                          <span class="column-field-value">{{ cell.label }}</span>
+                          <span class="column-field-label">{{
+                            headerRow.fieldLabel
+                          }}</span>
+                          <span class="column-field-value">{{
+                            cell.label
+                          }}</span>
                           <span
                             class="resize-handle"
                             @mousedown.prevent="
@@ -520,8 +526,12 @@
                           :colspan="cell.colspan"
                           class="column-field-group"
                         >
-                          <span class="column-field-label">{{ headerRow.fieldLabel }}</span>
-                          <span class="column-field-value">{{ cell.label }}</span>
+                          <span class="column-field-label">{{
+                            headerRow.fieldLabel
+                          }}</span>
+                          <span class="column-field-value">{{
+                            cell.label
+                          }}</span>
                         </th>
                       </template>
                     </template>
@@ -538,13 +548,14 @@
                   >
                     {{ column.label }}
                   </th>
-                  <th
-                    v-for="total in rowTotalHeaders"
-                    :key="`row-total-${total.metricId}`"
-                    v-if="hasRowTotals"
-                  >
-                    {{ total.label }}
-                  </th>
+                  <template v-if="hasRowTotals">
+                    <th
+                      v-for="total in rowTotalHeaders"
+                      :key="`row-total-${total.metricId}`"
+                    >
+                      {{ total.label }}
+                    </th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
@@ -607,14 +618,15 @@
                       }}
                     </template>
                   </td>
-                  <td
-                    v-for="total in rowTotalHeaders"
-                    :key="`grand-${total.metricId}`"
-                    class="grand-total"
-                    v-if="hasRowTotals"
-                  >
-                    {{ formatGrandTotal(total.metricId) }}
-                  </td>
+                  <template v-if="hasRowTotals">
+                    <td
+                      v-for="total in rowTotalHeaders"
+                      :key="`grand-${total.metricId}`"
+                      class="grand-total"
+                    >
+                      {{ formatGrandTotal(total.metricId) }}
+                    </td>
+                  </template>
                 </tr>
               </tfoot>
             </table>
@@ -640,8 +652,8 @@
             <button
               class="btn-outline btn-sm"
               type="button"
-              @click="resetFilterValues"
               :disabled="!hasSelectedFilterValues"
+              @click="resetFilterValues"
             >
               Очистить значения фильтров
             </button>
@@ -668,33 +680,131 @@
       </header>
 
       <div class="step__body">
-        <div class="viz-grid">
-          <label class="field">
-            <span class="field__label">Тип визуализации</span>
-            <select v-model="vizType" :disabled="!canUseVizSettings">
-              <option value="table">Таблица</option>
-              <option value="bar">Столбчатая диаграмма</option>
-              <option value="line">Линейная диаграмма</option>
-              <option value="pie">Круговая диаграмма</option>
-            </select>
-          </label>
+        <div class="source-panel presentation-panel">
+          <div class="source-panel__selector">
+            <label class="field">
+              <span class="field__label">Представления</span>
+              <n-select
+                v-model:value="selectedPresentationId"
+                :options="presentationOptions"
+                placeholder="Выберите или начните вводить представление"
+                filterable
+                clearable
+                class="combobox"
+                size="large"
+                :disabled="!canManagePresentations"
+                :loading="presentationsLoading"
+                @search="handlePresentationSearch"
+              >
+                <template v-if="canCreatePresentationFromSearch" #action>
+                  <div
+                    class="select-action"
+                    @mousedown.prevent
+                    @click="createPresentationFromSearch"
+                  >
+                    Создать представление «{{ pendingPresentationName }}»
+                  </div>
+                </template>
+              </n-select>
+            </label>
+            <p class="muted combobox__hint">
+              Выберите сохранённое представление или введите новое название.
+            </p>
+          </div>
+          <div class="source-panel__actions">
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!canLoadPresentation"
+                  aria-label="Показать представление"
+                  @click="loadPresentationRecord"
+                >
+                  <span class="icon icon-send" />
+                </n-button>
+              </template>
+              Показать представление
+            </n-tooltip>
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!canManagePresentations"
+                  aria-label="Детали представления"
+                  @click="togglePresentationDetails"
+                >
+                  <span class="icon" :class="presentationDetailsIcon" />
+                </n-button>
+              </template>
+              {{ presentationDetailsTooltip }}
+            </n-tooltip>
+          </div>
+        </div>
+
+        <div
+          v-if="presentationDetailsVisible"
+          class="source-panel__details layout-details"
+        >
+          <div class="layout-details__header">
+            <n-input
+              v-model:value="presentationName"
+              placeholder="Название представления"
+              size="large"
+            />
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!canSavePresentation"
+                  :loading="presentationSaving"
+                  aria-label="Сохранить представление"
+                  @click="savePresentation"
+                >
+                  <span class="icon icon-save" />
+                </n-button>
+              </template>
+              Сохранить представление
+            </n-tooltip>
+          </div>
+          <div class="viz-grid">
+            <label class="field">
+              <span class="field__label">Тип визуализации</span>
+              <n-select
+                v-model:value="selectedVisualizationId"
+                :options="visualizationTypeOptions"
+                :loading="visualizationTypesLoading"
+                placeholder="Выберите тип"
+                :disabled="
+                  !canManagePresentations || !visualizationTypeOptions.length
+                "
+                size="large"
+              />
+            </label>
+            <label class="field viz-grid__wide">
+              <span class="field__label">Описание</span>
+              <n-input
+                v-model:value="presentationDescription"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                placeholder="Это описание увидят другие пользователи"
+              />
+            </label>
+          </div>
         </div>
 
         <div class="step__actions">
           <button
-            class="btn-primary"
-            type="button"
-            @click="saveTemplate"
-            :disabled="!canUseVizSettings"
-          >
-            Сохранить как шаблон
-          </button>
-          <button
             v-if="isPivotSource"
             class="btn-outline"
             type="button"
-            @click="exportToCsv"
             :disabled="!pivotReady"
+            @click="exportToCsv"
           >
             Выгрузить в Excel (CSV)
           </button>
@@ -702,8 +812,8 @@
             v-if="isPivotSource"
             class="btn-outline"
             type="button"
-            @click="swapPivotAxes"
             :disabled="!pivotReady"
+            @click="swapPivotAxes"
           >
             Поменять строки и столбцы
           </button>
@@ -787,22 +897,22 @@ import PivotLayout from '@/components/PivotLayout.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import {
   loadReportConfigurations,
+  loadReportPresentations,
   saveReportConfiguration,
   saveComplexMetric,
+  saveReportPresentation,
   deleteComplexEntity,
-  REMOTE_AGGREGATORS,
   ROW_TOTAL_META,
   COLUMN_TOTAL_META,
 } from '@/shared/api/report'
+import { fetchFactorValues } from '@/shared/api/objects'
 import { useDataSourcesStore } from '@/shared/stores/dataSources'
-import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import {
   buildPivotView,
   humanizeKey,
   normalizeValue,
   formatValue,
-  formatNumber,
 } from '@/shared/lib/pivotUtils'
 
 const dataSourcesStore = useDataSourcesStore()
@@ -810,6 +920,12 @@ const fieldDictionaryStore = useFieldDictionaryStore()
 const dataSources = computed(() => dataSourcesStore.sources)
 const dataSource = ref('')
 const vizType = ref('table')
+const visualizationTypes = ref([])
+const visualizationTypesLoading = ref(false)
+const selectedVisualizationId = ref('')
+const presentationName = ref('')
+const presentationDescription = ref('')
+const presentationSaving = ref(false)
 const result = ref(null)
 const isCreatingSource = ref(false)
 const sourceSearch = ref('')
@@ -841,6 +957,8 @@ onMounted(() => {
   dataSourcesStore.fetchRemoteSources()
   dataSourcesStore.fetchMethodTypes()
   dataSourcesStore.fetchUserContext()
+  fetchAggregatorFactors()
+  fetchVisualizationTypes()
 })
 
 const planRecords = ref([])
@@ -1055,11 +1173,33 @@ function isRowCollapsed(rowKey) {
   return Boolean(collapsedRowKeys[rowKey])
 }
 
-const aggregatorOptions = [
-  { value: 'count', label: 'Количество' },
-  { value: 'sum', label: 'Сумма' },
-  { value: 'avg', label: 'Среднее' },
-]
+const FALLBACK_AGGREGATORS = {
+  count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
+  sum: { label: 'Сумма', fvFieldVal: 1349, pvFieldVal: 1569 },
+  avg: { label: 'Среднее', fvFieldVal: 1351, pvFieldVal: 1571 },
+}
+const aggregatorRecords = ref([])
+const aggregatorMap = computed(() => {
+  const map = {}
+  aggregatorRecords.value.forEach((record) => {
+    const key = detectAggregatorKey(record)
+    if (!key) return
+    map[key] = {
+      label: formatAggregatorLabel(record.name, key),
+      fvFieldVal:
+        toNumericValue(record.id) || FALLBACK_AGGREGATORS[key]?.fvFieldVal || 0,
+      pvFieldVal:
+        toNumericValue(record.pv) || FALLBACK_AGGREGATORS[key]?.pvFieldVal || 0,
+    }
+  })
+  return Object.keys(map).length ? map : FALLBACK_AGGREGATORS
+})
+const aggregatorOptions = computed(() =>
+  Object.entries(aggregatorMap.value).map(([value, meta]) => ({
+    value,
+    label: meta.label,
+  })),
+)
 const reportConfigs = ref([])
 const configsLoading = ref(false)
 const configsReady = ref(false)
@@ -1070,12 +1210,29 @@ const layoutDetailsVisible = ref(false)
 const configSearch = ref('')
 const pendingConfigName = ref('')
 const currentConfigMeta = ref(null)
-const pageBuilderStore = usePageBuilderStore()
+const presentations = ref([])
+const presentationsLoading = ref(false)
+const presentationsReady = ref(false)
+const selectedPresentationId = ref('')
+const presentationSearch = ref('')
+const pendingPresentationName = ref('')
+const presentationDetailsVisible = ref(false)
+const currentPresentationMeta = ref(null)
 
 const currentSourceParentId = computed(() => {
   const remoteId = selectedSource.value?.remoteMeta?.id
   const fallback = selectedSource.value?.id
   const numericId = Number(remoteId || fallback)
+  return Number.isFinite(numericId) ? numericId : null
+})
+
+const currentConfigRemoteId = computed(() => {
+  const raw =
+    currentConfigMeta.value?.id ??
+    currentConfigMeta.value?.Id ??
+    currentConfigMeta.value?.ID ??
+    currentConfigMeta.value?.idReportConfiguration
+  const numericId = Number(raw)
   return Number.isFinite(numericId) ? numericId : null
 })
 
@@ -1091,6 +1248,46 @@ const configOptions = computed(() =>
     label: cfg.name,
     value: cfg.id,
   })),
+)
+
+const filteredPresentations = computed(() => {
+  if (!presentationsReady.value) return []
+  return presentations.value
+})
+
+const presentationOptions = computed(() =>
+  filteredPresentations.value.map((item) => ({
+    label: item.name,
+    value: item.id,
+  })),
+)
+
+const selectedPresentation = computed(
+  () =>
+    filteredPresentations.value.find(
+      (item) => item.id === selectedPresentationId.value,
+    ) || null,
+)
+
+const visualizationTypeOptions = computed(() =>
+  visualizationTypes.value
+    .map((record) => {
+      const value = getVisualizationOptionId(record)
+      if (!value) return null
+      return {
+        label: formatVisualizationLabel(record),
+        value,
+      }
+    })
+    .filter(Boolean),
+)
+
+const selectedVisualization = computed(
+  () =>
+    visualizationTypes.value.find(
+      (record) =>
+        getVisualizationOptionId(record) === selectedVisualizationId.value,
+    ) || null,
 )
 
 watch(
@@ -1136,6 +1333,8 @@ watch(
     if (!id) {
       configName.value = ''
       currentConfigMeta.value = null
+      presentationName.value = ''
+      presentationDescription.value = ''
       return
     }
     const entry = reportConfigs.value.find((cfg) => cfg.id === id)
@@ -1143,8 +1342,36 @@ watch(
       configName.value = entry.name || ''
       currentConfigMeta.value = entry.remoteMeta || null
     }
+    presentationName.value = ''
+    presentationDescription.value = ''
   },
 )
+
+watch(
+  () => currentConfigRemoteId.value,
+  (parent) => {
+    resetPresentationEditor()
+    if (!parent) {
+      presentations.value = []
+      presentationsReady.value = false
+      return
+    }
+    fetchReportPresentations(parent)
+  },
+  { immediate: true },
+)
+
+watch(selectedPresentation, (entry) => {
+  if (!entry) {
+    presentationName.value = ''
+    presentationDescription.value = ''
+    currentPresentationMeta.value = null
+    return
+  }
+  presentationName.value = entry.name || ''
+  presentationDescription.value = entry.description || ''
+  currentPresentationMeta.value = entry.remoteMeta || null
+})
 const supportedChartTypes = ['bar', 'line', 'pie']
 const chartPalette = [
   '#2b6cb0',
@@ -1192,6 +1419,27 @@ watch(
     }
   },
 )
+
+watch(
+  () => selectedVisualizationId.value,
+  () => {
+    const record = selectedVisualization.value
+    vizType.value = resolveVisualizationChartType(record)
+  },
+)
+
+watch(visualizationTypes, () => {
+  if (!visualizationTypes.value.length) {
+    selectedVisualizationId.value = ''
+    vizType.value = 'table'
+    return
+  }
+  if (!selectedVisualizationId.value || !selectedVisualization.value) {
+    autoSelectVisualizationType()
+    return
+  }
+  vizType.value = resolveVisualizationChartType(selectedVisualization.value)
+})
 
 let syncingFromBody = false
 let syncingFromEditors = false
@@ -1456,7 +1704,6 @@ const planFieldsMap = computed(() => {
   }, new Map())
 })
 
-
 const activeMetrics = computed(() => {
   pivotMetricsVersion.value
   return pivotMetrics
@@ -1542,6 +1789,10 @@ const pivotView = computed(() => {
     metrics: activeMetrics.value,
     fieldMeta: planFieldsMap.value,
     headerOverrides,
+    sorts: {
+      rows: pivotSortState.rows,
+      columns: pivotSortState.columns,
+    },
   })
 })
 const pivotReady = computed(() =>
@@ -1550,6 +1801,22 @@ const pivotReady = computed(() =>
 const canUseVizSettings = computed(() =>
   isPivotSource.value ? pivotReady.value : hasResultData.value,
 )
+const canManagePresentations = computed(
+  () => isPivotSource.value && Boolean(currentConfigRemoteId.value),
+)
+const canLoadPresentation = computed(
+  () => canManagePresentations.value && Boolean(selectedPresentationId.value),
+)
+const canCreatePresentationFromSearch = computed(
+  () => Boolean(pendingPresentationName.value) && canManagePresentations.value,
+)
+const canSavePresentation = computed(() => {
+  if (!canManagePresentations.value) return false
+  if (!presentationDetailsVisible.value) return false
+  if (!presentationName.value.trim()) return false
+  if (!selectedVisualization.value) return false
+  return !presentationSaving.value
+})
 const hasSelectedFilterValues = computed(() =>
   Object.values(filterValues).some((values) => values && values.length),
 )
@@ -1558,34 +1825,6 @@ const rowHeaderTitle = computed(() => {
   return pivotConfig.rows
     .map((key) => getFieldDisplayNameByKey(key))
     .join(' › ')
-})
-const columnHeaderRows = computed(() => {
-  const view = pivotView.value
-  if (!view) return []
-  const columns = view.columns || []
-  if (!columns.length) return []
-  const columnFields = pivotConfig.columns
-  if (!columnFields.length) return []
-  return columnFields.map((fieldKey, levelIndex) => {
-    const label = getFieldDisplayNameByKey(fieldKey)
-    const isValue = levelIndex === columnFields.length - 1
-    const cells = isValue
-      ? columns.map((column) => ({
-          label: getColumnLevelValue(column, levelIndex),
-          colspan: 1,
-          styleKey: column.key,
-          isValue: true,
-        }))
-      : groupColumnsByLevel(columns, levelIndex).map((cell) => ({
-          ...cell,
-          isValue: false,
-        }))
-    return {
-      label,
-      cells,
-      isValue,
-    }
-  })
 })
 const metricColumnGroups = computed(() => {
   const view = pivotView.value
@@ -1639,6 +1878,14 @@ const layoutDetailsIcon = computed(() =>
 const layoutDetailsTooltip = computed(() =>
   layoutDetailsVisible.value ? 'Скрыть детали' : 'Детали конфигурации',
 )
+const presentationDetailsIcon = computed(() =>
+  presentationDetailsVisible.value ? 'icon-close' : 'icon-gear',
+)
+const presentationDetailsTooltip = computed(() =>
+  presentationDetailsVisible.value
+    ? 'Скрыть детали представления'
+    : 'Детали представления',
+)
 const tableRows = computed(() => {
   const view = pivotView.value
   if (!view) return []
@@ -1666,12 +1913,8 @@ const columnTotalMetricIds = computed(() =>
     .filter((metric) => metric.showColumnTotals)
     .map((metric) => metric.id),
 )
-const rowTotalMetricSet = computed(
-  () => new Set(rowTotalMetricIds.value),
-)
-const columnTotalMetricSet = computed(
-  () => new Set(columnTotalMetricIds.value),
-)
+const rowTotalMetricSet = computed(() => new Set(rowTotalMetricIds.value))
+const columnTotalMetricSet = computed(() => new Set(columnTotalMetricIds.value))
 const hasRowTotals = computed(() => rowTotalMetricIds.value.length > 0)
 const hasColumnTotals = computed(() => columnTotalMetricIds.value.length > 0)
 const rowTotalHeaders = computed(() => {
@@ -1893,33 +2136,22 @@ async function executeCurrentSource() {
   await loadPlanFields()
 }
 
-function saveTemplate() {
-  if (!isPivotSource.value) {
-    alert(
-      'Сохранение шаблонов доступно только для источников плана и параметров.',
-    )
-    return
-  }
-  if (!pivotReady.value) {
-    alert('Постройте сводную таблицу, прежде чем сохранять шаблон.')
-    return
-  }
-  const suggestedName =
-    configName.value || `Конфигурация ${new Date().toLocaleDateString()}`
-  const name = prompt('Название шаблона', suggestedName)
-  if (!name) return
-  const description = prompt('Описание шаблона (опционально)', '')
+function isValidUserContext(ctx) {
+  return (
+    Number.isFinite(Number(ctx?.objUser)) &&
+    Number.isFinite(Number(ctx?.pvUser))
+  )
+}
 
-  const payload = {
-    name: name.trim(),
-    description: description?.trim() || '',
-    dataSource: dataSource.value,
-    visualization: vizType.value,
-    snapshot: snapshotCurrentConfig(),
-    createdAt: new Date().toISOString(),
+async function resolveUserContext() {
+  let context = dataSourcesStore.userContext
+  if (!isValidUserContext(context)) {
+    context = await dataSourcesStore.fetchUserContext()
   }
-  const id = pageBuilderStore.saveTemplate(payload)
-  alert(`Шаблон сохранён и доступен в списке. ID: ${id}`)
+  if (!isValidUserContext(context)) {
+    context = await dataSourcesStore.fetchUserContext(true)
+  }
+  return isValidUserContext(context) ? context : null
 }
 
 async function loadPlanFields() {
@@ -2102,11 +2334,169 @@ function formatSample(value) {
 }
 
 function aggregatorLabel(aggregator, field) {
-  const agg = aggregatorOptions.find((opt) => opt.value === aggregator)
-  const aggName = agg ? agg.label : aggregator
+  const meta = getAggregatorMeta(aggregator)
+  const aggName = meta?.label || aggregator
   const override = headerOverrides[field?.key]
   const fieldLabel = override?.trim() || field?.label || field?.key || 'поле'
   return `${aggName}: ${fieldLabel}`
+}
+
+function getAggregatorMeta(key) {
+  if (!key) return null
+  return aggregatorMap.value[key] || FALLBACK_AGGREGATORS[key] || null
+}
+
+function resolveAggregatorKeyFromRemote(fv, pv) {
+  const numericFv = toNumericValue(fv)
+  const numericPv = toNumericValue(pv)
+  const entry =
+    Object.entries(aggregatorMap.value).find(
+      ([, meta]) =>
+        meta.fvFieldVal === numericFv && meta.pvFieldVal === numericPv,
+    ) ||
+    Object.entries(FALLBACK_AGGREGATORS).find(
+      ([, meta]) =>
+        meta.fvFieldVal === numericFv && meta.pvFieldVal === numericPv,
+    )
+  return entry ? entry[0] : null
+}
+
+function detectAggregatorKey(record = {}) {
+  const rawName = String(record.name || record.Name || '')
+    .trim()
+    .toLowerCase()
+  if (!rawName) return null
+  if (rawName.includes('колич') || rawName.includes('count')) return 'count'
+  if (
+    rawName.includes('сред') ||
+    rawName.includes('avg') ||
+    rawName.includes('mean')
+  )
+    return 'avg'
+  if (rawName.includes('сум') || rawName.includes('sum')) return 'sum'
+  return null
+}
+
+function formatAggregatorLabel(name = '', key = '') {
+  const trimmed = String(name).trim()
+  if (trimmed) {
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+  }
+  return FALLBACK_AGGREGATORS[key]?.label || key
+}
+
+function formatVisualizationLabel(record = {}) {
+  const label = record?.name || record?.Name || record?.title
+  if (label && String(label).trim()) return String(label).trim()
+  const id = getVisualizationOptionId(record)
+  return id ? `Тип ${id}` : 'Тип визуализации'
+}
+
+function getVisualizationOptionId(record = {}) {
+  const raw =
+    record?.fvVisualTyp ??
+    record?.fv ??
+    record?.id ??
+    record?.idFieldVal ??
+    record?.FieldVal ??
+    record?.value
+  if (raw === null || typeof raw === 'undefined' || raw === '') return ''
+  return String(raw)
+}
+
+function getVisualizationOptionPv(record = {}) {
+  return (
+    toNumericValue(
+      record?.pvVisualTyp ??
+        record?.pv ??
+        record?.pvFieldVal ??
+        record?.PV ??
+        record?.pvValue,
+    ) || null
+  )
+}
+
+function findVisualizationOptionIdByMeta(fv, pv) {
+  if (!Number.isFinite(fv) && !Number.isFinite(pv)) return ''
+  const match = visualizationTypes.value.find((record) => {
+    const recordFv =
+      toNumericValue(
+        record?.fvVisualTyp ??
+          record?.fv ??
+          record?.id ??
+          record?.idFieldVal ??
+          record?.FieldVal,
+      ) || null
+    const recordPv = getVisualizationOptionPv(record)
+    return recordFv === fv && recordPv === pv
+  })
+  return match ? getVisualizationOptionId(match) : ''
+}
+
+function extractVisualizationTypeMeta(record = {}) {
+  const fv =
+    toNumericValue(
+      record?.fvVisualTyp ??
+        record?.fv ??
+        record?.id ??
+        record?.idFieldVal ??
+        record?.FieldVal ??
+        record?.value,
+    ) || null
+  const pv = getVisualizationOptionPv(record)
+  const id =
+    toNumericValue(
+      record?.idVisualTyp ??
+        record?.id ??
+        record?.idFieldVal ??
+        record?.FieldVal ??
+        record?.value,
+    ) || null
+  return {
+    fv,
+    pv,
+    id,
+    label: formatVisualizationLabel(record),
+  }
+}
+
+function resolveVisualizationChartType(record) {
+  if (!record) return 'table'
+  const name = String(record.name || record.Name || '').toLowerCase()
+  const has = (...tokens) => tokens.some((token) => name.includes(token))
+  if (has('круг', 'pie')) return 'pie'
+  if (has('линей', 'line')) return 'line'
+  if (has('столб', 'column', 'bar', 'гист', 'граф')) return 'bar'
+  if (has('табл', 'table')) return 'table'
+  if (supportedChartTypes.includes(vizType.value)) {
+    return vizType.value
+  }
+  return 'table'
+}
+
+function autoSelectVisualizationType() {
+  const list = visualizationTypes.value
+  if (!Array.isArray(list) || !list.length) {
+    selectedVisualizationId.value = ''
+    vizType.value = 'table'
+    return
+  }
+  const preferred = list.find(
+    (record) => resolveVisualizationChartType(record) === vizType.value,
+  )
+  const fallback = preferred || list[0]
+  const id = getVisualizationOptionId(fallback)
+  if (id) {
+    selectedVisualizationId.value = id
+  } else {
+    selectedVisualizationId.value = ''
+    vizType.value = 'table'
+  }
+}
+
+function toNumericValue(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
 }
 
 function ensureMetricExists() {
@@ -2283,6 +2673,22 @@ function formatPrimitiveParam(value) {
   return String(value)
 }
 
+function normalizeUserValue(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function readStoredUserValue(key) {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return normalizeUserValue(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
 function normalizePrimitiveValue(value) {
   if (typeof value !== 'string') return value
   const trimmed = value.trim()
@@ -2292,6 +2698,37 @@ function normalizePrimitiveValue(value) {
   const num = Number(trimmed)
   if (!Number.isNaN(num)) return num
   return value
+}
+
+async function fetchAggregatorFactors() {
+  try {
+    const records = await fetchFactorValues('Prop_FieldVal')
+    aggregatorRecords.value = Array.isArray(records) ? records : []
+  } catch (err) {
+    console.warn('Failed to load aggregator factors', err)
+  }
+}
+
+async function fetchVisualizationTypes() {
+  visualizationTypesLoading.value = true
+  try {
+    const records = await fetchFactorValues('Prop_VisualTyp')
+    visualizationTypes.value = Array.isArray(records) ? records : []
+    if (!selectedVisualizationId.value && visualizationTypes.value.length) {
+      autoSelectVisualizationType()
+    }
+    if (!visualizationTypes.value.length) {
+      selectedVisualizationId.value = ''
+      vizType.value = 'table'
+    }
+  } catch (err) {
+    console.warn('Failed to load visualization types', err)
+    visualizationTypes.value = []
+    selectedVisualizationId.value = ''
+    vizType.value = 'table'
+  } finally {
+    visualizationTypesLoading.value = false
+  }
 }
 
 async function fetchReportConfigs(parentId = null) {
@@ -2309,7 +2746,9 @@ async function fetchReportConfigs(parentId = null) {
     if (currentSourceParentId.value !== numericParent) {
       return
     }
-    reportConfigs.value = normalized.filter((cfg) => cfg.parent === numericParent)
+    reportConfigs.value = normalized.filter(
+      (cfg) => cfg.parent === numericParent,
+    )
     configsReady.value = true
   } catch (err) {
     console.warn('Failed to load report configurations', err)
@@ -2320,10 +2759,42 @@ async function fetchReportConfigs(parentId = null) {
   }
 }
 
+async function fetchReportPresentations(parentId = null) {
+  const numericParent = Number(parentId)
+  const hasValidParent = Number.isFinite(numericParent)
+  presentationsLoading.value = true
+  presentationsReady.value = false
+  try {
+    if (!hasValidParent) {
+      presentations.value = []
+      return
+    }
+    const records = await loadReportPresentations()
+    const normalized = records.map((entry) =>
+      normalizeRemotePresentation(entry),
+    )
+    presentations.value = normalized.filter(
+      (item) => item.parent === numericParent,
+    )
+    presentationsReady.value = true
+  } catch (err) {
+    console.warn('Failed to load report presentations', err)
+    presentations.value = []
+  } finally {
+    presentationsLoading.value = false
+    if (!hasValidParent) presentationsReady.value = false
+  }
+}
+
 function normalizeRemoteConfig(entry = {}) {
   const filterPayload = parseMetaPayload(entry.FilterVal)
   const rowPayload = parseMetaPayload(entry.RowVal)
   const colPayload = parseMetaPayload(entry.ColVal)
+  const combinedOverrides = {
+    ...(filterPayload.headerOverrides || {}),
+    ...(rowPayload.headerOverrides || {}),
+    ...(colPayload.headerOverrides || {}),
+  }
   const rawParent =
     entry.parent ?? entry.parentId ?? entry.parent_id ?? entry.Parent
   const parentValue = Number(rawParent)
@@ -2342,7 +2813,7 @@ function normalizeRemoteConfig(entry = {}) {
       rows: parseFieldSequence(entry.Row),
       columns: parseFieldSequence(entry.Col),
     },
-    headerOverrides: filterPayload.headerOverrides || {},
+    headerOverrides: combinedOverrides,
     filterValues: filterPayload.values || {},
     rowFilters: rowPayload.values || {},
     columnFilters: colPayload.values || {},
@@ -2352,6 +2823,23 @@ function normalizeRemoteConfig(entry = {}) {
       columns: colPayload.sorts || {},
     },
     metrics,
+  }
+}
+
+function normalizeRemotePresentation(entry = {}) {
+  const rawParent =
+    entry.parent ?? entry.parentId ?? entry.parent_id ?? entry.Parent
+  const parentValue = Number(rawParent)
+  const parent = Number.isFinite(parentValue) ? parentValue : null
+  return {
+    id: entry.id ? String(entry.id) : createId(),
+    name: entry.name || `Представление ${entry.id || ''}`,
+    parent,
+    description: entry.Discription || entry.Description || '',
+    fvVisualTyp: toNumericValue(entry.fvVisualTyp ?? entry.fv) || null,
+    pvVisualTyp: toNumericValue(entry.pvVisualTyp ?? entry.pv) || null,
+    visualizationLabel: entry.nameVisualTyp || entry.VisualTypName || '',
+    remoteMeta: entry,
   }
 }
 
@@ -2392,7 +2880,7 @@ function parseMetaPayload(value) {
 function encodeFilterPayload() {
   return JSON.stringify({
     values: copyFilterStore(filterValues),
-    headerOverrides: { ...headerOverrides },
+    headerOverrides: pickHeaderOverrides(pivotConfig.filters),
     sorts: cloneSortState(pivotSortState.filters),
     metricSettings: pivotMetrics.map((metric) => ({
       id: metric.id,
@@ -2407,11 +2895,23 @@ function encodeFilterPayload() {
   })
 }
 
-function encodeDimensionPayload(store, sortStore) {
+function encodeDimensionPayload(keys, store, sortStore) {
   return JSON.stringify({
     values: copyFilterStore(store),
+    headerOverrides: pickHeaderOverrides(keys),
     sorts: cloneSortState(sortStore),
   })
+}
+
+function pickHeaderOverrides(keys = []) {
+  if (!keys || !keys.length) return {}
+  const allowed = new Set(keys)
+  return Object.entries(headerOverrides).reduce((acc, [key, value]) => {
+    if (allowed.has(key)) {
+      acc[key] = value
+    }
+    return acc
+  }, {})
 }
 
 function cloneSortState(store = {}) {
@@ -2426,10 +2926,7 @@ function cloneSortState(store = {}) {
 
 function normalizeRemoteMetric(entry = {}, metricSettings = []) {
   const aggregatorKey =
-    Object.entries(REMOTE_AGGREGATORS).find(
-      ([, meta]) =>
-        meta.fvFieldVal === entry.fvFieldVal && meta.pvFieldVal === entry.pvFieldVal,
-    )?.[0] || 'sum'
+    resolveAggregatorKeyFromRemote(entry.fvFieldVal, entry.pvFieldVal) || 'sum'
   const saved = metricSettings.find(
     (item) =>
       item.remoteId === entry.idMetricsComplex ||
@@ -2479,6 +2976,79 @@ function createConfigFromSearch() {
   layoutDetailsVisible.value = true
 }
 
+function handlePresentationSearch(value = '') {
+  presentationSearch.value = value || ''
+  const trimmed = presentationSearch.value.trim()
+  if (!presentationsReady.value) {
+    pendingPresentationName.value = ''
+    return
+  }
+  if (!trimmed) {
+    pendingPresentationName.value = ''
+    return
+  }
+  const exists = filteredPresentations.value.some(
+    (item) => item.name?.toLowerCase() === trimmed.toLowerCase(),
+  )
+  pendingPresentationName.value = exists ? '' : trimmed
+}
+
+function createPresentationFromSearch() {
+  if (!pendingPresentationName.value.trim()) return
+  presentationName.value = pendingPresentationName.value.trim()
+  selectedPresentationId.value = ''
+  pendingPresentationName.value = ''
+  currentPresentationMeta.value = null
+  presentationDescription.value = ''
+  presentationDetailsVisible.value = true
+  selectedVisualizationId.value = ''
+}
+
+function togglePresentationDetails() {
+  if (!canManagePresentations.value) return
+  presentationDetailsVisible.value = !presentationDetailsVisible.value
+}
+
+function loadPresentationRecord() {
+  if (!selectedPresentationId.value) return
+  const entry = filteredPresentations.value.find(
+    (item) => item.id === selectedPresentationId.value,
+  )
+  if (entry) {
+    applyPresentationRecord(entry)
+  }
+}
+
+function applyPresentationRecord(record) {
+  if (!record) return
+  presentationName.value = record.name || ''
+  presentationDescription.value = record.description || ''
+  currentPresentationMeta.value = record.remoteMeta || null
+  const matchId = findVisualizationOptionIdByMeta(
+    record.fvVisualTyp,
+    record.pvVisualTyp,
+  )
+  if (matchId) {
+    selectedVisualizationId.value = matchId
+  } else if (record.visualizationLabel) {
+    vizType.value = resolveVisualizationChartType({
+      name: record.visualizationLabel,
+    })
+    selectedVisualizationId.value = ''
+  }
+}
+
+function resetPresentationEditor() {
+  selectedPresentationId.value = ''
+  currentPresentationMeta.value = null
+  presentationName.value = ''
+  presentationDescription.value = ''
+  presentationDetailsVisible.value = false
+  presentationSearch.value = ''
+  pendingPresentationName.value = ''
+  selectedVisualizationId.value = ''
+}
+
 function toggleLayoutDetails() {
   layoutDetailsVisible.value = !layoutDetailsVisible.value
   if (layoutDetailsVisible.value && selectedConfigId.value) {
@@ -2499,7 +3069,6 @@ function loadLayoutConfig() {
   if (entry) {
     configName.value = entry.name || ''
     applyConfigRecord(entry)
-    layoutDetailsVisible.value = true
   }
 }
 
@@ -2629,7 +3198,14 @@ async function saveCurrentConfig() {
     alert('Не выбран удалённый источник данных для конфигурации')
     return
   }
-  const payload = buildConfigPayload(parentId)
+  const userContext = await resolveUserContext()
+  if (!userContext) {
+    alert(
+      'Не удалось определить пользователя. Обновите страницу или войдите заново перед сохранением конфигурации.',
+    )
+    return
+  }
+  const payload = buildConfigPayload(parentId, userContext)
   const previousMeta = currentConfigMeta.value
   const operation = currentConfigMeta.value?.id ? 'upd' : 'ins'
   configSaving.value = true
@@ -2644,7 +3220,9 @@ async function saveCurrentConfig() {
       currentConfigMeta.value = payload
     }
     const previousMetricIds = new Set(
-      (previousMeta?.complex || []).map((item) => Number(item.idMetricsComplex)),
+      (previousMeta?.complex || []).map((item) =>
+        Number(item.idMetricsComplex),
+      ),
     )
     const currentRemoteIds = new Set(
       pivotMetrics
@@ -2659,7 +3237,9 @@ async function saveCurrentConfig() {
     const configRemoteId = Number(savedId)
     for (const metric of pivotMetrics) {
       const metricPayload = buildMetricPayload(metric, configRemoteId)
-      const metricOperation = metric.remoteMeta?.idMetricsComplex ? 'upd' : 'ins'
+      const metricOperation = metric.remoteMeta?.idMetricsComplex
+        ? 'upd'
+        : 'ins'
       await saveComplexMetric(metricOperation, metricPayload)
     }
     await fetchReportConfigs(getCurrentParentId())
@@ -2679,21 +3259,109 @@ async function saveCurrentConfig() {
   }
 }
 
-function buildConfigPayload(parentId) {
+async function savePresentation() {
+  if (!canManagePresentations.value) return
+  const parentId = currentConfigRemoteId.value
+  if (!parentId) {
+    alert('Сохраните и выберите конфигурацию перед сохранением представления.')
+    return
+  }
+  const visualization = selectedVisualization.value
+  if (!visualization) {
+    alert('Выберите тип визуализации')
+    return
+  }
+  const typeMeta = extractVisualizationTypeMeta(visualization)
+  if (!Number.isFinite(typeMeta.fv) || !Number.isFinite(typeMeta.pv)) {
+    alert('Не удалось определить идентификаторы выбранного типа визуализации.')
+    return
+  }
+  const cleanName = presentationName.value.trim()
+  if (!cleanName) {
+    alert('Укажите название представления')
+    return
+  }
+  const storedObjUser = readStoredUserValue('objUser')
+  const storedPvUser = readStoredUserValue('pvUser')
+  if (!Number.isFinite(storedObjUser) || !Number.isFinite(storedPvUser)) {
+    alert(
+      'Не удалось определить пользователя. Обновите страницу или войдите заново перед сохранением представления.',
+    )
+    return
+  }
+  presentationSaving.value = true
+  const previousMeta = currentPresentationMeta.value
+  const operation = previousMeta?.id ? 'upd' : 'ins'
+  const payload = buildPresentationPayload(typeMeta, {
+    parentId,
+    objUser: storedObjUser,
+    pvUser: storedPvUser,
+  })
+  if (operation === 'upd') {
+    const remoteId = Number(
+      previousMeta?.id ?? previousMeta?.Id ?? previousMeta?.ID,
+    )
+    if (Number.isFinite(remoteId)) payload.id = remoteId
+  }
+  try {
+    const saved = await saveReportPresentation(operation, payload)
+    const savedId = saved?.id || previousMeta?.id || payload.id
+    if (saved) {
+      currentPresentationMeta.value = saved
+    } else if (previousMeta) {
+      currentPresentationMeta.value = { ...previousMeta, ...payload }
+    } else {
+      currentPresentationMeta.value = payload
+    }
+    await fetchReportPresentations(currentConfigRemoteId.value)
+    if (savedId) {
+      const refreshed = filteredPresentations.value.find(
+        (item) => Number(item.remoteMeta?.id) === Number(savedId),
+      )
+      if (refreshed) {
+        selectedPresentationId.value = refreshed.id
+        applyPresentationRecord(refreshed)
+      }
+    }
+    alert('Представление сохранено.')
+  } catch (err) {
+    console.warn('Failed to save report presentation', err)
+    alert('Не удалось сохранить представление. Попробуйте позже.')
+  } finally {
+    presentationSaving.value = false
+  }
+}
+
+function buildConfigPayload(parentId, userContext = null) {
   const remoteMeta = currentConfigMeta.value || {}
+  const userMeta = userContext || dataSourcesStore.userContext || {}
+  const normalizedParent = Number(parentId)
+  const formatDate = (value) => {
+    if (!value) return new Date().toISOString().slice(0, 10)
+    if (typeof value === 'string' && value.length >= 10)
+      return value.slice(0, 10)
+    return new Date(value).toISOString().slice(0, 10)
+  }
+  const createdAt = formatDate(remoteMeta.CreatedAt)
+  const storedObjUser = readStoredUserValue('objUser')
+  const storedPvUser = readStoredUserValue('pvUser')
   return {
     ...remoteMeta,
-    parent: parentId,
+    parent: Number.isFinite(normalizedParent)
+      ? normalizedParent
+      : remoteMeta.parent,
     name: configName.value.trim(),
     Filter: encodeFieldSequence(pivotConfig.filters),
     Row: encodeFieldSequence(pivotConfig.rows),
     Col: encodeFieldSequence(pivotConfig.columns),
     FilterVal: encodeFilterPayload(),
     RowVal: encodeDimensionPayload(
+      pivotConfig.rows,
       dimensionValueFilters.rows,
       pivotSortState.rows,
     ),
     ColVal: encodeDimensionPayload(
+      pivotConfig.columns,
       dimensionValueFilters.columns,
       pivotSortState.columns,
     ),
@@ -2703,25 +3371,61 @@ function buildConfigPayload(parentId) {
     pvColTotal: COLUMN_TOTAL_META.pv,
     nameRowTotal: hasRowTotals.value ? 'да' : 'нет',
     nameColTotal: hasColumnTotals.value ? 'да' : 'нет',
-    CreatedAt: remoteMeta.CreatedAt || new Date().toISOString(),
-    UpdatedAt: new Date().toISOString(),
-    objUser: remoteMeta.objUser || 1003,
-    pvUser: remoteMeta.pvUser || 1087,
+    CreatedAt: createdAt,
+    UpdatedAt: formatDate(remoteMeta.UpdatedAt || new Date().toISOString()),
+    objUser:
+      normalizeUserValue(userMeta.objUser) ||
+      normalizeUserValue(remoteMeta.objUser) ||
+      storedObjUser ||
+      null,
+    pvUser:
+      normalizeUserValue(userMeta.pvUser) ||
+      normalizeUserValue(remoteMeta.pvUser) ||
+      storedPvUser ||
+      null,
+  }
+}
+
+function buildPresentationPayload(typeMeta, meta = {}) {
+  const remoteMeta = currentPresentationMeta.value || {}
+  const isoNow = new Date().toISOString()
+  const createdAt = remoteMeta.CreatedAt || isoNow.slice(0, 10)
+  const persistedVisualId = toNumericValue(remoteMeta.idVisualTyp)
+  const visualTypeId = Number.isFinite(persistedVisualId)
+    ? persistedVisualId
+    : (typeMeta.id ?? null)
+  return {
+    ...remoteMeta,
+    parent: meta.parentId,
+    name: presentationName.value.trim(),
+    Description: presentationDescription.value.trim(),
+    fvVisualTyp: typeMeta.fv,
+    pvVisualTyp: typeMeta.pv,
+    idVisualTyp: visualTypeId,
+    nameVisualTyp:
+      typeMeta.label ||
+      remoteMeta.nameVisualTyp ||
+      formatVisualizationLabel(remoteMeta),
+    CreationDateTime: remoteMeta.CreationDateTime || isoNow,
+    CreatedAt: createdAt,
+    UpdatedAt: isoNow.slice(0, 10),
+    objUser: meta.objUser,
+    pvUser: meta.pvUser,
   }
 }
 
 function buildMetricPayload(metric, configId) {
   const aggregatorMeta =
-    REMOTE_AGGREGATORS[metric.aggregator] || REMOTE_AGGREGATORS.sum
+    getAggregatorMeta(metric.aggregator) || getAggregatorMeta('sum')
   return {
     id: Number(configId),
     idMetricsComplex: metric.remoteMeta?.idMetricsComplex,
     idFieldVal: metric.remoteMeta?.idFieldVal,
     idFieldName: metric.remoteMeta?.idFieldName,
     FieldName: metric.fieldKey,
-    nameFieldVal: aggregatorMeta.label,
-    fvFieldVal: aggregatorMeta.fvFieldVal,
-    pvFieldVal: aggregatorMeta.pvFieldVal,
+    nameFieldVal: aggregatorMeta?.label || '',
+    fvFieldVal: aggregatorMeta?.fvFieldVal || 0,
+    pvFieldVal: aggregatorMeta?.pvFieldVal || 0,
   }
 }
 
@@ -2770,75 +3474,6 @@ function collectDeleteIds(meta = {}, metrics = []) {
     if (Number.isFinite(remoteId)) ids.add(remoteId)
   })
   return [...ids]
-}
-
-function snapshotCurrentConfig() {
-  const filtersMeta = pivotConfig.filters
-    .map((key) => {
-      const field = planFieldsMap.value.get(key)
-      if (!field) return null
-      return {
-        key: field.key,
-        label: getFieldDisplayName(field),
-        type: field.type,
-        values: field.values?.slice?.(0, 50) || [],
-      }
-    })
-    .filter(Boolean)
-
-  const usedFieldKeys = new Set([
-    ...pivotConfig.rows,
-    ...pivotConfig.columns,
-    ...pivotConfig.filters,
-    ...pivotMetrics.map((metric) => metric.fieldKey).filter(Boolean),
-  ])
-  const fieldMeta = {}
-  usedFieldKeys.forEach((key) => {
-    const field = planFieldsMap.value.get(key)
-    fieldMeta[key] = {
-      label: field?.label || humanizeKey(key),
-      type: field?.type || 'string',
-    }
-  })
-
-  return {
-    pivot: {
-      filters: [...pivotConfig.filters],
-      rows: [...pivotConfig.rows],
-      columns: [...pivotConfig.columns],
-    },
-    metrics: pivotMetrics.map((metric) => {
-      const field = planFieldsMap.value.get(metric.fieldKey)
-      return {
-        ...metric,
-        fieldLabel:
-          headerOverrides[metric.fieldKey]?.trim() ||
-          field?.label ||
-          metric.fieldKey,
-      }
-    }),
-    filtersMeta,
-    filterValues: Object.entries(filterValues).reduce((acc, [key, values]) => {
-      acc[key] = [...values]
-      return acc
-    }, {}),
-    dimensionValues: {
-      rows: copyFilterStore(dimensionValueFilters.rows),
-      columns: copyFilterStore(dimensionValueFilters.columns),
-    },
-    options: {
-      headerOverrides: Object.entries(headerOverrides).reduce(
-        (acc, [key, value]) => {
-          if (value && value.trim()) {
-            acc[key] = value.trim()
-          }
-          return acc
-        },
-        {},
-      ),
-    },
-    fieldMeta,
-  }
 }
 
 function replaceArray(target, next) {
@@ -2993,20 +3628,20 @@ function createId() {
 
 function getFieldDisplayName(field) {
   if (!field) return ''
-  const dictionaryLabel = dictionaryLabelValue(field.key)
-  if (dictionaryLabel) return dictionaryLabel
   const override = headerOverrides[field.key]
   if (override && override.trim()) return override.trim()
+  const dictionaryLabel = dictionaryLabelValue(field.key)
+  if (dictionaryLabel) return dictionaryLabel
   return field.label || humanizeKey(field.key)
 }
 
 function getFieldDisplayNameByKey(key = '') {
-  const dictionaryLabel = dictionaryLabelValue(key)
-  if (dictionaryLabel) return dictionaryLabel
   const field = planFieldsMap.value.get(key)
   if (!field) {
     const override = headerOverrides[key]
     if (override && override.trim()) return override.trim()
+    const dictionaryLabel = dictionaryLabelValue(key)
+    if (dictionaryLabel) return dictionaryLabel
     return humanizeKey(key)
   }
   return getFieldDisplayName(field)
@@ -3945,6 +4580,9 @@ function normalizeDictionaryUrl(value) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+}
+.viz-grid__wide {
+  grid-column: 1 / -1;
 }
 details summary {
   cursor: pointer;

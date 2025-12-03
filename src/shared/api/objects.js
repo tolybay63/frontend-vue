@@ -20,6 +20,15 @@ export async function fetchFactorValues(factorCode) {
   return extractRecords(data)
 }
 
+export async function loadPresentationLinks() {
+  const data = await callObjectsMethod('data/loadObjList', [
+    'Cls_ReportPresentation',
+    'Prop_LinkToView',
+    'reportdata',
+  ])
+  return extractRecords(data)
+}
+
 export function fetchMethodTypeRecords() {
   return fetchFactorValues('Prop_MethodTyp')
 }

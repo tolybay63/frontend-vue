@@ -32,7 +32,7 @@
 
     <div class="layout" :style="layoutStyle">
       <article
-        v-for="container in page.layout?.containers || []"
+        v-for="container in pageContainers"
         :key="container.id"
         class="layout-card"
         :style="containerStyle(container)"
@@ -235,19 +235,32 @@ import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 const route = useRoute()
 const router = useRouter()
 const store = usePageBuilderStore()
+const pageId = computed(() => route.params.pageId)
+const page = computed(() => store.getPageById(pageId.value))
+const pageContainers = computed(() => store.pageContainers[pageId.value]?.items || [])
 
 onMounted(() => {
   store.fetchTemplates()
+  store.fetchPages()
+  if (pageId.value) {
+    store.fetchPageContainers(pageId.value, true)
+  }
 })
 
-const pageId = computed(() => route.params.pageId)
-const page = computed(() => store.getPageById(pageId.value))
+watch(
+  () => pageId.value,
+  (next) => {
+    if (next) {
+      store.fetchPages()
+      store.fetchPageContainers(next, true)
+    }
+  },
+)
+
 const layoutStyle = computed(() => {
   const preset = store.layoutTemplateMap[page.value?.layout?.preset]
   return {
-    gridTemplateColumns: page.value?.layout?.containers?.length
-      ? preset || '1fr'
-      : '1fr',
+    gridTemplateColumns: pageContainers.value.length ? preset || '1fr' : '1fr',
   }
 })
 
@@ -886,9 +899,9 @@ async function hydrateContainer(container) {
 }
 
 function refreshContainers() {
-  const containers = page.value?.layout?.containers || []
-  const ids = new Set(containers.map((container) => container.id))
-  containers.forEach((container) => {
+  const list = pageContainers.value || []
+  const ids = new Set(list.map((container) => container.id))
+  list.forEach((container) => {
     hydrateContainer(container)
   })
   Object.keys(containerStates).forEach((id) => {
@@ -917,7 +930,7 @@ function requestContainerRefresh(containerId) {
     clearTimeout(containerRefreshTimers[containerId])
   }
   containerRefreshTimers[containerId] = setTimeout(() => {
-    const container = page.value?.layout?.containers?.find((item) => item.id === containerId)
+    const container = pageContainers.value.find((item) => item.id === containerId)
     if (container) {
       hydrateContainer(container)
     }
@@ -925,7 +938,7 @@ function requestContainerRefresh(containerId) {
 }
 
 watch(
-  () => page.value?.layout?.containers,
+  () => pageContainers.value,
   () => {
     refreshContainers()
   },

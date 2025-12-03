@@ -1,13 +1,17 @@
 import { defineStore } from 'pinia'
+import { fetchFactorValues } from '@/shared/api/objects'
+import {
+  deleteObjectWithProperties,
+  loadReportPages,
+  savePageContainer,
+  saveReportPage,
+  deleteComplexEntity,
+} from '@/shared/api/report'
 import { fetchReportViewTemplates } from '@/shared/services/reportViews'
 
-const PAGE_STORAGE_KEY = 'page-builder-pages'
-
-const layoutPresets = [
-  { value: 'single', label: 'Одна колонка', template: '1fr' },
-  { value: 'two-column', label: 'Две колонки', template: '1fr 1fr' },
-  { value: 'three-column', label: 'Три колонки', template: '1fr 1fr 1fr' },
-]
+const LAYOUT_FACTOR_CODE = 'Prop_Layout'
+const WIDTH_FACTOR_CODE = 'Prop_Width'
+const HEIGHT_FACTOR_CODE = 'Prop_Height'
 
 const filterLibrary = [
   {
@@ -39,84 +43,59 @@ const filterLibrary = [
   },
 ]
 
-function loadFromStorage(key, fallback = []) {
-  if (typeof window === 'undefined') return structuredClone(fallback)
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (raw) return JSON.parse(raw)
-  } catch (err) {
-    console.warn('pageBuilder store load failed', err)
-  }
-  return structuredClone(fallback)
-}
-
-function persist(key, value) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(key, JSON.stringify(value))
-}
-
-function createId(prefix = 'id') {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
 export const usePageBuilderStore = defineStore('pageBuilder', {
   state: () => ({
-    pages: loadFromStorage(PAGE_STORAGE_KEY, []),
+    pages: [],
+    pagesLoading: false,
+    pagesLoaded: false,
+    pagesError: '',
+    pageContainers: {},
     templates: [],
     templatesLoading: false,
     templatesLoaded: false,
     templatesError: '',
     filters: filterLibrary,
-    layoutPresets,
+    layoutOptions: [],
+    layoutLoading: false,
+    layoutLoaded: false,
+    layoutError: '',
+    widthOptions: [],
+    widthLoading: false,
+    widthLoaded: false,
+    widthError: '',
+    heightOptions: [],
+    heightLoading: false,
+    heightLoaded: false,
+    heightError: '',
   }),
   getters: {
     getPageById: (state) => (id) => state.pages.find((page) => page.id === id),
     getTemplateById: (state) => (id) => state.templates.find((tpl) => tpl.id === id),
     layoutTemplateMap: (state) =>
-      state.layoutPresets.reduce((acc, preset) => {
-        acc[preset.value] = preset.template
+      state.layoutOptions.reduce((acc, preset) => {
+        acc[preset.value] = preset.template || '1fr'
+        return acc
+      }, {}),
+    widthOptionMap: (state) =>
+      state.widthOptions.reduce((acc, option) => {
+        acc[option.value] = option
+        return acc
+      }, {}),
+    heightOptionMap: (state) =>
+      state.heightOptions.reduce((acc, option) => {
+        acc[option.value] = option
         return acc
       }, {}),
   },
   actions: {
-    savePage(payload) {
-      const page = structuredClone(payload)
-      page.id = page.id || createId('page')
-      if (!page.layout) {
-        page.layout = { preset: 'single', containers: [] }
-      }
-      const index = this.pages.findIndex((item) => item.id === page.id)
-      if (index >= 0) {
-        this.pages.splice(index, 1, page)
-      } else {
-        this.pages.push(page)
-      }
-      persist(PAGE_STORAGE_KEY, this.pages)
-      return page.id
-    },
-    removePage(pageId) {
-      const index = this.pages.findIndex((item) => item.id === pageId)
-      if (index >= 0) {
-        this.pages.splice(index, 1)
-        persist(PAGE_STORAGE_KEY, this.pages)
-      }
-    },
     async fetchTemplates(force = false) {
       if (this.templatesLoading || (this.templatesLoaded && !force)) return
       this.templatesLoading = true
       this.templatesError = ''
       try {
         const remoteTemplates = await fetchReportViewTemplates()
-        if (Array.isArray(remoteTemplates) && remoteTemplates.length) {
-          this.templates = remoteTemplates
-          this.templatesLoaded = true
-        } else {
-          this.templates = []
-          this.templatesLoaded = true
-        }
+        this.templates = Array.isArray(remoteTemplates) ? remoteTemplates : []
+        this.templatesLoaded = true
       } catch (err) {
         console.warn('Failed to load report templates', err)
         this.templatesError = 'Не удалось загрузить представления.'
@@ -125,5 +104,472 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.templatesLoading = false
       }
     },
+    async fetchLayoutOptions(force = false) {
+      if (this.layoutLoading || (this.layoutLoaded && !force)) return
+      this.layoutLoading = true
+      this.layoutError = ''
+      try {
+        const records = await fetchFactorValues(LAYOUT_FACTOR_CODE)
+        this.layoutOptions = normalizeLayoutOptions(records)
+        this.layoutLoaded = true
+      } catch (err) {
+        console.warn('Failed to load layout options', err)
+        this.layoutError = 'Не удалось загрузить макеты.'
+        this.layoutOptions = []
+      } finally {
+        this.layoutLoading = false
+      }
+    },
+    async fetchWidthOptions(force = false) {
+      if (this.widthLoading || (this.widthLoaded && !force)) return
+      this.widthLoading = true
+      this.widthError = ''
+      try {
+        const records = await fetchFactorValues(WIDTH_FACTOR_CODE)
+        this.widthOptions = normalizeSizeOptions(records, 'width')
+        this.widthLoaded = true
+      } catch (err) {
+        console.warn('Failed to load width options', err)
+        this.widthError = 'Не удалось загрузить ширины.'
+        this.widthOptions = []
+      } finally {
+        this.widthLoading = false
+      }
+    },
+    async fetchHeightOptions(force = false) {
+      if (this.heightLoading || (this.heightLoaded && !force)) return
+      this.heightLoading = true
+      this.heightError = ''
+      try {
+        const records = await fetchFactorValues(HEIGHT_FACTOR_CODE)
+        this.heightOptions = normalizeSizeOptions(records, 'height')
+        this.heightLoaded = true
+      } catch (err) {
+        console.warn('Failed to load height options', err)
+        this.heightError = 'Не удалось загрузить высоты.'
+        this.heightOptions = []
+      } finally {
+        this.heightLoading = false
+      }
+    },
+    async ensureReferences() {
+      await Promise.all([
+        this.fetchLayoutOptions(),
+        this.fetchWidthOptions(),
+        this.fetchHeightOptions(),
+        this.fetchTemplates(),
+      ])
+    },
+    async fetchPages(force = false) {
+      if (this.pagesLoading || (this.pagesLoaded && !force)) return
+      this.pagesLoading = true
+      this.pagesError = ''
+      try {
+        await Promise.all([
+          this.fetchLayoutOptions(),
+          this.fetchTemplates(),
+          this.fetchWidthOptions(),
+          this.fetchHeightOptions(),
+        ])
+        const records = await loadReportPages()
+        const containersMap = new Map()
+        this.pages = (records || []).map((entry, index) => {
+          const page = normalizePageRecord(entry, index, this.layoutOptions)
+          const containers = normalizeComplexContainers(
+            entry?.complex || [],
+            this.templates,
+            this.widthOptions,
+            this.heightOptions,
+          )
+          containersMap.set(page.id, containers)
+          return page
+        })
+        containersMap.forEach((items, pageId) => {
+          this.pageContainers[pageId] = {
+            loading: false,
+            loaded: true,
+            error: '',
+            items,
+          }
+        })
+        this.pagesLoaded = true
+      } catch (err) {
+        console.warn('Failed to load report pages', err)
+        this.pagesError = 'Не удалось загрузить страницы.'
+        this.pages = []
+      } finally {
+        this.pagesLoading = false
+      }
+    },
+    async fetchPageContainers(pageId, force = false) {
+      if (!pageId) return []
+      if (force || !this.pageContainers[pageId]?.loaded) {
+        await this.fetchPages(true)
+      }
+      return this.pageContainers[pageId]?.items || []
+    },
+    getContainers(pageId) {
+      return this.pageContainers[pageId]?.items || []
+    },
+    async savePageDraft(draft, deletedContainerIds = []) {
+      await this.ensureReferences()
+      const userMeta = readUserMeta()
+      if (!userMeta) {
+        throw new Error('Не удалось определить пользователя. Войдите снова.')
+      }
+      const layoutMeta = this.layoutOptions.find((item) => item.value === draft.layout?.preset)
+      if (!layoutMeta) {
+        throw new Error('Выберите макет страницы.')
+      }
+      const operation = draft.remoteId ? 'upd' : 'ins'
+      const now = new Date().toISOString().slice(0, 10)
+      const payload = {
+        name: draft.pageTitle?.trim() || draft.menuTitle?.trim() || 'Страница',
+        MenuItem: draft.menuTitle?.trim() || '',
+        PageTitle: draft.pageTitle?.trim() || '',
+        Description: draft.description?.trim() || '',
+        GlobalFilter: formatFilterString(draft.filters || []),
+        fvLayout: layoutMeta.fv,
+        pvLayout: layoutMeta.pv,
+        CreatedAt: draft.remoteMeta?.CreatedAt || now,
+        UpdatedAt: now,
+        objUser: userMeta.objUser,
+        pvUser: userMeta.pvUser,
+      }
+      if (operation === 'upd') {
+        payload.id =
+          toNumericId(draft.remoteId) ||
+          toNumericId(draft.id) ||
+          toNumericId(draft.remoteMeta?.id)
+        payload.cls = toNumericId(draft.remoteMeta?.cls)
+        payload.idMenuItem = toNumericId(draft.remoteMeta?.idMenuItem)
+        payload.idPageTitle = toNumericId(draft.remoteMeta?.idPageTitle)
+        payload.idDescription = toNumericId(draft.remoteMeta?.idDescription)
+        payload.idLayout = toNumericId(draft.remoteMeta?.idLayout)
+        payload.idUser = toNumericId(draft.remoteMeta?.idUser)
+        payload.idCreatedAt = toNumericId(draft.remoteMeta?.idCreatedAt)
+        payload.idUpdatedAt = toNumericId(draft.remoteMeta?.idUpdatedAt)
+      }
+      const saved = await saveReportPage(operation, payload)
+      let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id)
+      if (!remoteId) {
+        await this.fetchPages(true)
+        const match = this.pages.find(
+          (page) =>
+            page.menuTitle === payload.MenuItem &&
+            page.pageTitle === payload.PageTitle &&
+            page.description === payload.Description,
+        )
+        remoteId = match?.remoteId || match?.id || ''
+      }
+      if (!remoteId) throw new Error('Сервер не вернул идентификатор страницы.')
+      const existingContainers = this.pageContainers[remoteId]?.items || []
+      const autoDeleteIds = collectRemovedContainerIds(existingContainers, draft.layout?.containers || [])
+      await this.deleteContainers([...autoDeleteIds, ...deletedContainerIds])
+      await this.saveContainers(remoteId, draft.layout?.containers || [])
+      await this.fetchPages(true)
+      return remoteId
+    },
+    async saveContainers(pageId, containers = []) {
+      if (!containers.length) return
+      const numericPageId = toNumericId(pageId)
+      if (!numericPageId) return
+      for (const container of containers) {
+        const template = this.getTemplateById(container.templateId)
+        if (!template) continue
+        const linkMeta = template?.linkMeta
+        const fallbackObj = toNumericId(
+          template.presentationFv ??
+            template.remotePresentation?.id ??
+            template.remoteId ??
+            template.id,
+        )
+        const fallbackPv = toNumericId(
+          template.presentationPv ??
+            template.remotePresentation?.pv ??
+            template.remotePresentation?.PV ??
+            template.remotePresentation?.pvLinkToView ??
+            template.remotePresentation?.pvView,
+        )
+        const objLinkToView = linkMeta?.numericId || fallbackObj
+        const pvLinkToView = linkMeta?.pv || fallbackPv
+        if (!objLinkToView || !pvLinkToView) continue
+        const widthMeta =
+          this.widthOptions.find((opt) => opt.value === container.widthOption) ||
+          this.widthOptions[0] ||
+          null
+        const heightMeta =
+          this.heightOptions.find((opt) => opt.value === container.heightOption) ||
+          this.heightOptions[0] ||
+          null
+        const payload = {
+          id: numericPageId,
+          Title: container.title?.trim() || 'Контейнер',
+          order: container.order || 1,
+          objLinkToView,
+          pvLinkToView,
+          fvWidth: widthMeta?.fv || null,
+          pvWidth: widthMeta?.pv || null,
+          fvHeight: heightMeta?.fv || null,
+          pvHeight: heightMeta?.pv || null,
+        }
+        const hasRemoteIds =
+          Number.isFinite(toNumericId(container.remoteMeta?.idWidth)) &&
+          Number.isFinite(toNumericId(container.remoteMeta?.idHeight)) &&
+          Number.isFinite(toNumericId(container.remoteMeta?.idLinkToView))
+        const operation = hasRemoteIds ? 'upd' : 'ins'
+        if (operation === 'upd') {
+          payload.idWidth = toNumericId(container.remoteMeta?.idWidth)
+          payload.idHeight = toNumericId(container.remoteMeta?.idHeight)
+          payload.idLinkToView = toNumericId(container.remoteMeta?.idLinkToView)
+        }
+        const result = await savePageContainer(operation, payload)
+        if (operation === 'upd') {
+          container.remoteMeta = {
+            ...container.remoteMeta,
+            idWidth: payload.idWidth,
+            idHeight: payload.idHeight,
+            idLinkToView: payload.idLinkToView,
+          }
+        } else if (result) {
+          container.remoteMeta = {
+            id: toNumericId(result?.id ?? result?.Id ?? result?.ID),
+            idWidth: toNumericId(result?.idWidth ?? result?.IdWidth),
+            idHeight: toNumericId(result?.idHeight ?? result?.IdHeight),
+            idLinkToView: toNumericId(result?.idLinkToView ?? result?.IdLinkToView),
+          }
+        }
+      }
+    },
+    async deleteContainers(ids = []) {
+      const uniqueIds = [...new Set(ids)].map((value) => toNumericId(value)).filter(Boolean)
+      for (const id of uniqueIds) {
+        try {
+          await deleteComplexEntity(id)
+        } catch (err) {
+          console.warn('Failed to delete container', id, err)
+        }
+      }
+    },
+    async removePage(pageId) {
+      const remoteId = toNumericId(pageId)
+      if (!remoteId) return
+      try {
+        await deleteObjectWithProperties(remoteId)
+        this.pages = this.pages.filter((page) => page.id !== String(pageId))
+      } catch (err) {
+        console.warn('Failed to delete page', err)
+        throw err
+      }
+    },
   },
 })
+
+function normalizePageRecord(entry = {}, index = 0, layoutOptions = []) {
+  const remoteId = toStableId(entry?.id ?? entry?.Id ?? entry?.ID)
+  const layoutMeta = findLayoutByCodes(layoutOptions, entry?.fvLayout, entry?.pvLayout)
+  return {
+    id: remoteId || `page-${index}`,
+    remoteId,
+    menuTitle: entry?.MenuItem || entry?.menuTitle || entry?.Menu || '',
+    pageTitle: entry?.PageTitle || entry?.name || '',
+    description: entry?.Description || entry?.description || '',
+    filters: parseFilterList(entry?.GlobalFilter),
+    containerCount: Number(entry?.ContainerCount || entry?.containerCount || 0),
+    layout: {
+      preset: layoutMeta?.value || '',
+      template: layoutMeta?.template || '1fr',
+      fvLayout: layoutMeta?.fv || toNumericId(entry?.fvLayout),
+      pvLayout: layoutMeta?.pv || toNumericId(entry?.pvLayout),
+      containers: [],
+    },
+    remoteMeta: entry || {},
+  }
+}
+
+function normalizeLayoutOptions(records = []) {
+  return (records || []).map((record, index) => {
+    const fv = toNumericId(record?.fvLayout ?? record?.fv ?? record?.id)
+    const pv = toNumericId(record?.pvLayout ?? record?.pv)
+    const label = record?.name || record?.Name || `Макет ${index + 1}`
+    return {
+      id: toStableId(record?.id) || `layout-${index}`,
+      value: fv != null ? `layout-${fv}` : `layout-${index}`,
+      label,
+      fv,
+      pv,
+      template: resolveLayoutTemplate(label),
+      raw: record,
+    }
+  })
+}
+
+function normalizeSizeOptions(records = [], type = 'width') {
+  return (records || []).map((record, index) => {
+    const fv = toNumericId(record?.fv ?? record?.id)
+    const pv = toNumericId(record?.pv)
+    const label = record?.name || record?.Name || `${type === 'width' ? 'Ширина' : 'Высота'} ${index + 1}`
+    return {
+      id: toStableId(record?.id) || `${type}-${index}`,
+      value: fv != null ? `${type}-${fv}` : `${type}-${index}`,
+      label,
+      fv,
+      pv,
+      css: type === 'width' ? resolveWidthCss(label) : resolveHeightCss(label),
+      raw: record,
+    }
+  })
+}
+
+function normalizeContainerRecord(entry = {}, index = 0, templates = [], widthOptions = [], heightOptions = []) {
+  const templateId = findTemplateIdByLink(templates, entry?.objLinkToView)
+  const widthMeta = findOptionByCodes(widthOptions, entry?.fvWidth, entry?.pvWidth)
+  const heightMeta = findOptionByCodes(heightOptions, entry?.fvHeight, entry?.pvHeight)
+  return {
+    id: toStableId(entry?.id ?? entry?.Id) || `container-${index}`,
+    remoteId: toStableId(entry?.id ?? entry?.Id),
+    title: entry?.Title || entry?.name || `Контейнер ${index + 1}`,
+    templateId,
+    widthOption: widthMeta?.value || '',
+    heightOption: heightMeta?.value || '',
+    width: widthMeta?.css || '1fr',
+    height: heightMeta?.css || 'auto',
+    order: entry?.order ?? index + 1,
+    remoteMeta: entry || {},
+  }
+}
+
+function normalizeComplexContainers(records = [], templates = [], widthOptions = [], heightOptions = []) {
+  return (records || []).map((entry, index) =>
+    normalizeContainerRecord(
+      {
+        id: entry?.idPageContainerComplex,
+        Title: entry?.nameLinkToView || entry?.name || `Контейнер ${index + 1}`,
+        objLinkToView: entry?.objLinkToView,
+        fvWidth: entry?.fvWidth,
+        pvWidth: entry?.pvWidth,
+        fvHeight: entry?.fvHeight,
+        pvHeight: entry?.pvHeight,
+        idWidth: entry?.idWidth,
+        idHeight: entry?.idHeight,
+        idLinkToView: entry?.idLinkToView,
+      },
+      index,
+      templates,
+      widthOptions,
+      heightOptions,
+    ),
+  )
+}
+
+function collectRemovedContainerIds(existingContainers = [], incomingContainers = []) {
+  const existingIds = new Set(
+    existingContainers
+      .map((container) => getContainerRemoteId(container))
+      .filter(Boolean),
+  )
+  const incomingIds = new Set(
+    incomingContainers.map((container) => getContainerRemoteId(container)).filter(Boolean),
+  )
+  return [...existingIds].filter((id) => !incomingIds.has(id))
+}
+
+function findLayoutByCodes(options = [], fv, pv) {
+  const numericFv = toNumericId(fv)
+  const numericPv = toNumericId(pv)
+  return options.find((option) => option.fv === numericFv && option.pv === numericPv) || null
+}
+
+function findOptionByCodes(options = [], fv, pv) {
+  const numericFv = toNumericId(fv)
+  const numericPv = toNumericId(pv)
+  return options.find((option) => option.fv === numericFv && option.pv === numericPv) || null
+}
+
+function findTemplateIdByLink(templates = [], linkId) {
+  const numericLink = toNumericId(linkId)
+  const normalized = toStableId(linkId)
+  const match = templates.find((tpl) => {
+    const tplLinkId = toNumericId(tpl.linkMeta?.numericId)
+    const tplRemoteId = toNumericId(tpl.remotePresentation?.id ?? tpl.remoteId)
+    return tplLinkId === numericLink || tplRemoteId === numericLink || toStableId(tpl.remoteId) === normalized
+  })
+  return match?.id || normalized || ''
+}
+
+function getContainerRemoteId(container = {}) {
+  return (
+    toNumericId(container?.remoteMeta?.id) ||
+    toNumericId(container?.remoteMeta?.idPageContainerComplex) ||
+    toNumericId(container?.remoteId) ||
+    null
+  )
+}
+
+function parseFilterList(raw) {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  return String(raw)
+    .split(/[;,|]/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function formatFilterString(list = []) {
+  return (list || []).filter(Boolean).join(',')
+}
+
+function resolveLayoutTemplate(label = '') {
+  const lower = label.toLowerCase()
+  if (lower.includes('три') || lower.includes('3')) return '1fr 1fr 1fr'
+  if (lower.includes('дв') || lower.includes('2')) return '1fr 1fr'
+  return '1fr'
+}
+
+function resolveWidthCss(label = '') {
+  const lower = label.toLowerCase()
+  if (lower.includes('3')) return '3fr'
+  if (lower.includes('2')) return '2fr'
+  return '1fr'
+}
+
+function resolveHeightCss(label = '') {
+  const lower = label.toLowerCase()
+  if (lower.includes('авто')) return 'auto'
+  const match = lower.match(/(\d{2,4})/)
+  if (match) {
+    return `${match[1]}px`
+  }
+  return 'auto'
+}
+
+function toNumericId(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function toStableId(value) {
+  if (value === null || typeof value === 'undefined') return ''
+  const str = String(value).trim()
+  return str || ''
+}
+
+function readStoredUserValue(key) {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return Number(JSON.parse(raw)) || null
+  } catch {
+    return null
+  }
+}
+
+function readUserMeta() {
+  const objUser = readStoredUserValue('objUser')
+  const pvUser = readStoredUserValue('pvUser')
+  if (!Number.isFinite(objUser) || !Number.isFinite(pvUser)) {
+    return null
+  }
+  return { objUser, pvUser }
+}

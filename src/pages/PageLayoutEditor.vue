@@ -9,11 +9,15 @@
       </div>
       <div class="header-actions">
         <button class="btn-outline" type="button" @click="goBack">Отмена</button>
-        <button class="btn-primary" type="button" @click="save">Сохранить</button>
+        <button class="btn-primary" type="button" @click="save" :disabled="saving">
+          {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+        </button>
       </div>
     </header>
 
-    <form class="form" @submit.prevent="save">
+    <div v-if="loading" class="muted">Загружаем страницу...</div>
+    <p v-else-if="loadError" class="error-text">{{ loadError }}</p>
+    <form v-else class="form" @submit.prevent="save">
       <label class="field">
         <span>Пункт меню</span>
         <input v-model="draft.menuTitle" placeholder="Например: Мониторинг пути" required />
@@ -40,7 +44,8 @@
       <label class="field">
         <span>Макет</span>
         <select v-model="draft.layout.preset">
-          <option v-for="preset in layoutPresets" :key="preset.value" :value="preset.value">
+          <option disabled value="">Выберите макет</option>
+          <option v-for="preset in layoutOptions" :key="preset.value" :value="preset.value">
             {{ preset.label }}
           </option>
         </select>
@@ -94,20 +99,20 @@
             </label>
             <label>
               <span>Ширина</span>
-              <select v-model="container.width">
-                <option value="1fr">1 часть</option>
-                <option value="2fr">2 части</option>
-                <option value="3fr">3 части</option>
+              <select v-model="container.widthOption">
+                <option disabled value="">Выберите ширину</option>
+                <option v-for="option in widthOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
               </select>
             </label>
             <label>
               <span>Высота</span>
-              <select v-model="container.height">
-                <option value="auto">Авто</option>
-                <option value="320px">320 px</option>
-                <option value="480px">480 px</option>
-                <option value="640px">640 px</option>
-                <option value="800px">800 px</option>
+              <select v-model="container.heightOption">
+                <option disabled value="">Выберите высоту</option>
+                <option v-for="option in heightOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
               </select>
             </label>
           </div>
@@ -130,7 +135,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 
@@ -140,32 +145,23 @@ const store = usePageBuilderStore()
 
 const pageId = computed(() => route.params.pageId)
 const isNew = computed(() => pageId.value === 'new' || !pageId.value)
+const loading = ref(true)
+const loadError = ref('')
+const saving = ref(false)
+const deletedContainerIds = ref([])
 
-function createDraft() {
-  return reactive({
-    id: null,
-    menuTitle: '',
-    pageTitle: '',
-    description: '',
-    filters: [],
-    layout: {
-      preset: store.layoutPresets[0]?.value || 'single',
-      containers: [],
-    },
-  })
-}
-
-const draft = createDraft()
-
-if (!isNew.value) {
-  const existing = store.getPageById(pageId.value)
-  if (existing) {
-    Object.assign(draft, JSON.parse(JSON.stringify(existing)))
-  }
-}
-
-onMounted(() => {
-  store.fetchTemplates(true)
+const draft = reactive({
+  id: null,
+  remoteId: null,
+  remoteMeta: {},
+  menuTitle: '',
+  pageTitle: '',
+  description: '',
+  filters: [],
+  layout: {
+    preset: '',
+    containers: [],
+  },
 })
 
 const templates = computed(() => store.templates)
@@ -173,7 +169,94 @@ const templatesLoading = computed(() => store.templatesLoading)
 const templatesError = computed(() => store.templatesError)
 const showTemplatesLoading = computed(() => templatesLoading.value && !templates.value.length)
 const filters = computed(() => store.filters)
-const layoutPresets = computed(() => store.layoutPresets)
+const layoutOptions = computed(() => store.layoutOptions)
+const widthOptions = computed(() => store.widthOptions)
+const heightOptions = computed(() => store.heightOptions)
+
+watch(layoutOptions, (options) => {
+  if (!draft.layout.preset && options.length) {
+    draft.layout.preset = options[0].value
+  }
+})
+
+watch(widthOptions, (options) => {
+  if (!options.length) return
+  draft.layout.containers.forEach((container) => {
+    if (!container.widthOption) {
+      container.widthOption = options[0].value
+    }
+  })
+})
+
+watch(heightOptions, (options) => {
+  if (!options.length) return
+  draft.layout.containers.forEach((container) => {
+    if (!container.heightOption) {
+      container.heightOption = options[0].value
+    }
+  })
+})
+
+onMounted(async () => {
+  try {
+    await Promise.all([
+      store.fetchLayoutOptions(),
+      store.fetchWidthOptions(),
+      store.fetchHeightOptions(),
+      store.fetchTemplates(true),
+      store.fetchPages(true),
+    ])
+    if (!isNew.value) {
+      await loadExistingPage()
+    } else if (!draft.layout.preset && layoutOptions.value.length) {
+      draft.layout.preset = layoutOptions.value[0].value
+    }
+  } catch (err) {
+    console.warn('Failed to initialize page editor', err)
+    loadError.value = 'Не удалось загрузить страницу. Попробуйте позже.'
+  } finally {
+    loading.value = false
+  }
+})
+
+async function loadExistingPage() {
+  deletedContainerIds.value = []
+  const existing = store.getPageById(pageId.value)
+  if (!existing) {
+    loadError.value = 'Страница не найдена или удалена.'
+    return
+  }
+  draft.id = existing.id
+  draft.remoteId = existing.remoteId || existing.id
+  draft.remoteMeta = existing.remoteMeta || {}
+  draft.menuTitle = existing.menuTitle || ''
+  draft.pageTitle = existing.pageTitle || ''
+  draft.description = existing.description || ''
+  draft.filters = [...(existing.filters || [])]
+  draft.layout.preset = existing.layout?.preset || layoutOptions.value[0]?.value || ''
+  const containers = await store.fetchPageContainers(existing.id, true)
+  draft.layout.containers.splice(0, draft.layout.containers.length)
+  containers.forEach((container, index) => {
+    draft.layout.containers.push({
+      id: container.id || createContainerId(),
+      title: container.title,
+      templateId: container.templateId || '',
+      widthOption: container.widthOption || widthOptions.value[0]?.value || '',
+      heightOption: container.heightOption || heightOptions.value[0]?.value || '',
+      order: container.order ?? index + 1,
+    })
+  })
+  ensureContainerDefaults()
+}
+
+function ensureContainerDefaults() {
+  const widthFallback = widthOptions.value[0]?.value || ''
+  const heightFallback = heightOptions.value[0]?.value || ''
+  draft.layout.containers.forEach((container) => {
+    if (!container.widthOption) container.widthOption = widthFallback
+    if (!container.heightOption) container.heightOption = heightFallback
+  })
+}
 
 function templateMeta(templateId) {
   if (!templateId) return null
@@ -184,34 +267,66 @@ function refreshTemplates() {
   store.fetchTemplates(true)
 }
 
+function createContainerId() {
+  return `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function addContainer() {
   draft.layout.containers.push({
-    id: `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: createContainerId(),
     title: `Контейнер ${draft.layout.containers.length + 1}`,
     templateId: templates.value[0]?.id || '',
-    width: '1fr',
-    height: 'auto',
+    widthOption: widthOptions.value[0]?.value || '',
+    heightOption: heightOptions.value[0]?.value || '',
+    order: draft.layout.containers.length + 1,
   })
 }
 
 function removeContainer(containerId) {
   const index = draft.layout.containers.findIndex((c) => c.id === containerId)
   if (index >= 0) {
-    draft.layout.containers.splice(index, 1)
+    const [removed] = draft.layout.containers.splice(index, 1)
+    const remoteId =
+      removed?.remoteMeta?.id ||
+      removed?.remoteMeta?.idPageContainerComplex ||
+      removed?.remoteId
+    if (remoteId) {
+      deletedContainerIds.value.push(remoteId)
+    }
   }
 }
 
-function save() {
-  const payload = JSON.parse(JSON.stringify(draft))
-  payload.id = isNew.value ? null : payload.id || pageId.value
-  const id = store.savePage(payload)
-  router.push(`/pages/${id}/edit`)
+async function save() {
+  if (saving.value) return
+  if (!draft.layout.preset) {
+    alert('Выберите макет страницы')
+    return
+  }
+  const invalidContainer = draft.layout.containers.find((container) => !container.templateId)
+  if (invalidContainer) {
+    alert('Выберите представление для каждого контейнера.')
+    return
+  }
+  saving.value = true
+  try {
+    const payload = JSON.parse(JSON.stringify(draft))
+    payload.layout.preset = draft.layout.preset
+    const pageId = await store.savePageDraft(payload, deletedContainerIds.value)
+    deletedContainerIds.value = []
+    router.push(`/pages/${pageId}/edit`)
+  } catch (err) {
+    console.warn('Failed to save page', err)
+    alert('Не удалось сохранить страницу. Попробуйте позже.')
+  } finally {
+    saving.value = false
+  }
 }
 
 function goBack() {
   router.push('/pages')
 }
 </script>
+
 
 <style scoped>
 .page {

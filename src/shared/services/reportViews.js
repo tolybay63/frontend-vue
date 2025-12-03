@@ -3,7 +3,7 @@ import {
   loadReportPresentations,
   loadReportSources,
 } from '@/shared/api/report'
-import { fetchFactorValues } from '@/shared/api/objects'
+import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
@@ -12,13 +12,14 @@ const FALLBACK_AGGREGATORS = {
 }
 
 export async function fetchReportViewTemplates() {
-  const [presentationsRaw, configsRaw, sourcesRaw, vizRecords, aggRecords] =
+  const [presentationsRaw, configsRaw, sourcesRaw, vizRecords, aggRecords, linkRecords] =
     await Promise.all([
       loadReportPresentations(),
       loadReportConfigurations(),
       loadReportSources(),
       fetchFactorValues('Prop_VisualTyp'),
       fetchFactorValues('Prop_FieldVal'),
+      loadPresentationLinks(),
     ])
 
   const visualizationMap = buildVisualizationLookup(vizRecords)
@@ -36,17 +37,23 @@ export async function fetchReportViewTemplates() {
   const presentations = presentationsRaw.map((entry, index) =>
     normalizePresentation(entry, index, visualizationMap),
   )
+  const linkMap = buildPresentationLinkMap(linkRecords)
 
   return presentations.map((presentation) => {
     const config = configMap.get(presentation.parentId) || null
     const source = config
       ? sourceMap.get(config.parentId) || null
       : null
-    return buildTemplate(presentation, config, source)
+    const link =
+      linkMap.get(toStableId(presentation.remoteId)) ||
+      linkMap.get(toStableId(presentation.id)) ||
+      linkMap.get(buildNameKey(presentation.name)) ||
+      null
+    return buildTemplate(presentation, config, source, link)
   })
 }
 
-function buildTemplate(presentation, config, source) {
+function buildTemplate(presentation, config, source, link) {
   return {
     id: presentation.id,
     name: presentation.name,
@@ -60,6 +67,7 @@ function buildTemplate(presentation, config, source) {
     remoteConfig: config?.remoteMeta,
     missingConfig: !config,
     missingSource: !source,
+    linkMeta: link,
   }
 }
 
@@ -371,4 +379,35 @@ function toStableId(value) {
 
 function createLocalId(prefix = 'view') {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function buildPresentationLinkMap(records = []) {
+  const map = new Map()
+  ;(records || []).forEach((record) => {
+    const meta = normalizePresentationLink(record)
+    if (!meta) return
+    map.set(meta.id, meta)
+    const nameKey = buildNameKey(meta.name)
+    if (nameKey && !map.has(nameKey)) {
+      map.set(nameKey, meta)
+    }
+  })
+  return map
+}
+
+function normalizePresentationLink(record = {}) {
+  const id = toStableId(record?.id ?? record?.Id ?? record?.ID)
+  if (!id) return null
+  return {
+    id,
+    numericId: toNumericId(record?.id ?? record?.Id ?? record?.ID),
+    pv: toNumericId(record?.pv ?? record?.Pv ?? record?.PV),
+    name: record?.name || record?.fullName || '',
+    raw: record || {},
+  }
+}
+
+function buildNameKey(value) {
+  if (!value) return ''
+  return `name:${String(value).trim().toLowerCase()}`
 }

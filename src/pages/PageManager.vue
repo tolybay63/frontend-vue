@@ -11,7 +11,14 @@
       <button class="btn-primary" type="button" @click="createPage">Создать страницу</button>
     </header>
 
-    <div v-if="!pages.length" class="empty-state">
+    <div v-if="pagesLoading" class="empty-state">
+      <p>Загружаем страницы...</p>
+    </div>
+    <div v-else-if="pagesError" class="empty-state empty-state--error">
+      <p>{{ pagesError }}</p>
+      <button class="btn-outline btn-sm" type="button" @click="store.fetchPages(true)">Повторить</button>
+    </div>
+    <div v-else-if="!pages.length" class="empty-state">
       <p>Страниц пока нет. Нажмите «Создать страницу», чтобы начать.</p>
     </div>
 
@@ -30,7 +37,7 @@
           <dt>Глобальные фильтры</dt>
           <dd>{{ page.filters?.length ? filterLabels(page.filters).join(', ') : 'Нет' }}</dd>
           <dt>Контейнеры</dt>
-          <dd>{{ page.layout?.containers?.length || 0 }}</dd>
+          <dd>{{ page.containerCount ?? page.layout?.containers?.length ?? 0 }}</dd>
         </dl>
         <div class="actions">
           <button
@@ -67,7 +74,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 
@@ -76,6 +83,12 @@ const store = usePageBuilderStore()
 
 const pages = computed(() => store.pages)
 const filters = computed(() => store.filters)
+const pagesLoading = computed(() => store.pagesLoading)
+const pagesError = computed(() => store.pagesError)
+
+onMounted(() => {
+  store.fetchPages(true)
+})
 
 function filterLabels(keys = []) {
   return keys
@@ -92,9 +105,14 @@ function editPage(pageId) {
 function previewPage(pageId) {
   router.push(`/dash/${pageId}`)
 }
-function removePage(pageId) {
+async function removePage(pageId) {
   if (confirm('Удалить страницу?')) {
-    store.removePage(pageId)
+    try {
+      await store.removePage(pageId)
+      store.fetchPages(true)
+    } catch (err) {
+      alert('Не удалось удалить страницу. Попробуйте позже.')
+    }
   }
 }
 </script>
@@ -163,5 +181,12 @@ dt {
   border-radius: 12px;
   padding: 16px;
   color: #6b7280;
+}
+.empty-state--error {
+  border-color: #fecaca;
+  color: #b91c1c;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

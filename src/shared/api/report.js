@@ -59,6 +59,35 @@ export async function saveReportPresentation(operation, payload) {
   return data?.result || null
 }
 
+export async function loadReportPages() {
+  const data = await callReportMethod('report/loadReportPage', [0])
+  if (Array.isArray(data?.result?.records)) return data.result.records
+  if (Array.isArray(data?.result)) return data.result
+  return []
+}
+
+export async function saveReportPage(operation, payload) {
+  const data = await callReportMethod('report/saveReportPage', [operation, payload])
+  if (Array.isArray(data?.result?.records)) return data.result.records[0]
+  if (Array.isArray(data?.result)) return data.result[0]
+  return data?.result || null
+}
+
+export async function loadPageContainers(pageId) {
+  if (!pageId) return []
+  const data = await callReportMethod('report/loadComplexPageContainer', [pageId])
+  if (Array.isArray(data?.result?.records)) return data.result.records
+  if (Array.isArray(data?.result)) return data.result
+  return []
+}
+
+export async function savePageContainer(operation, payload) {
+  const data = await callReportMethod('report/saveComplexPageContainer', [operation, payload])
+  if (Array.isArray(data?.result?.records)) return data.result.records[0]
+  if (Array.isArray(data?.result)) return data.result[0]
+  return data?.result || null
+}
+
 export async function deleteComplexEntity(id) {
   if (!id) return null
   return callReportMethod('report/deleteComplexData', [id])

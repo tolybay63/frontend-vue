@@ -1,0 +1,51 @@
+/* Файл: src/shared/styles/tokens.css
+   Назначение: дизайн-токены (цвета, тени, скругления, интервалы) для всего проекта.
+   Использование: подключается один раз в app; компоненты опираются на эти переменные. */
+
+:root{
+  --s360-radius: 12px;
+  --s360-radius-lg: 16px;
+  --s360-gap: 10px;
+  --s360-space-xs: 4px;
+  --s360-space-sm: 8px;
+  --s360-space-md: 12px;
+  --s360-space-lg: 16px;
+  --s360-space-xl: 24px;
+  --s360-space-xxl: 32px;
+  --s360-shadow: 0 1px 6px rgba(43,108,176,0.06);
+  --s360-shadow-lg: 0 18px 40px rgba(43,108,176,0.06);
+  --s360-color-primary: #2b6cb0;
+  --s360-color-primary-soft: rgba(43,108,176,0.08);
+  --s360-color-surface: #FFFFFF;
+  --s360-color-elevated: #FFFFFF;
+  --s360-color-panel: #f8fafc;
+  --s360-color-border-subtle: #DEE2E6;
+  --s360-text-primary: #212529;
+  --s360-text-muted: #6C757D;
+  --s360-text-accent: #2b6cb0;
+  --s360-text-success: #198754;
+  --s360-text-warning: #FFC107;
+  --s360-text-critical: #DC3545;
+  --s360-color-info-soft: rgba(99,179,237,0.12);
+  --s360-color-warning-soft: rgba(255,193,7,0.12);
+  --s360-color-critical-soft: rgba(220,53,69,0.12);
+  --s360-color-success-soft: rgba(25,135,84,0.12);
+  --s360-color-neutral-soft: rgba(15,23,42,0.04);
+  --s360-overdue-bg: #FFF1F3; /* soft pink for overdue rows */
+  --s360-container-max-width: 1280px;
+  --s360-overlay-veil: rgba(255,255,255,0.85);
+  --s360-font-title-lg: 24px;
+  --s360-font-title-md: 18px;
+  --s360-font-body: 14px;
+  --s360-font-caption: 13px;
+}
+
+/* Minimal palette tokens requested */
+:root {
+  --s360-bg: #FFFFFF;
+  --s360-surface: #FFFFFF;
+  --s360-border: #DEE2E6;
+  --s360-text: #212529;
+  --s360-accent: #2b6cb0;
+}
+

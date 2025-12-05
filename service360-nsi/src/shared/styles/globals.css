@@ -1,0 +1,51 @@
+/* Файл: src/shared/styles/globals.css
+   Назначение: глобальные сбросы и базовая типографика. Без агрессивных переопределений Naive UI.
+   Использование: импорт в app/main.ts или корневой компонент. */
+
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+  color: var(--s360-text-primary);
+  background: var(--s360-bg);
+}
+
+/* Utility: overdue row background */
+.is-overdue,
+tr.is-overdue > td,
+.n-data-table .is-overdue .n-data-table-td {
+  background: var(--s360-overdue-bg) !important;
+}
+
+/* Naive UI tweaks: inputs, cards, density */
+.n-input, .n-select, .n-date-picker, .n-input-number {
+  --_border-color: #DEE2E6;
+}
+.n-input .n-input__border,
+.n-input .n-input__state-border,
+.n-input-number .n-input-number__border,
+.n-input-number .n-input-number__state-border {
+  border-radius: 8px !important;
+}
+.n-input:not(.n-input--disabled) .n-input__border,
+.n-input-number:not(.n-input-number--disabled) .n-input-number__border {
+  border-color: #DEE2E6 !important;
+}
+.n-input.n-input--focus .n-input__border,
+.n-input-number.n-input-number--focus .n-input-number__border {
+  border-color: #2b6cb0 !important;
+  box-shadow: 0 0 0 2px rgba(13,110,253,0.15) !important;
+}
+
+/* Cards: soft shadow, large radius */
+.n-card {
+  border-radius: 16px !important;
+  box-shadow: var(--s360-shadow-lg) !important;
+  border: 1px solid #E9ECEF !important;
+}
+
+/* Data table compact density */
+.n-data-table .n-data-table-thead th,
+.n-data-table .n-data-table-td {
+  padding: 8px 12px !important;
+}
+

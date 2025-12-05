@@ -33,12 +33,15 @@
 
       <fieldset class="field">
         <legend>Глобальные фильтры</legend>
-        <div class="filter-grid">
-          <label v-for="filter in filters" :key="filter.key" class="checkbox">
+        <div v-if="availableFilterOptions.length" class="filter-grid">
+          <label v-for="filter in availableFilterOptions" :key="filter.key" class="checkbox">
             <input type="checkbox" :value="filter.key" v-model="draft.filters" />
             <span>{{ filter.label }}</span>
           </label>
         </div>
+        <p v-else class="muted">
+          Добавьте контейнеры с общими полями, чтобы выбрать фильтры страницы.
+        </p>
       </fieldset>
 
       <label class="field">
@@ -137,11 +140,14 @@
 <script setup>
 import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
+import { usePageBuilderStore, resolveCommonContainerFieldKeys } from '@/shared/stores/pageBuilder'
+import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
+import { humanizeKey } from '@/shared/lib/pivotUtils'
 
 const router = useRouter()
 const route = useRoute()
 const store = usePageBuilderStore()
+const fieldDictionaryStore = useFieldDictionaryStore()
 
 const pageId = computed(() => route.params.pageId)
 const isNew = computed(() => pageId.value === 'new' || !pageId.value)
@@ -168,10 +174,20 @@ const templates = computed(() => store.templates)
 const templatesLoading = computed(() => store.templatesLoading)
 const templatesError = computed(() => store.templatesError)
 const showTemplatesLoading = computed(() => templatesLoading.value && !templates.value.length)
-const filters = computed(() => store.filters)
 const layoutOptions = computed(() => store.layoutOptions)
 const widthOptions = computed(() => store.widthOptions)
 const heightOptions = computed(() => store.heightOptions)
+const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
+const dictionaryLabelsLower = computed(() => fieldDictionaryStore.labelMapLower || {})
+const commonFilterKeys = computed(() =>
+  resolveCommonContainerFieldKeys(draft.layout.containers, templates.value),
+)
+const availableFilterOptions = computed(() =>
+  commonFilterKeys.value.map((key) => ({
+    key,
+    label: resolveFieldLabel(key),
+  })),
+)
 
 watch(layoutOptions, (options) => {
   if (!draft.layout.preset && options.length) {
@@ -197,6 +213,11 @@ watch(heightOptions, (options) => {
   })
 })
 
+watch(availableFilterOptions, (options) => {
+  const allowed = new Set(options.map((option) => option.key))
+  draft.filters = draft.filters.filter((key) => allowed.has(key))
+})
+
 onMounted(async () => {
   try {
     await Promise.all([
@@ -205,6 +226,7 @@ onMounted(async () => {
       store.fetchHeightOptions(),
       store.fetchTemplates(true),
       store.fetchPages(true),
+      fieldDictionaryStore.fetchDictionary(),
     ])
     if (!isNew.value) {
       await loadExistingPage()
@@ -265,6 +287,18 @@ function templateMeta(templateId) {
 
 function refreshTemplates() {
   store.fetchTemplates(true)
+}
+
+function resolveFieldLabel(key) {
+  if (!key) return ''
+  const normalized = String(key).trim()
+  if (!normalized) return ''
+  const direct = dictionaryLabels.value?.[normalized]
+  if (direct) return direct
+  const lower = normalized.toLowerCase()
+  const lowerMatch = dictionaryLabelsLower.value?.[lower]
+  if (lowerMatch) return lowerMatch
+  return humanizeKey(normalized)
 }
 
 function createContainerId() {

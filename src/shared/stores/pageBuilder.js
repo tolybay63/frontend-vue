@@ -76,6 +76,11 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         acc[preset.value] = preset.template || '1fr'
         return acc
       }, {}),
+    layoutLabelMap: (state) =>
+      state.layoutOptions.reduce((acc, preset) => {
+        acc[preset.value] = preset.label || preset.value
+        return acc
+      }, {}),
     widthOptionMap: (state) =>
       state.widthOptions.reduce((acc, option) => {
         acc[option.value] = option
@@ -221,13 +226,25 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       if (!layoutMeta) {
         throw new Error('Выберите макет страницы.')
       }
-      const operation = draft.remoteId ? 'upd' : 'ins'
+      const resolvedNumericId =
+        toNumericId(draft.remoteId) ||
+        toNumericId(draft.id) ||
+        toNumericId(draft.remoteMeta?.id)
+      const resolvedRawId =
+        resolvedNumericId ??
+        draft.remoteMeta?.id ??
+        draft.remoteId ??
+        draft.id ??
+        null
+      const operation = resolvedRawId ? 'upd' : 'ins'
       const now = new Date().toISOString().slice(0, 10)
+      const normalizedDescription = draft.description?.trim() || ''
       const payload = {
         name: draft.pageTitle?.trim() || draft.menuTitle?.trim() || 'Страница',
         MenuItem: draft.menuTitle?.trim() || '',
         PageTitle: draft.pageTitle?.trim() || '',
-        Description: draft.description?.trim() || '',
+        Description: normalizedDescription,
+        Discription: normalizedDescription,
         GlobalFilter: formatFilterString(draft.filters || []),
         fvLayout: layoutMeta.fv,
         pvLayout: layoutMeta.pv,
@@ -237,10 +254,10 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         pvUser: userMeta.pvUser,
       }
       if (operation === 'upd') {
-        payload.id =
-          toNumericId(draft.remoteId) ||
-          toNumericId(draft.id) ||
-          toNumericId(draft.remoteMeta?.id)
+        if (!resolvedRawId) {
+          throw new Error('Не удалось определить идентификатор страницы.')
+        }
+        payload.id = resolvedNumericId ?? resolvedRawId
         payload.cls = toNumericId(draft.remoteMeta?.cls)
         payload.idMenuItem = toNumericId(draft.remoteMeta?.idMenuItem)
         payload.idPageTitle = toNumericId(draft.remoteMeta?.idPageTitle)
@@ -251,7 +268,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         payload.idUpdatedAt = toNumericId(draft.remoteMeta?.idUpdatedAt)
       }
       const saved = await saveReportPage(operation, payload)
-      let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id)
+      let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id ?? resolvedRawId)
       if (!remoteId) {
         await this.fetchPages(true)
         const match = this.pages.find(
@@ -273,7 +290,11 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
     async saveContainers(pageId, containers = []) {
       if (!containers.length) return
       const numericPageId = toNumericId(pageId)
-      if (!numericPageId) return
+      const targetPageId = Number.isFinite(numericPageId) ? numericPageId : pageId
+      if (!targetPageId) {
+        console.warn('Не удалось определить идентификатор страницы для контейнеров.')
+        return
+      }
       for (const container of containers) {
         const template = this.getTemplateById(container.templateId)
         if (!template) continue
@@ -303,7 +324,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
           this.heightOptions[0] ||
           null
         const payload = {
-          id: numericPageId,
+          id: targetPageId,
           Title: container.title?.trim() || 'Контейнер',
           order: container.order || 1,
           objLinkToView,
@@ -373,7 +394,7 @@ function normalizePageRecord(entry = {}, index = 0, layoutOptions = []) {
     remoteId,
     menuTitle: entry?.MenuItem || entry?.menuTitle || entry?.Menu || '',
     pageTitle: entry?.PageTitle || entry?.name || '',
-    description: entry?.Description || entry?.description || '',
+    description: entry?.Description || entry?.Discription || entry?.description || '',
     filters: parseFilterList(entry?.GlobalFilter),
     containerCount: Number(entry?.ContainerCount || entry?.containerCount || 0),
     layout: {
@@ -541,6 +562,42 @@ function resolveHeightCss(label = '') {
     return `${match[1]}px`
   }
   return 'auto'
+}
+
+export function resolveCommonContainerFieldKeys(containers = [], templates = []) {
+  if (!Array.isArray(containers) || !containers.length) return []
+  const templateMap = new Map((templates || []).map((tpl) => [tpl.id, tpl]))
+  let common = null
+  containers.forEach((container) => {
+    const tpl = templateMap.get(container.templateId)
+    if (!tpl) return
+    const keys = extractTemplateFieldKeys(tpl)
+    if (!keys.length) return
+    if (common === null) {
+      common = new Set(keys)
+    } else {
+      common = new Set(keys.filter((key) => common.has(key)))
+    }
+  })
+  return common ? [...common] : []
+}
+
+function extractTemplateFieldKeys(template) {
+  if (!template) return []
+  const snapshot = template.snapshot || {}
+  const metaKeys = Object.keys(snapshot.fieldMeta || {})
+  const filtersMetaKeys = (snapshot.filtersMeta || [])
+    .map((item) => item?.key)
+    .filter(Boolean)
+  const pivotKeys = [
+    ...(snapshot.pivot?.filters || []),
+    ...(snapshot.pivot?.rows || []),
+    ...(snapshot.pivot?.columns || []),
+  ].filter(Boolean)
+  const metricKeys = (snapshot.metrics || [])
+    .map((metric) => metric?.fieldKey)
+    .filter(Boolean)
+  return Array.from(new Set([...metaKeys, ...filtersMetaKeys, ...pivotKeys, ...metricKeys]))
 }
 
 function toNumericId(value) {

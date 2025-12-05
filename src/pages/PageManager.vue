@@ -29,13 +29,13 @@
             <h2>{{ page.pageTitle }}</h2>
             <p class="muted">{{ page.description || 'Без описания' }}</p>
           </div>
-          <span class="badge">{{ page.layout?.preset || 'single' }}</span>
+          <span class="badge">{{ layoutLabel(page.layout?.preset) }}</span>
         </header>
         <dl>
           <dt>Пункт меню</dt>
           <dd>{{ page.menuTitle }}</dd>
           <dt>Глобальные фильтры</dt>
-          <dd>{{ page.filters?.length ? filterLabels(page.filters).join(', ') : 'Нет' }}</dd>
+          <dd>{{ pageFilterLabels(page).length ? pageFilterLabels(page).join(', ') : 'Нет' }}</dd>
           <dt>Контейнеры</dt>
           <dd>{{ page.containerCount ?? page.layout?.containers?.length ?? 0 }}</dd>
         </dl>
@@ -76,24 +76,52 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
+import { usePageBuilderStore, resolveCommonContainerFieldKeys } from '@/shared/stores/pageBuilder'
+import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
+import { humanizeKey } from '@/shared/lib/pivotUtils'
 
 const router = useRouter()
 const store = usePageBuilderStore()
+const fieldDictionaryStore = useFieldDictionaryStore()
 
 const pages = computed(() => store.pages)
-const filters = computed(() => store.filters)
 const pagesLoading = computed(() => store.pagesLoading)
 const pagesError = computed(() => store.pagesError)
+const layoutLabels = computed(() => store.layoutLabelMap)
+const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
+const dictionaryLabelsLower = computed(() => fieldDictionaryStore.labelMapLower || {})
 
 onMounted(() => {
   store.fetchPages(true)
+  fieldDictionaryStore.fetchDictionary()
 })
 
-function filterLabels(keys = []) {
-  return keys
-    .map((key) => filters.value.find((item) => item.key === key)?.label || key)
-    .filter(Boolean)
+function layoutLabel(value) {
+  if (!value) return '—'
+  return layoutLabels.value?.[value] || value
+}
+
+function pageFilterLabels(page) {
+  if (!page || !page.filters?.length) return []
+  const containers = store.pageContainers?.[page.id]?.items || []
+  const commonKeys = resolveCommonContainerFieldKeys(containers, store.templates)
+  const allowed = new Set(commonKeys)
+  if (!allowed.size) return []
+  return page.filters
+    .filter((key) => allowed.has(key))
+    .map((key) => resolveFieldLabel(key))
+}
+
+function resolveFieldLabel(key) {
+  if (!key) return ''
+  const normalized = String(key).trim()
+  if (!normalized) return ''
+  const direct = dictionaryLabels.value?.[normalized]
+  if (direct) return direct
+  const lower = normalized.toLowerCase()
+  const lowerMatch = dictionaryLabelsLower.value?.[lower]
+  if (lowerMatch) return lowerMatch
+  return humanizeKey(normalized)
 }
 
 function createPage() {

@@ -40,9 +40,10 @@
           class="page-filter"
         >
           <span>{{ filter.label }}</span>
-          <input
+          <MultiSelectDropdown
             v-model="pageFilterValues[filter.key]"
-            :placeholder="filter.placeholder || 'Введите значение'"
+            :options="globalFilterValueOptions(filter.key)"
+            placeholder="Выберите значения"
           />
         </label>
       </div>
@@ -413,7 +414,7 @@
 <script setup>
 import { computed, reactive, ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
+import { usePageBuilderStore, resolveCommonContainerFieldKeys } from '@/shared/stores/pageBuilder'
 import { fetchPlanRecords } from '@/shared/api/plan'
 import { fetchParameterRecords } from '@/shared/api/parameter'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
@@ -440,21 +441,23 @@ const dictionaryLabelsLower = computed(
   () => fieldDictionaryStore.labelMapLower || {},
 )
 
-onMounted(() => {
-  store.fetchTemplates()
-  store.fetchPages()
-  fieldDictionaryStore.fetchDictionary()
+onMounted(async () => {
+  await Promise.all([
+    store.fetchTemplates(true),
+    store.fetchPages(true),
+    fieldDictionaryStore.fetchDictionary(),
+  ])
   if (pageId.value) {
-    store.fetchPageContainers(pageId.value, true)
+    await store.fetchPageContainers(pageId.value, true)
   }
 })
 
 watch(
   () => pageId.value,
-  (next) => {
+  async (next) => {
     if (next) {
-      store.fetchPages()
-      store.fetchPageContainers(next, true)
+      await Promise.all([store.fetchPages(true), store.fetchTemplates(true)])
+      await store.fetchPageContainers(next, true)
     }
   },
 )
@@ -487,8 +490,17 @@ const chartPalette = [
 const FILTER_META_VALUE_LIMIT = 20
 const EMPTY_SET = new Set()
 const pageFilterValues = reactive({})
+const commonFilterKeys = computed(() =>
+  resolveCommonContainerFieldKeys(pageContainers.value, store.templates),
+)
+const pageFilterOptions = computed(() =>
+  commonFilterKeys.value.map((key) => ({
+    key,
+    label: dictionaryLabelValue(key) || humanizeKey(key),
+  })),
+)
 const filterMap = computed(() =>
-  store.filters.reduce((acc, filter) => {
+  pageFilterOptions.value.reduce((acc, filter) => {
     acc[filter.key] = filter
     return acc
   }, {}),
@@ -501,9 +513,13 @@ const activePageFilters = computed(() =>
 const hasActivePageFilters = computed(() =>
   activePageFilters.value.some((filter) => {
     const value = pageFilterValues[filter.key]
-    return value !== undefined && value !== null && String(value).trim() !== ''
+    return Array.isArray(value) && value.length
   }),
 )
+const activePageFilterKeySet = computed(
+  () => new Set((page.value?.filters || []).filter(Boolean)),
+)
+const globalFilterValueMap = computed(() => buildGlobalFilterValueMap())
 let refreshTimer = null
 const pageRefreshing = ref(false)
 const exportingExcel = ref(false)
@@ -586,7 +602,7 @@ function isContainerRowCollapsed(containerId, nodeKey) {
 function ensurePageFilters(keys = []) {
   keys.forEach((key) => {
     if (!(key in pageFilterValues)) {
-      pageFilterValues[key] = ''
+      pageFilterValues[key] = []
     }
   })
   Object.keys(pageFilterValues).forEach((key) => {
@@ -600,7 +616,9 @@ function templateFilters(container) {
   const tpl = template(container.templateId)
   if (!tpl) return []
   ensureContainerFilters(container.id, tpl)
-  return tpl.snapshot?.filtersMeta || []
+  const filtersMeta = tpl.snapshot?.filtersMeta || []
+  const excluded = activePageFilterKeySet.value
+  return filtersMeta.filter((meta) => !excluded.has(meta.key))
 }
 
 function ensureContainerFilters(containerId, tpl) {
@@ -993,19 +1011,14 @@ function matchFieldSet(record, keys = [], store = {}) {
   })
 }
 
-function matchesGlobalFilters(record, source) {
+function matchesGlobalFilters(record) {
   if (!activePageFilters.value.length) return true
   return activePageFilters.value.every((filter) => {
     const value = pageFilterValues[filter.key]
-    if (value === undefined || value === null || String(value).trim() === '')
-      return true
-    const binding = filter.bindings?.[source] || filter.field || filter.key
-    if (!binding) return true
-    const recordValue = normalizeValue(record?.[binding])
-    if (!recordValue) return false
-    return recordValue
-      .toLowerCase()
-      .includes(String(value).trim().toLowerCase())
+    if (!Array.isArray(value) || !value.length) return true
+    const recordValue = normalizeValue(record?.[filter.key])
+    if (!recordValue && recordValue !== '') return false
+    return value.includes(recordValue)
   })
 }
 
@@ -1022,7 +1035,7 @@ function filterRecords(records, snapshot, source, containerId) {
   const dimensionValues = snapshot?.dimensionValues || {}
 
   return records.filter((record) => {
-    if (!matchesGlobalFilters(record, source)) return false
+    if (!matchesGlobalFilters(record)) return false
     if (!matchFieldSet(record, pivot.filters, filterValues)) return false
     if (!matchFieldSet(record, pivot.rows, dimensionValues.rows || {}))
       return false
@@ -1171,7 +1184,9 @@ async function hydrateContainer(container) {
     visualization: tpl.visualization,
     globalFilters: activePageFilters.value.map((filter) => ({
       key: filter.key,
-      value: pageFilterValues[filter.key] ?? '',
+      value: Array.isArray(pageFilterValues[filter.key])
+        ? [...pageFilterValues[filter.key]].sort()
+        : [],
     })),
     containerFilters: containerFilterValues[container.id],
   })
@@ -1564,6 +1579,67 @@ function dictionaryLabelValue(key) {
   return dictionaryLabelsLower.value[lower] || ''
 }
 
+function globalFilterValueOptions(key) {
+  return globalFilterValueMap.value.get(key) || []
+}
+
+function buildGlobalFilterValueMap() {
+  const containers = pageContainers.value || []
+  const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
+  const aggregate = new Map()
+  containers.forEach((container) => {
+    const tpl = templateMap.get(container.templateId)
+    if (!tpl) return
+    collectTemplateFilterValues(aggregate, tpl.snapshot || {})
+  })
+  const result = new Map()
+  aggregate.forEach((set, key) => {
+    const options = Array.from(set).map((value) => ({
+      value,
+      label: value || 'пусто',
+    }))
+    result.set(key, options)
+  })
+  return result
+}
+
+function collectTemplateFilterValues(targetMap, snapshot = {}) {
+  if (!snapshot) return
+  const addValues = (key, values = []) => {
+    if (!key) return
+    const normalizedKey = String(key).trim()
+    if (!normalizedKey) return
+    if (!targetMap.has(normalizedKey)) {
+      targetMap.set(normalizedKey, new Set())
+    }
+    const bucket = targetMap.get(normalizedKey)
+    ;(values || []).forEach((value) => {
+      const normalizedValue = normalizeValue(value)
+      bucket.add(normalizedValue)
+    })
+  }
+  ;(snapshot.filtersMeta || []).forEach((meta) =>
+    addValues(meta?.key, meta?.values || []),
+  )
+  Object.entries(snapshot.fieldMeta || {}).forEach(([key, meta]) => {
+    if (Array.isArray(meta?.values)) {
+      addValues(key, meta.values)
+    }
+    if (meta?.sample && meta.sample !== '—') {
+      addValues(key, [meta.sample])
+    }
+  })
+  Object.entries(snapshot.filterValues || {}).forEach(([key, values]) =>
+    addValues(key, values),
+  )
+  const dimensionValues = snapshot.dimensionValues || {}
+  Object.values(dimensionValues).forEach((store) => {
+    Object.entries(store || {}).forEach(([key, values]) =>
+      addValues(key, values),
+    )
+  })
+}
+
 function collectFilterValuesFromRecords(
   records = [],
   key,
@@ -1717,7 +1793,7 @@ watch(
 
 function resetPageFilters() {
   activePageFilters.value.forEach((filter) => {
-    pageFilterValues[filter.key] = ''
+    pageFilterValues[filter.key] = []
   })
 }
 

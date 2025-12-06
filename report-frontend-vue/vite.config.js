@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    base: mode === 'production' ? '/dtj/report/' : '/',
     server: {
       port: 5173,
       host: true,
@@ -27,6 +28,10 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    },
+    build: {
+      outDir: 'dist',
+      assetsDir: 'assets',
     },
   }
 })

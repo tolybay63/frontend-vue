@@ -23,7 +23,9 @@ const routes = [
   { path: '/about', component: AboutPage },
 ]
 
+const base = import.meta.env.PROD ? '/dtj/report' : '/'
+
 export default createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(base),
   routes,
 })

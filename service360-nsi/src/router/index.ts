@@ -18,7 +18,7 @@ const ReportsPage = () => import('@pages/nsi/ReportsPage.vue')
 const LoginPage = () => import('@pages/auth/LoginPage.vue')
 
 const router = createRouter({
-  history: createWebHistory('/dtj/ind'),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/login', name: 'login', component: LoginPage },
     // root now opens NSI Dashboard; keep any guards/meta from old '/'

@@ -50,40 +50,45 @@
 
 | Переменная             | Назначение | Правила |
 |-------------------------|------------|---------|
-| `VITE_API_BASE`         | Базовый URL REST API (абсолютный или относительный). | Без завершающего `/`. Относительные начинаются с `/`. |
-| `VITE_API_DEV_PROXY_BASE` | Префикс для dev-прокси Vite. | Относительный, с ведущим `/`, без завершающего. Обычно `/api`. |
+| `VITE_BASE_PATH`        | Базовый путь SPA (как его отдаёт nginx). | С ведущим и завершающим `/` (`/`, `/dtj/ind/`). |
+| `VITE_PROXY_TARGET`     | Origin бекенда для dev-прокси Vite. | Полный URL (`http://host:port`). Используется только локально. |
+| `VITE_API_BASE`         | Относительный префикс REST API. | Без завершающего `/`, начинается с `/`. |
+| `VITE_API_DEV_PROXY_BASE` | Префикс для dev-прокси Vite. | Относительный, с ведущим `/`, без завершающего. Обычно совпадает с `VITE_API_BASE`. |
 | `VITE_RPC_PATH`         | Относительный путь к RPC-эндпоинту. | Всегда начинается с `/`. Чаще `/api`. |
 | `VITE_AUTH_LOGIN_PATH`  | Endpoint логина (используется в [`auth.ts`](src/shared/api/auth.ts)). | Всегда начинается с `/`. |
 
 ### Примеры `.env.local`
 
-**1) Бэкенд на том же домене под `/api`:**
+**1) Dev (бекенд под `/api`):**
 ```ini
+VITE_BASE_PATH=/
+VITE_PROXY_TARGET=http://backend.example.local
 VITE_API_BASE=/api
 VITE_API_DEV_PROXY_BASE=/api
 VITE_RPC_PATH=/api
 VITE_AUTH_LOGIN_PATH=/auth/login
 ```
 
-**2) Стенд `https://example.com/dtj/ind`, REST под `.../dtj/ind/api`:**
+**2) Стенд `https://example.com/dtj/ind`, REST под `.../dtj/nsi`:**
 ```ini
-VITE_API_BASE=https://example.com/dtj/ind
-VITE_API_DEV_PROXY_BASE=/api
+VITE_BASE_PATH=/dtj/ind/
+VITE_API_BASE=/dtj/nsi
 VITE_RPC_PATH=/api
-VITE_AUTH_LOGIN_PATH=/dtj/ind/auth/login
+VITE_AUTH_LOGIN_PATH=/auth/login
 # если логин внутри API:
-# VITE_AUTH_LOGIN_PATH=/dtj/ind/api/auth/login
+# VITE_AUTH_LOGIN_PATH=/dtj/nsi/auth/login
 ```
 
 ⚠️ Избегайте двойных `//` и завершающих `/`.
 
 ---
 
-## Dev-прокси и fallback
+## Dev-прокси
 
 - В dev Vite-прокси настраивается в [`vite.config.ts`](vite.config.ts) функцией `createProxyConfig`.  
-- Запросы на `VITE_API_DEV_PROXY_BASE` (по умолчанию `/api`) переписываются на `VITE_API_BASE`.  
-- В старых версиях был жёсткий fallback на `http://45.8.116.32/dtj/ind/api` — рекомендуется удалить или закомментировать, чтобы не ходить на внешний сервер случайно.  
+- `VITE_PROXY_TARGET` задаёт origin бекенда (в dev `.env` это единственное место, где указывается IP).  
+- Префиксы `VITE_*_DEV_PROXY_BASE` сопоставляются с `VITE_*_API_BASE`. Если dev-префикс не задан, используется сам base из API.  
+- В проде запросы идут напрямую по относительным путям, поэтому фронт можно хостить под любым доменом при корректном nginx.
 
 ---
 

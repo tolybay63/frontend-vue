@@ -31,52 +31,15 @@ export {}
 
 4. Настройка API-прокси для dev
 
-Виджет делает POST на /dtj-api. В vite.config.ts добавить прокси, который перенаправляет этот путь на http://45.8.116.32/dtj/api/inspections:
+Виджет делает POST на `/dtj-api`. Конфиг Vite уже умеет проксировать его на настоящий бекенд через `VITE_PROXY_TARGET`. Просто задай переменные в `.env.development`:
 
----
+```
+VITE_KM_CHART_DEV_PROXY_BASE=/dtj-api
+VITE_KM_CHART_API_BASE=/dtj/api/inspections
+VITE_PROXY_TARGET=http://<ip или домен стенда>
+```
 
-function createProxyConfig(env: Record<string, string>): Record<string, ProxyOptions> {
-const proxies: Record<string, ProxyOptions> = {}
-
-// KM-chart widget API (/dtj-api → http://45.8.116.32/dtj/api/inspections)
-const kmChartProxyBase = normalizeProxyBase(env.VITE_KM_CHART_DEV_PROXY_BASE || '/dtj-api')
-const rawKmChartBase = env.VITE_KM_CHART_API_BASE?.trim()
-
-if (rawKmChartBase && ABSOLUTE_URL_PATTERN.test(rawKmChartBase)) {
-try {
-const kmChartURL = new URL(rawKmChartBase)
-const target = `${kmChartURL.protocol}//${kmChartURL.host}`
-const rewriteBase = normalizeRewriteBase(kmChartURL.pathname || '/dtj/api/inspections')
-const pattern = new RegExp(`^${escapeForRegex(kmChartProxyBase)}`)
-
-      proxies[kmChartProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-
-}
-
-if (!proxies[kmChartProxyBase]) {
-const pattern = new RegExp(`^${escapeForRegex(kmChartProxyBase)}`)
-proxies[kmChartProxyBase] = {
-target: 'http://45.8.116.32',
-changeOrigin: true,
-rewrite: (path) => path.replace(pattern, '/dtj/api/inspections'),
-}
-}
-
-return proxies
-}
-
----
-
-Если адрес или эндпоинт меняются, задай переменные:
-.env.development: VITE_KM_CHART_DEV_PROXY_BASE=/dtj-api, VITE_KM_CHART_API_BASE=http://45.8.116.32/dtj/api/inspections.
-После изменения конфигов перезапусти npm run dev.
+После изменения конфигов перезапусти `npm run dev`. В продакшене запрос уйдёт по относительному пути `/dtj/api/inspections`.
 
 5. Использование в компоненте
 

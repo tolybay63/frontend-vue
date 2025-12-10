@@ -1,0 +1,11 @@
+# CODEOWNERS
+# Назначьте владельцев по умолчанию для всего репозитория (замените на ваши логины/команды GitHub).
+*       @your-org/frontend-team  @your-username
+
+# Примеры для конкретных частей проекта (раскомментируйте и настройте при необходимости):
+# /src/app/                     @your-org/arch-team
+# /src/shared/                  @your-org/platform-team
+# /src/entities/                @your-org/domain-team
+# /src/features/                @your-org/feature-team
+# /src/pages/                   @your-org/web-team
+# /.github/                     @your-org/devops-team

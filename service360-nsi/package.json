@@ -44,7 +44,6 @@
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.7.0",
-    "baseline-browser-mapping": "^2.9.0",
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "eslint": "^9.31.0",

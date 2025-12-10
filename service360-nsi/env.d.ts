@@ -4,6 +4,8 @@
 /// <reference types="msw" />
 
 interface ImportMetaEnv {
+  readonly VITE_BASE_PATH?: string
+  readonly VITE_PROXY_TARGET?: string
   readonly VITE_API_BASE?: string
   readonly VITE_API_DEV_PROXY_BASE?: string
   readonly VITE_RPC_PATH?: string
@@ -22,6 +24,8 @@ interface ImportMetaEnv {
   readonly VITE_REPORT_DEV_PROXY_BASE?: string
   readonly VITE_REPORT_LOAD_BASE?: string
   readonly VITE_REPORT_LOAD_DEV_PROXY_BASE?: string
+  readonly VITE_KM_CHART_API_BASE?: string
+  readonly VITE_KM_CHART_DEV_PROXY_BASE?: string
 }
 
 interface ImportMeta {

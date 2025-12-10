@@ -1,5 +1,5 @@
 /** Файл: src/shared/api/metaClient.ts
- *  Назначение: JSON-RPC клиент к Meta API (http://45.8.116.32/dtj/meta/api) с обходом CORS через Vite proxy.
+ *  Назначение: JSON-RPC клиент к Meta API (эндпоинт `/dtj/meta/api`) с обходом CORS через Vite proxy.
  *  Использование: импортируйте metaRpc для вызова методов, например: metaRpc('measure/insert', [payload]).
  */
 import axios from 'axios'

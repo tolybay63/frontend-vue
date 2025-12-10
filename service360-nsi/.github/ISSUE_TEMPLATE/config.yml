@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Вопрос по использованию / Support question
+    url: https://github.com/your-org/nsi-frontend-vue/discussions/new?category=q-a
+    about: Задайте вопрос в Discussions, чтобы не плодить issues.
+  - name: Документация проекта
+    url: https://github.com/your-org/nsi-frontend-vue/tree/main/docs
+    about: Ознакомьтесь с документацией перед созданием задачи.

@@ -1,5 +1,5 @@
 /** Файл: src/shared/api/orgStructureClient.ts
- *  Назначение: JSON-RPC клиент сервиса оргструктуры (http://45.8.116.32/dtj/api/orgstructure).
+ *  Назначение: JSON-RPC клиент сервиса оргструктуры (эндпоинт `/dtj/api/orgstructure`).
  *  Использование: импортируйте orgStructureRpc и вызывайте методы, например:
  *  orgStructureRpc('data/loadObjForSelect', ['Cls_LocationSection']).
  */

@@ -41,6 +41,20 @@ function normalizeRewriteBase(pathname: string): string {
   return withoutTrailing || '/'
 }
 
+function normalizeBasePath(value: string | undefined): string {
+  if (!value) {
+    return '/'
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return '/'
+  }
+
+  const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`
+}
+
 function withMetaProxyGuards(options: ProxyOptions): ProxyOptions {
   const originalConfigure = options.configure
 
@@ -68,285 +82,139 @@ function withMetaProxyGuards(options: ProxyOptions): ProxyOptions {
   }
 }
 
+function resolveProxyRewriteConfig(
+  rawBase: string | undefined,
+  fallbackRewrite: string,
+  defaultTarget: string,
+): { target: string; rewriteBase: string } {
+  const trimmed = rawBase?.trim()
+  if (trimmed && ABSOLUTE_URL_PATTERN.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed)
+      return {
+        target: `${parsed.protocol}//${parsed.host}`,
+        rewriteBase: normalizeRewriteBase(parsed.pathname),
+      }
+    } catch {
+      // fall through to default
+    }
+  }
+
+  if (trimmed) {
+    return {
+      target: defaultTarget,
+      rewriteBase: normalizeRewriteBase(trimmed),
+    }
+  }
+
+  return {
+    target: defaultTarget,
+    rewriteBase: normalizeRewriteBase(fallbackRewrite),
+  }
+}
+
 const REPORTS_DATA_ROUTE = '/dev-reports'
 const projectRoot = fileURLToPath(new URL('.', import.meta.url))
 
-function createProxyConfig(env: Record<string, string>): Record<string, ProxyOptions> {
+function createProxyConfig(env: Record<string, string>, proxyTarget: string): Record<string, ProxyOptions> {
   const proxies: Record<string, ProxyOptions> = {}
 
-  // 1) Основной API (NSI)
-  const apiProxyBase = normalizeProxyBase(env.VITE_API_DEV_PROXY_BASE)
-  const rawApiBase = env.VITE_API_BASE?.trim()
-
-  if (rawApiBase && ABSOLUTE_URL_PATTERN.test(rawApiBase)) {
-    try {
-      const apiURL = new URL(rawApiBase)
-      const target = `${apiURL.protocol}//${apiURL.host}`
-      const rewriteBase = normalizeRewriteBase(apiURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(apiProxyBase)}`)
-
-      proxies[apiProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore parse failures and fall back to the default proxy below
-    }
-  }
-
-  if (!proxies[apiProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(apiProxyBase)}`)
-    proxies[apiProxyBase] = {
-      target: 'http://45.8.116.32',
+  const configureProxy = (
+    proxyBaseRaw: string | undefined,
+    serviceBaseRaw: string | undefined,
+    fallbackProxyBase: string,
+    fallbackRewriteBase: string,
+    guard?: (options: ProxyOptions) => ProxyOptions,
+  ) => {
+    const proxyBaseCandidate =
+      proxyBaseRaw ?? (serviceBaseRaw && !ABSOLUTE_URL_PATTERN.test(serviceBaseRaw) ? serviceBaseRaw : undefined)
+    const proxyBase = normalizeProxyBase(proxyBaseCandidate ?? fallbackProxyBase)
+    const { target, rewriteBase } = resolveProxyRewriteConfig(
+      serviceBaseRaw,
+      fallbackRewriteBase,
+      proxyTarget,
+    )
+    const pattern = new RegExp(`^${escapeForRegex(proxyBase)}`)
+    const baseOptions: ProxyOptions = {
+      target,
       changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/ind/api'),
+      rewrite: (path) => path.replace(pattern, rewriteBase),
     }
+    proxies[proxyBase] = typeof guard === 'function' ? guard(baseOptions) : baseOptions
   }
+
+  // 1) Основной API (NSI)
+  configureProxy(
+    env.VITE_API_DEV_PROXY_BASE,
+    env.VITE_API_BASE,
+    '/api',
+    '/dtj/ind/api',
+  )
 
   // 2) Meta API
-  const metaProxyBase = normalizeProxyBase(env.VITE_META_DEV_PROXY_BASE || '/meta-api')
-  const rawMetaBase = env.VITE_META_API_BASE?.trim()
-
-  if (rawMetaBase && ABSOLUTE_URL_PATTERN.test(rawMetaBase)) {
-    try {
-      const metaURL = new URL(rawMetaBase)
-      const target = `${metaURL.protocol}//${metaURL.host}`
-      const rewriteBase = normalizeRewriteBase(metaURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(metaProxyBase)}`)
-
-      proxies[metaProxyBase] = withMetaProxyGuards({
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      })
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[metaProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(metaProxyBase)}`)
-    proxies[metaProxyBase] = withMetaProxyGuards({
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/meta/api'),
-    })
-  }
+  configureProxy(
+    env.VITE_META_DEV_PROXY_BASE,
+    env.VITE_META_API_BASE,
+    '/meta-api',
+    '/dtj/meta/api',
+    withMetaProxyGuards,
+  )
 
   // 3) Resource API
-  const resourceProxyBase = normalizeProxyBase(env.VITE_RESOURCE_DEV_PROXY_BASE || '/resource-api')
-  const rawResourceBase = env.VITE_RESOURCE_API_BASE?.trim()
-
-  if (rawResourceBase && ABSOLUTE_URL_PATTERN.test(rawResourceBase)) {
-    try {
-      const resourceURL = new URL(rawResourceBase)
-      const target = `${resourceURL.protocol}//${resourceURL.host}`
-      const rewriteBase = normalizeRewriteBase(resourceURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(resourceProxyBase)}`)
-
-      proxies[resourceProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[resourceProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(resourceProxyBase)}`)
-    proxies[resourceProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/resource'),
-    }
-  }
+  configureProxy(
+    env.VITE_RESOURCE_DEV_PROXY_BASE,
+    env.VITE_RESOURCE_API_BASE,
+    '/resource-api',
+    '/dtj/api/resource',
+  )
 
   // 4) Objects API
-  const objectsProxyBase = normalizeProxyBase(env.VITE_OBJECTS_DEV_PROXY_BASE || '/objects-api')
-  const rawObjectsBase = env.VITE_OBJECTS_API_BASE?.trim()
-
-  if (rawObjectsBase && ABSOLUTE_URL_PATTERN.test(rawObjectsBase)) {
-    try {
-      const objectsURL = new URL(rawObjectsBase)
-      const target = `${objectsURL.protocol}//${objectsURL.host}`
-      const rewriteBase = normalizeRewriteBase(objectsURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(objectsProxyBase)}`)
-
-      proxies[objectsProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[objectsProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(objectsProxyBase)}`)
-    proxies[objectsProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/objects'),
-    }
-  }
+  configureProxy(
+    env.VITE_OBJECTS_DEV_PROXY_BASE,
+    env.VITE_OBJECTS_API_BASE,
+    '/objects-api',
+    '/dtj/api/objects',
+  )
 
   // 5) Personnal API
-  const personnalProxyBase = normalizeProxyBase(
-    env.VITE_PERSONNAL_DEV_PROXY_BASE || '/personnal-api',
+  configureProxy(
+    env.VITE_PERSONNAL_DEV_PROXY_BASE,
+    env.VITE_PERSONNAL_API_BASE,
+    '/personnal-api',
+    '/dtj/api/personnal',
   )
-  const rawPersonnalBase = env.VITE_PERSONNAL_API_BASE?.trim()
-
-  if (rawPersonnalBase && ABSOLUTE_URL_PATTERN.test(rawPersonnalBase)) {
-    try {
-      const personnalURL = new URL(rawPersonnalBase)
-      const target = `${personnalURL.protocol}//${personnalURL.host}`
-      const rewriteBase = normalizeRewriteBase(personnalURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(personnalProxyBase)}`)
-
-      proxies[personnalProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[personnalProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(personnalProxyBase)}`)
-    proxies[personnalProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/personnal'),
-    }
-  }
 
   // 6) OrgStructure API
-  const orgStructureProxyBase = normalizeProxyBase(
-    env.VITE_ORGSTRUCTURE_DEV_PROXY_BASE || '/orgstructure-api',
+  configureProxy(
+    env.VITE_ORGSTRUCTURE_DEV_PROXY_BASE,
+    env.VITE_ORGSTRUCTURE_API_BASE,
+    '/orgstructure-api',
+    '/dtj/api/orgstructure',
   )
-  const rawOrgStructureBase = env.VITE_ORGSTRUCTURE_API_BASE?.trim()
-
-  if (rawOrgStructureBase && ABSOLUTE_URL_PATTERN.test(rawOrgStructureBase)) {
-    try {
-      const orgStructureURL = new URL(rawOrgStructureBase)
-      const target = `${orgStructureURL.protocol}//${orgStructureURL.host}`
-      const rewriteBase = normalizeRewriteBase(orgStructureURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(orgStructureProxyBase)}`)
-
-      proxies[orgStructureProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[orgStructureProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(orgStructureProxyBase)}`)
-    proxies[orgStructureProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/orgstructure'),
-    }
-  }
 
   // 7) Report API
-  const reportProxyBase = normalizeProxyBase(env.VITE_REPORT_DEV_PROXY_BASE || '/report-api')
-  const rawReportBase = env.VITE_REPORT_API_BASE?.trim()
-
-  if (rawReportBase && ABSOLUTE_URL_PATTERN.test(rawReportBase)) {
-    try {
-      const reportURL = new URL(rawReportBase)
-      const target = `${reportURL.protocol}//${reportURL.host}`
-      const rewriteBase = normalizeRewriteBase(reportURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(reportProxyBase)}`)
-
-      proxies[reportProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[reportProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(reportProxyBase)}`)
-    proxies[reportProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/report'),
-    }
-  }
+  configureProxy(
+    env.VITE_REPORT_DEV_PROXY_BASE,
+    env.VITE_REPORT_API_BASE,
+    '/report-api',
+    '/dtj/api/report',
+  )
 
   // 8) Report load endpoint
-  const reportLoadProxyBase = normalizeProxyBase(env.VITE_REPORT_LOAD_DEV_PROXY_BASE || '/load-report')
-  const rawReportLoadBase = env.VITE_REPORT_LOAD_BASE?.trim()
+  configureProxy(
+    env.VITE_REPORT_LOAD_DEV_PROXY_BASE,
+    env.VITE_REPORT_LOAD_BASE,
+    '/load-report',
+    '/loadReport',
+  )
 
-  if (rawReportLoadBase && ABSOLUTE_URL_PATTERN.test(rawReportLoadBase)) {
-    try {
-      const reportLoadURL = new URL(rawReportLoadBase)
-      const target = `${reportLoadURL.protocol}//${reportLoadURL.host}`
-      const rewriteBase = normalizeRewriteBase(reportLoadURL.pathname)
-      const pattern = new RegExp(`^${escapeForRegex(reportLoadProxyBase)}`)
-
-      proxies[reportLoadProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[reportLoadProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(reportLoadProxyBase)}`)
-    proxies[reportLoadProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/loadReport'),
-    }
-  }
-
-  // 9) KM-chart widget API (/dtj-api → http://45.8.116.32/dtj/api/inspections)
-  const kmChartProxyBase = normalizeProxyBase(env.VITE_KM_CHART_DEV_PROXY_BASE || '/dtj-api')
-  const rawKmChartBase = env.VITE_KM_CHART_API_BASE?.trim()
-
-  if (rawKmChartBase && ABSOLUTE_URL_PATTERN.test(rawKmChartBase)) {
-    try {
-      const kmChartURL = new URL(rawKmChartBase)
-      const target = `${kmChartURL.protocol}//${kmChartURL.host}`
-      const rewriteBase = normalizeRewriteBase(kmChartURL.pathname || '/dtj/api/inspections')
-      const pattern = new RegExp(`^${escapeForRegex(kmChartProxyBase)}`)
-
-      proxies[kmChartProxyBase] = {
-        target,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(pattern, rewriteBase),
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!proxies[kmChartProxyBase]) {
-    const pattern = new RegExp(`^${escapeForRegex(kmChartProxyBase)}`)
-    proxies[kmChartProxyBase] = {
-      target: 'http://45.8.116.32',
-      changeOrigin: true,
-      rewrite: (path) => path.replace(pattern, '/dtj/api/inspections'),
-    }
-  }
+  // 9) KM-chart widget API (/dtj-api → /dtj/api/inspections)
+  configureProxy(
+    env.VITE_KM_CHART_DEV_PROXY_BASE,
+    env.VITE_KM_CHART_API_BASE,
+    '/dtj-api',
+    '/dtj/api/inspections',
+  )
 
   return proxies
 }
@@ -401,7 +269,7 @@ function reportsDataPlugin(): PluginOption {
   }
 }
 
-async function resolvePwaPlugin(): Promise<PluginOption | null> {
+async function resolvePwaPlugin(basePath: string): Promise<PluginOption | null> {
   try {
     const mod = await import('vite-plugin-pwa')
     if (typeof mod?.VitePWA !== 'function') return null
@@ -413,7 +281,8 @@ async function resolvePwaPlugin(): Promise<PluginOption | null> {
       manifest: {
         name: 'NSI',
         short_name: 'NSI',
-        start_url: '/dtj/ind/',
+        start_url: basePath,
+        scope: basePath,
         display: 'standalone',
         background_color: '#006d77',
         theme_color: '#006d77',
@@ -441,14 +310,17 @@ async function resolvePwaPlugin(): Promise<PluginOption | null> {
 
 export default defineConfig(async ({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const pwaPlugin = await resolvePwaPlugin()
+  const basePath = normalizeBasePath(env.VITE_BASE_PATH)
+  const proxyTarget = env.VITE_PROXY_TARGET?.trim()
+  const pwaPlugin = await resolvePwaPlugin(basePath)
+  const proxyConfig = proxyTarget ? createProxyConfig(env, proxyTarget) : undefined
 
   const plugins: PluginOption[] = [vue(), vueDevTools(), reportsDataPlugin()]
   if (pwaPlugin) plugins.push(pwaPlugin)
 
   return {
     plugins,
-    base: '/dtj/ind/',
+    base: basePath,
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -462,7 +334,7 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     server: {
-      proxy: createProxyConfig(env),
+      proxy: proxyConfig,
     },
   }
 })

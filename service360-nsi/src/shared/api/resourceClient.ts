@@ -1,5 +1,5 @@
 /** Файл: src/shared/api/resourceClient.ts
- *  Назначение: JSON-RPC клиент микросервиса «Resource» (http://45.8.116.32/dtj/api/resource).
+ *  Назначение: JSON-RPC клиент микросервиса «Resource» (эндпоинт `/dtj/api/resource`).
  *  Использование: импортируйте resourceRpc и вызывайте методы, например: resourceRpc('data/loadMaterial', [0]).
  */
 import axios from 'axios'

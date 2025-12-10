@@ -437,7 +437,7 @@ import {
   mergeJoinedRecords,
   fetchJoinPayload,
   parseJoinConfig,
-} from '@/shared/lib/sourceJoins'
+} from '@/shared/lib/sourceJoins.js'
 const route = useRoute()
 const router = useRouter()
 const store = usePageBuilderStore()

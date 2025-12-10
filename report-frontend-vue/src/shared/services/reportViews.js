@@ -4,7 +4,7 @@ import {
   loadReportSources,
 } from '@/shared/api/report'
 import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
-import { parseJoinConfig } from '@/shared/lib/sourceJoins'
+import { parseJoinConfig } from '@/shared/lib/sourceJoins.js'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },

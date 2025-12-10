@@ -14,7 +14,7 @@
           :sort-state="rowSorts"
           :allow-metric-sort="true"
           :get-field-label="getFieldLabel"
-          @update:modelValue="$emit('update:rows', $event)"
+          @update:model-value="$emit('update:rows', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-row-values', $event)"
           @update-sort="$emit('update-row-sort', $event)"
@@ -33,7 +33,7 @@
           :sort-state="columnSorts"
           :allow-metric-sort="true"
           :get-field-label="getFieldLabel"
-          @update:modelValue="$emit('update:columns', $event)"
+          @update:model-value="$emit('update:columns', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-column-values', $event)"
           @update-sort="$emit('update-column-sort', $event)"
@@ -54,7 +54,7 @@
           :sort-state="filterSorts"
           :allow-metric-sort="false"
           :get-field-label="getFieldLabel"
-          @update:modelValue="$emit('update:filters', $event)"
+          @update:model-value="$emit('update:filters', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-filter-values', $event)"
           @update-sort="$emit('update-filter-sort', $event)"
@@ -66,6 +66,7 @@
           :fields="fields"
           :aggregators="aggregatorOptions"
           :get-field-label="getFieldLabel"
+          :metric-tokens="metricTokens"
           @add="$emit('add-metric')"
           @move="$emit('move-metric', $event)"
           @remove="$emit('remove-metric', $event)"
@@ -137,6 +138,10 @@ defineProps({
     default: null,
   },
   aggregatorOptions: {
+    type: Array,
+    default: () => [],
+  },
+  metricTokens: {
     type: Array,
     default: () => [],
   },

@@ -43,27 +43,27 @@
           <button
             class="icon-btn"
             type="button"
-            @click="previewPage(page.id)"
             aria-label="Открыть страницу"
             title="Открыть"
+            @click="previewPage(page.id)"
           >
             <span class="icon icon-eye" />
           </button>
           <button
             class="icon-btn"
             type="button"
-            @click="editPage(page.id)"
             aria-label="Редактировать страницу"
             title="Редактировать"
+            @click="editPage(page.id)"
           >
             <span class="icon icon-edit" />
           </button>
           <button
             class="icon-btn icon-btn--danger"
             type="button"
-            @click="removePage(page.id)"
             aria-label="Удалить страницу"
             title="Удалить"
+            @click="removePage(page.id)"
           >
             <span class="icon icon-trash" />
           </button>

@@ -226,16 +226,17 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       if (!layoutMeta) {
         throw new Error('Выберите макет страницы.')
       }
+      const remoteMeta = draft.remoteMeta || {}
       const resolvedNumericId =
         toNumericId(draft.remoteId) ||
         toNumericId(draft.id) ||
-        toNumericId(draft.remoteMeta?.id)
-      const resolvedRawId =
-        resolvedNumericId ??
-        draft.remoteMeta?.id ??
-        draft.remoteId ??
-        draft.id ??
-        null
+        readMetaNumber(remoteMeta, 'id', 'Id', 'ID')
+      const fallbackRawId =
+        readMetaString(remoteMeta, 'id', 'Id', 'ID') ||
+        readMetaString(remoteMeta, 'ObjId', 'objId', 'objPage') ||
+        (toStableId(draft.remoteId) || null) ||
+        (toStableId(draft.id) || null)
+      const resolvedRawId = resolvedNumericId ?? fallbackRawId ?? null
       const operation = resolvedRawId ? 'upd' : 'ins'
       const now = new Date().toISOString().slice(0, 10)
       const normalizedDescription = draft.description?.trim() || ''
@@ -244,11 +245,10 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         MenuItem: draft.menuTitle?.trim() || '',
         PageTitle: draft.pageTitle?.trim() || '',
         Description: normalizedDescription,
-        Discription: normalizedDescription,
         GlobalFilter: formatFilterString(draft.filters || []),
         fvLayout: layoutMeta.fv,
         pvLayout: layoutMeta.pv,
-        CreatedAt: draft.remoteMeta?.CreatedAt || now,
+        CreatedAt: remoteMeta.CreatedAt || now,
         UpdatedAt: now,
         objUser: userMeta.objUser,
         pvUser: userMeta.pvUser,
@@ -257,15 +257,32 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         if (!resolvedRawId) {
           throw new Error('Не удалось определить идентификатор страницы.')
         }
-        payload.id = resolvedNumericId ?? resolvedRawId
-        payload.cls = toNumericId(draft.remoteMeta?.cls)
-        payload.idMenuItem = toNumericId(draft.remoteMeta?.idMenuItem)
-        payload.idPageTitle = toNumericId(draft.remoteMeta?.idPageTitle)
-        payload.idDescription = toNumericId(draft.remoteMeta?.idDescription)
-        payload.idLayout = toNumericId(draft.remoteMeta?.idLayout)
-        payload.idUser = toNumericId(draft.remoteMeta?.idUser)
-        payload.idCreatedAt = toNumericId(draft.remoteMeta?.idCreatedAt)
-        payload.idUpdatedAt = toNumericId(draft.remoteMeta?.idUpdatedAt)
+        const updateId = resolvedNumericId ?? readMetaNumber(remoteMeta, 'id', 'Id', 'ID')
+        if (!updateId) {
+          throw new Error('Не удалось определить идентификатор страницы.')
+        }
+        const clsValue = readMetaNumber(remoteMeta, 'cls', 'Cls', 'CLS')
+        const idMenuItem = readMetaNumber(remoteMeta, 'idMenuItem', 'IdMenuItem', 'IDMenuItem')
+        const idPageTitle = readMetaNumber(remoteMeta, 'idPageTitle', 'IdPageTitle', 'IDPageTitle')
+        const idLayout = readMetaNumber(remoteMeta, 'idLayout', 'IdLayout', 'IDLayout')
+        if (!clsValue || !idMenuItem || !idPageTitle || !idLayout) {
+          throw new Error('Страница загружена не полностью. Обновите список страниц и попробуйте снова.')
+        }
+        payload.id = updateId
+        payload.cls = clsValue
+        payload.idMenuItem = idMenuItem
+        payload.idPageTitle = idPageTitle
+        payload.idLayout = idLayout
+        const idDescription = readMetaNumber(remoteMeta, 'idDescription', 'IdDescription', 'IDDescription')
+        if (idDescription) payload.idDescription = idDescription
+        const idGlobalFilter = readMetaNumber(remoteMeta, 'idGlobalFilter', 'IdGlobalFilter', 'IDGlobalFilter')
+        if (idGlobalFilter) payload.idGlobalFilter = idGlobalFilter
+        const idUpdatedAt = readMetaNumber(remoteMeta, 'idUpdatedAt', 'IdUpdatedAt', 'IDUpdatedAt')
+        const idUser = readMetaNumber(remoteMeta, 'idUser', 'IdUser', 'IDUser')
+        const idCreatedAt = readMetaNumber(remoteMeta, 'idCreatedAt', 'IdCreatedAt', 'IDCreatedAt')
+        if (idCreatedAt) payload.idCreatedAt = idCreatedAt
+        if (idUpdatedAt) payload.idUpdatedAt = idUpdatedAt
+        if (idUser) payload.idUser = idUser
       }
       const saved = await saveReportPage(operation, payload)
       let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id ?? resolvedRawId)
@@ -324,7 +341,6 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
           this.heightOptions[0] ||
           null
         const payload = {
-          id: targetPageId,
           Title: container.title?.trim() || 'Контейнер',
           order: container.order || 1,
           objLinkToView,
@@ -334,11 +350,14 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
           fvHeight: heightMeta?.fv || null,
           pvHeight: heightMeta?.pv || null,
         }
+        const remoteContainerId = getContainerRemoteId(container)
         const hasRemoteIds =
+          remoteContainerId &&
           Number.isFinite(toNumericId(container.remoteMeta?.idWidth)) &&
           Number.isFinite(toNumericId(container.remoteMeta?.idHeight)) &&
           Number.isFinite(toNumericId(container.remoteMeta?.idLinkToView))
         const operation = hasRemoteIds ? 'upd' : 'ins'
+        payload.id = operation === 'upd' ? remoteContainerId : targetPageId
         if (operation === 'upd') {
           payload.idWidth = toNumericId(container.remoteMeta?.idWidth)
           payload.idHeight = toNumericId(container.remoteMeta?.idHeight)
@@ -609,6 +628,32 @@ function toStableId(value) {
   if (value === null || typeof value === 'undefined') return ''
   const str = String(value).trim()
   return str || ''
+}
+
+function readMetaNumber(meta = {}, ...keys) {
+  if (!meta) return null
+  for (const key of keys) {
+    if (!key) continue
+    const numeric = toNumericId(meta[key])
+    if (numeric !== null) {
+      return numeric
+    }
+  }
+  return null
+}
+
+function readMetaString(meta = {}, ...keys) {
+  if (!meta) return null
+  for (const key of keys) {
+    if (!key) continue
+    const value = meta[key]
+    if (value === null || typeof value === 'undefined') continue
+    const str = String(value).trim()
+    if (str) {
+      return str
+    }
+  }
+  return null
 }
 
 function readStoredUserValue(key) {

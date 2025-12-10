@@ -13,7 +13,7 @@
           </div>
         </RouterLink>
       </div>
-      <div class="topbar__right" v-if="user">
+      <div v-if="user" class="topbar__right">
         <button class="pill" type="button">ru</button>
         <button class="icon-pill" type="button" aria-label="Настройки">
           <span class="icon icon-gear" />

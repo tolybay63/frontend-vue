@@ -23,7 +23,7 @@
         переименования и фильтры для каждого поля.
       </p>
 
-      <ul class="pivot-card__list" v-if="modelValue.length">
+      <ul v-if="modelValue.length" class="pivot-card__list">
         <li v-for="(key, index) in modelValue" :key="`${section}-${key}`" class="pivot-card__item">
           <div class="pivot-card__item-info">
             <span class="pivot-card__drag">☰</span>
@@ -58,14 +58,14 @@
                 Переименовать поле
               </n-tooltip>
 
-              <n-tooltip trigger="hover" v-if="allowValueFilter">
+              <n-tooltip v-if="allowValueFilter" trigger="hover">
                 <template #trigger>
                   <n-button
                     quaternary
                     circle
                     size="small"
-                    @click="toggleFilter(key)"
                     :class="{ active: hasFilter(key) }"
+                    @click="toggleFilter(key)"
                   >
                     ⚙
                   </n-button>
@@ -73,14 +73,14 @@
                 Настроить значения
               </n-tooltip>
 
-              <n-tooltip trigger="hover" v-if="allowValueSort">
+              <n-tooltip v-if="allowValueSort" trigger="hover">
                 <template #trigger>
                   <n-button
                     quaternary
                     circle
                     size="small"
-                    @click="cycleSort(key, 'value')"
                     :class="{ active: sortState[key]?.value && sortState[key]?.value !== 'none' }"
+                    @click="cycleSort(key, 'value')"
                   >
                     A/Z
                   </n-button>
@@ -88,14 +88,14 @@
                 Сортировка по значениям
               </n-tooltip>
 
-              <n-tooltip trigger="hover" v-if="allowMetricSort">
+              <n-tooltip v-if="allowMetricSort" trigger="hover">
                 <template #trigger>
                   <n-button
                     quaternary
                     circle
                     size="small"
-                    @click="cycleSort(key, 'metric')"
                     :class="{ active: sortState[key]?.metric && sortState[key]?.metric !== 'none' }"
+                    @click="cycleSort(key, 'metric')"
                   >
                     Σ
                   </n-button>
@@ -169,7 +169,10 @@ import { NButton, NInput, NSelect, NTooltip } from 'naive-ui'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 
 const props = defineProps({
-  title: String,
+  title: {
+    type: String,
+    default: '',
+  },
   hint: {
     type: String,
     default: '',

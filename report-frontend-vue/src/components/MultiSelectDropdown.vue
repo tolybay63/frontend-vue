@@ -1,10 +1,10 @@
 <template>
-  <div class="multi-select" ref="root">
+  <div ref="root" class="multi-select">
     <button class="multi-select__trigger" type="button" @click="toggle">
       <span class="multi-select__label">
         {{ triggerLabel }}
       </span>
-      <span class="multi-select__count" v-if="modelValue?.length">
+      <span v-if="modelValue?.length" class="multi-select__count">
         {{ modelValue.length }}
       </span>
       <span class="multi-select__chevron" :class="{ open }">▾</span>
@@ -12,9 +12,9 @@
 
     <div v-if="open" class="multi-select__panel">
       <input
+        v-model="search"
         class="multi-select__search"
         type="search"
-        v-model="search"
         placeholder="Поиск..."
       />
       <div class="multi-select__options">

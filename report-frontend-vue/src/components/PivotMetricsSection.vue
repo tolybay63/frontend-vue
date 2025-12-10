@@ -13,9 +13,22 @@
       </n-button>
     </header>
 
-    <div class="metrics-list" v-if="metrics.length">
-      <article v-for="(metric, index) in metrics" :key="metric.id" class="metric-card">
-        <div class="metric-card__row">
+    <div v-if="metrics.length" class="metrics-list">
+      <article
+        v-for="(metric, index) in metrics"
+        :key="metric.id"
+        class="metric-card"
+      >
+        <div class="metric-card__header">
+          <strong>Метрика {{ index + 1 }}</strong>
+          <n-select
+            v-model:value="metric.type"
+            :options="metricTypeOptions"
+            size="small"
+            @update:value="(value) => switchMetricType(metric, value)"
+          />
+        </div>
+        <div v-if="metric.type !== 'formula'" class="metric-card__row">
           <label class="metric-field">
             <span>Поле</span>
             <n-select
@@ -35,6 +48,45 @@
             />
           </label>
         </div>
+          <div v-else class="metric-card__formula">
+            <label class="metric-field">
+              <span>Формула</span>
+              <n-input
+                v-model:value="metric.expression"
+                type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              placeholder="Например: {{metric-1}} / {{metric-2}}"
+            />
+          </label>
+          <div v-if="metricTokens.length" class="formula-hints">
+            <span>Доступные метрики:</span>
+            <ul>
+              <li v-for="token in metricTokens" :key="token.id">
+                {{ token.label }} → <code>{{ formatToken(token.id) }}</code>
+              </li>
+            </ul>
+          </div>
+          <label class="metric-field">
+            <span>Формат значения</span>
+            <n-select
+              v-model:value="metric.outputFormat"
+              :options="formulaFormatOptions"
+              size="large"
+            />
+          </label>
+          <label
+            v-if="isNumericFormat(metric.outputFormat)"
+            class="metric-field"
+          >
+            <span>Знаков после запятой</span>
+            <n-input-number
+              v-model:value="metric.precision"
+              :min="0"
+              :max="6"
+              size="large"
+            />
+          </label>
+        </div>
         <label class="metric-field">
           <span>Название метрики</span>
           <n-input
@@ -43,7 +95,9 @@
           />
         </label>
         <div class="metric-settings">
-          <n-checkbox v-model:checked="metric.enabled">Включена</n-checkbox>
+          <n-checkbox v-model:checked="metric.enabled">
+            Показывать в таблице
+          </n-checkbox>
           <n-checkbox v-model:checked="metric.showRowTotals">
             Итоги по строкам
           </n-checkbox>
@@ -105,7 +159,14 @@
 
 <script setup>
 import { computed } from 'vue'
-import { NButton, NCheckbox, NInput, NSelect, NTooltip } from 'naive-ui'
+import {
+  NButton,
+  NCheckbox,
+  NInput,
+  NInputNumber,
+  NSelect,
+  NTooltip,
+} from 'naive-ui'
 
 const props = defineProps({
   metrics: {
@@ -124,6 +185,10 @@ const props = defineProps({
     type: Function,
     default: null,
   },
+  metricTokens: {
+    type: Array,
+    default: () => [],
+  },
 })
 
 defineEmits(['add', 'move', 'remove'])
@@ -135,6 +200,53 @@ const fieldOptions = computed(() =>
   })),
 )
 const aggregatorOptions = computed(() => props.aggregators)
+const metricTokens = computed(() => props.metricTokens || [])
+const metricTypeOptions = [
+  { label: 'Поле источника', value: 'base' },
+  { label: 'Формула', value: 'formula' },
+]
+const formulaFormatOptions = [
+  { label: 'Авто', value: 'auto' },
+  { label: 'Число', value: 'number' },
+  { label: 'Целое число', value: 'integer' },
+  { label: 'Проценты', value: 'percent' },
+  { label: 'Валюта (₽)', value: 'currency' },
+  { label: 'Текст', value: 'text' },
+]
+
+function switchMetricType(metric, nextType) {
+  const next = nextType === 'formula' ? 'formula' : 'base'
+  metric.type = next
+  if (next === 'formula') {
+    metric.fieldKey = ''
+    metric.expression = metric.expression || ''
+    metric.outputFormat = metric.outputFormat || 'number'
+    if (!Number.isFinite(metric.precision)) {
+      metric.precision = 2
+    }
+  } else {
+    metric.expression = ''
+    if (!metric.aggregator || metric.aggregator === 'formula') {
+      metric.aggregator = 'sum'
+    }
+    metric.outputFormat = 'auto'
+  }
+}
+
+function formatToken(id) {
+  return `{{${id}}}`
+}
+
+function isNumericFormat(format) {
+  return (
+    !format ||
+    format === 'auto' ||
+    format === 'number' ||
+    format === 'integer' ||
+    format === 'percent' ||
+    format === 'currency'
+  )
+}
 </script>
 
 <style scoped>
@@ -157,6 +269,12 @@ const aggregatorOptions = computed(() => props.aggregators)
   gap: 12px;
   flex-wrap: wrap;
 }
+.metric-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
 .metric-field {
   display: flex;
   flex-direction: column;
@@ -174,5 +292,29 @@ const aggregatorOptions = computed(() => props.aggregators)
 .metric-actions {
   display: flex;
   gap: 8px;
+}
+.metric-card__formula {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.formula-hints {
+  font-size: 12px;
+  background: #fff;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #374151;
+}
+.formula-hints ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.formula-hints code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+  background: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 4px;
 }
 </style>

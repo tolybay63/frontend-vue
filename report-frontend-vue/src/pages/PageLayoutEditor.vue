@@ -9,7 +9,7 @@
       </div>
       <div class="header-actions">
         <button class="btn-outline" type="button" @click="goBack">Отмена</button>
-        <button class="btn-primary" type="button" @click="save" :disabled="saving">
+        <button class="btn-primary" type="button" :disabled="saving" @click="save">
           {{ saving ? 'Сохраняем...' : 'Сохранить' }}
         </button>
       </div>
@@ -35,7 +35,7 @@
         <legend>Глобальные фильтры</legend>
         <div v-if="availableFilterOptions.length" class="filter-grid">
           <label v-for="filter in availableFilterOptions" :key="filter.key" class="checkbox">
-            <input type="checkbox" :value="filter.key" v-model="draft.filters" />
+            <input v-model="draft.filters" type="checkbox" :value="filter.key" />
             <span>{{ filter.label }}</span>
           </label>
         </div>
@@ -58,7 +58,7 @@
         <header>
           <h2>Контейнеры</h2>
           <div class="containers__actions">
-            <button class="btn-link" type="button" @click="refreshTemplates" :disabled="templatesLoading">
+            <button class="btn-link" type="button" :disabled="templatesLoading" @click="refreshTemplates">
               {{ templatesLoading ? 'Обновляем…' : 'Обновить представления' }}
             </button>
             <button class="btn-outline btn-sm" type="button" @click="addContainer">
@@ -119,10 +119,10 @@
               </select>
             </label>
           </div>
-          <p class="muted" v-if="container.templateId">
+          <p v-if="container.templateId" class="muted">
             {{ templateMeta(container.templateId)?.description || 'Без описания' }}
           </p>
-          <p class="muted" v-else>
+          <p v-else class="muted">
             Выберите представление, чтобы связать контейнер с источником данных.
           </p>
           <p v-if="templateMeta(container.templateId)?.missingConfig" class="warning-text">
@@ -261,6 +261,8 @@ async function loadExistingPage() {
   containers.forEach((container, index) => {
     draft.layout.containers.push({
       id: container.id || createContainerId(),
+      remoteId: container.remoteId || container.id || null,
+      remoteMeta: container.remoteMeta ? { ...container.remoteMeta } : {},
       title: container.title,
       templateId: container.templateId || '',
       widthOption: container.widthOption || widthOptions.value[0]?.value || '',

@@ -11,7 +11,7 @@ export async function loadWorkPlan(date = "2025-07-30", periodType = 11) {
   }
 
   const response = await axios.post(
-    API_BASE_URL, 
+    API_BASE_URL,
     {
       method: "data/loadPlan",
       params: [
@@ -28,4 +28,36 @@ export async function loadWorkPlan(date = "2025-07-30", periodType = 11) {
   );
 
   return response.data.result?.records || [];
+}
+
+export async function completeThePlanWork(id, cls, date) {
+  try {
+    const response = await axios.post(
+      API_BASE_URL,
+      {
+        method: "data/completeThePlanWork",
+        params: [
+          {
+            id: id,
+            cls: cls,
+            date: date
+          }
+        ]
+      },
+      {
+        withCredentials: true
+      }
+    );
+
+    if (response.data && response.data.result) {
+      return response.data.result;
+    } else if (response.data && response.data.error) {
+      throw new Error(response.data.error);
+    } else {
+      return response.data;
+    }
+  } catch (error) {
+    console.error('Ошибка завершения работы:', error);
+    throw new Error(error.response?.data?.message || error.message || 'Не удалось завершить работу');
+  }
 }

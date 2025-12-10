@@ -12,6 +12,7 @@ export async function loadObjList(className, propName, sourceName = "nsidata") {
   return records.map(item => ({
     id: item.id,
     name: item.name,
-    cls: item.cls
+    cls: item.cls,
+    pv: item.pv
   }))
 }

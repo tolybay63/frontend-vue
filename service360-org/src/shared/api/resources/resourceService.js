@@ -4,6 +4,7 @@ import { getUserData } from '../common/userCache'
 
 const API_RESOURCE_URL = import.meta.env.VITE_RESOURCE_URL;
 const OBJECT_URL = import.meta.env.VITE_OBJECT_URL;
+const API_NSI_URL = import.meta.env.VITE_NSI_URL;
 
 export async function loadTools({ page = 1, limit = 10 }) {
   const response = await axios.post(API_RESOURCE_URL, {
@@ -300,6 +301,210 @@ export async function updateEquipment(equipmentData) {
     return response.data;
   } catch (error) {
     console.error('Ошибка при обновлении техники:', error);
+    throw error;
+  }
+}
+
+export async function loadMaterials({ page = 1, limit = 10 }) {
+  const response = await axios.post(API_RESOURCE_URL, {
+    method: 'data/loadMaterial',
+    params: [0]
+  })
+
+  const records = response.data.result?.records || []
+
+  return {
+    data: records.map((item, i) => ({
+      rawData: item,
+      id: item.id,
+      cls: item.cls,
+      fullName: item.fullName || '',
+      nameMeasure: item.nameMeasure || '',
+
+      // Дополнительные поля для возможного редактирования
+      name: item.name || '',
+      idMeasure: item.idMeasure,
+      pvMeasure: item.pvMeasure,
+      meaMeasure: item.meaMeasure,
+
+      _originalIndex: i + 1,
+    })),
+    total: records.length
+  }
+}
+
+export async function loadTpServices({ page = 1, limit = 10 }) {
+  const response = await axios.post(API_RESOURCE_URL, {
+    method: 'data/loadTpService',
+    params: [0]
+  })
+
+  const records = response.data.result?.records || []
+
+  return {
+    data: records.map((item, i) => ({
+      rawData: item,
+      id: item.id,
+      cls: item.cls,
+      name: item.name || '',
+      fullName: item.fullName || '',
+      nameMeasure: item.nameMeasure || '',
+
+      _originalIndex: i + 1,
+    })),
+    total: records.length
+  }
+}
+
+export async function loadMeasures() {
+  try {
+    const response = await axios.post(API_NSI_URL, {
+      method: 'data/loadMeasure',
+      params: ['Prop_Measure']
+    });
+
+    const records = response.data.result?.records || [];
+    return records.map(record => ({
+      label: record.name,
+      value: record.id,
+      pv: record.pv
+    }));
+  } catch (error) {
+    console.error('Ошибка при загрузке единиц измерения:', error);
+    throw error;
+  }
+}
+
+export async function saveMaterial(materialData) {
+  try {
+    const user = await getUserData();
+    const today = formatDateForBackend(new Date());
+
+    const payload = {
+      name: materialData.name,
+      meaMeasure: materialData.measure.value,
+      pvMeasure: materialData.measure.pv,
+      objUser: user.id,
+      pvUser: user.pv,
+      CreatedAt: today,
+      UpdatedAt: today,
+      Description: materialData.description || ''
+    };
+
+    console.log('Отправка данных для сохранения материала:', payload);
+
+    const response = await axios.post(API_RESOURCE_URL, {
+      method: 'data/saveMaterial',
+      params: ['ins', payload]
+    });
+
+    console.log('Ответ от сервера:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при сохранении материала:', error);
+    throw error;
+  }
+}
+
+export async function saveTpService(serviceData) {
+  try {
+    const user = await getUserData();
+    const today = formatDateForBackend(new Date());
+
+    const payload = {
+      name: serviceData.name,
+      meaMeasure: serviceData.measure.value,
+      pvMeasure: serviceData.measure.pv,
+      objUser: user.id,
+      pvUser: user.pv,
+      CreatedAt: today,
+      UpdatedAt: today,
+      Description: serviceData.description || ''
+    };
+
+    console.log('Отправка данных для сохранения услуги:', payload);
+
+    const response = await axios.post(API_RESOURCE_URL, {
+      method: 'data/saveTpService',
+      params: ['ins', payload]
+    });
+
+    console.log('Ответ от сервера:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при сохранении услуги:', error);
+    throw error;
+  }
+}
+
+export async function updateMaterial(materialData) {
+  try {
+    const user = await getUserData();
+    const today = formatDateForBackend(new Date());
+
+    const payload = {
+      id: materialData.rawData.id,
+      cls: materialData.rawData.cls,
+      name: materialData.name,
+      idMeasure: materialData.rawData.idMeasure,
+      meaMeasure: materialData.measure.value,
+      pvMeasure: materialData.measure.pv,
+      idUpdatedAt: materialData.rawData.idUpdatedAt,
+      UpdatedAt: today,
+      idUser: materialData.rawData.idUser,
+      pvUser: user.pv,
+      objUser: user.id,
+      idDescription: materialData.rawData.idDescription,
+      Description: materialData.description || ''
+    };
+
+    console.log('Отправка данных для обновления материала:', payload);
+
+    const response = await axios.post(API_RESOURCE_URL, {
+      method: 'data/saveMaterial',
+      params: ['upd', payload]
+    });
+
+    console.log('Ответ от сервера:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при обновлении материала:', error);
+    throw error;
+  }
+}
+
+export async function updateTpService(serviceData) {
+  try {
+    const user = await getUserData();
+    const today = formatDateForBackend(new Date());
+
+    const payload = {
+      id: serviceData.rawData.id,
+      cls: serviceData.rawData.cls,
+      name: serviceData.name,
+      idMeasure: serviceData.rawData.idMeasure,
+      meaMeasure: serviceData.measure.value,
+      pvMeasure: serviceData.measure.pv,
+      idUpdatedAt: serviceData.rawData.idUpdatedAt,
+      UpdatedAt: today,
+      idUser: serviceData.rawData.idUser,
+      pvUser: user.pv,
+      objUser: user.id,
+      idDescription: serviceData.rawData.idDescription,
+      Description: serviceData.description || ''
+    };
+
+    console.log('Отправка данных для обновления услуги:', payload);
+
+    const response = await axios.post(API_RESOURCE_URL, {
+      method: 'data/saveTpService',
+      params: ['upd', payload]
+    });
+
+    console.log('Ответ от сервера:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при обновлении услуги:', error);
     throw error;
   }
 }

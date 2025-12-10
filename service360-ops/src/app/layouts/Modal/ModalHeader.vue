@@ -1,12 +1,15 @@
 <template>
   <div class="modal-header">
-    <h3>{{ title }}</h3>
-    <button class="close-btn" @click="close">×</button>
+    <h3 class="modal-title">{{ title }}</h3>
+    <button class="close-button" @click="close" title="Закрыть">
+      <X :size="20" />
+    </button>
   </div>
 </template>
 
 <script setup>
 import { defineProps, defineEmits } from 'vue'
+import { X } from 'lucide-vue-next'
 
 const props = defineProps({
   title: String
@@ -22,29 +25,35 @@ const close = () => {
 <style scoped>
 .modal-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  justify-content: space-between;
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-h3 {
-  margin: 0;
-  font-size: 18px;
+.modal-title {
+  font-size: 20px;
   font-weight: 600;
-  color: #1a202c;
+  color: #1e293b;
+  margin: 0;
 }
 
-.close-btn {
-  background: none;
+.close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: none;
-  font-size: 24px;
+  background: transparent;
+  border-radius: 6px;
   cursor: pointer;
-  color: #c53030;
-  transition: color 0.2s;
+  color: #64748b;
+  transition: all 0.2s;
 }
-.close-btn:hover {
-  color: #9b2c2c;
+
+.close-button:hover {
+  background: #f1f5f9;
+  color: #1e293b;
 }
 </style>

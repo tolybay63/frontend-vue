@@ -138,10 +138,10 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: 0,
-  coordStartPk: 0,
-  coordEndKm: 0,
-  coordEndPk: 0
+  coordStartKm: 1,
+  coordStartPk: 1,
+  coordEndKm: 1,
+  coordEndPk: 1
 })
 
 const objectBounds = ref(null)
@@ -369,10 +369,10 @@ const onObjectChange = async (selectedObjectId) => {
     FinishPicket: record.FinishPicket
   }
 
-  coordinates.value.coordStartKm = Math.floor(record.StartKm) || 0
-  coordinates.value.coordStartPk = Math.floor(record.StartPicket) || 0
-  coordinates.value.coordEndKm = Math.floor(record.FinishKm) || 0
-  coordinates.value.coordEndPk = Math.floor(record.FinishPicket) || 0
+  coordinates.value.coordStartKm = Math.floor(record.StartKm) || 1
+  coordinates.value.coordStartPk = Math.floor(record.StartPicket) || 1
+  coordinates.value.coordEndKm = Math.floor(record.FinishKm) || 1
+  coordinates.value.coordEndPk = Math.floor(record.FinishPicket) || 1
 
   form.value.section = null
   selectedSectionData.value = null
@@ -458,10 +458,10 @@ const populateFormFromRowData = () => {
   if (row.planDate) {
     form.value.plannedDate = new Date(row.planDate)
   }
-  coordinates.value.coordStartKm = row.StartKm || 0
-  coordinates.value.coordStartPk = row.StartPicket || 0
-  coordinates.value.coordEndKm = row.FinishKm || 0
-  coordinates.value.coordEndPk = row.FinishPicket || 0
+  coordinates.value.coordStartKm = row.StartKm || 1
+  coordinates.value.coordStartPk = row.StartPicket || 1
+  coordinates.value.coordEndKm = row.FinishKm || 1
+  coordinates.value.coordEndPk = row.FinishPicket || 1
 }
 
 const findOptionInArray = (array, key, value) => {

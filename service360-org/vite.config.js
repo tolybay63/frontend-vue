@@ -17,7 +17,7 @@ export default defineConfig(() => {
     // Base path for production deployment
     base: '/dtj/org/',
 
-    server: {
+        server: {
       host: process.env.VITE_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.VITE_DEV_SERVER_PORT) || 3000,
       proxy: {

@@ -76,7 +76,7 @@
             v-model="incident.coordinates"
             :object-bounds="incident.objectBounds"
             @invalid-range="incident.isInvalidRange = $event"
-            @out-of-bounds="incident.isOutOfBounds = true"
+            @out-of-bounds="(val) => incident.isOutOfBounds = val !== false"
             :required="true"
           />
 
@@ -133,12 +133,12 @@ const createNewObjectForm = (dataToCopy = {}) => ({
   object: dataToCopy.object || null,
   description: '',
   coordinates: dataToCopy.coordinates ? JSON.parse(JSON.stringify(dataToCopy.coordinates)) : {
-    coordStartKm: null,
-    coordStartPk: null,
-    coordStartZv: null,
-    coordEndKm: null,
-    coordEndPk: null,
-    coordEndZv: null,
+    coordStartKm: 1,
+    coordStartPk: 1,
+    coordStartZv: 1,
+    coordEndKm: 1,
+    coordEndPk: 1,
+    coordEndZv: 1,
   },
   objectBounds: dataToCopy.objectBounds ? JSON.parse(JSON.stringify(dataToCopy.objectBounds)) : null,
   isInvalidRange: false,
@@ -241,7 +241,7 @@ const onPlaceChange = (selectedPlaceId, index) => {
   objectForm.objectTypeOptions = []
   objectForm.objectOptions = []
   objectForm.filteredRecordsByPlace = []
-  objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordStartZv: null, coordEndKm: null, coordEndPk: null, coordEndZv: null }
+  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false
@@ -276,7 +276,7 @@ const onObjectTypeChange = (selectedObjectTypeId, index) => {
   const objectForm = form.value.incidents[index];
   objectForm.object = null
   objectForm.objectOptions = []
-  objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordStartZv: null, coordEndKm: null, coordEndPk: null, coordEndZv: null }
+  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false
@@ -305,7 +305,7 @@ const onObjectTypeChange = (selectedObjectTypeId, index) => {
 
 const onObjectChange = async (selectedObjectId, index) => {
   const objectForm = form.value.incidents[index];
-  objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordStartZv: null, coordEndKm: null, coordEndPk: null, coordEndZv: null }
+  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false

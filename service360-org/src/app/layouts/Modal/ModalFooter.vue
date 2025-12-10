@@ -1,9 +1,9 @@
 <template>
   <div class="modal-footer">
-    <button v-if="showDelete" class="delete-btn" @click="deleteObject">Удалить</button>
+    <button v-if="showDelete" class="button button-delete" @click="deleteObject">Удалить</button>
     <div></div>
-    <button v-if="showCancel" class="cancel-btn" @click="cancel">Отмена</button>
-    <button v-if="showSave" class="save-btn" @click="save" :disabled="disabled">Сохранить</button>
+    <button v-if="showCancel" class="button button-secondary" @click="cancel">Отмена</button>
+    <button v-if="showSave" class="button button-primary" @click="save" :disabled="disabled">Сохранить</button>
   </div>
 </template>
 
@@ -30,47 +30,76 @@ const deleteObject = () => emit('delete')
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 20px 62px;
-  background-color: #ffffff;
-  border-top: 1px solid #e5e7eb;
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
 }
 
-.modal-footer button.delete-btn {
+.modal-footer button.button-delete {
   order: -1;
 }
 
 .modal-footer > div {
-  flex: 1; 
+  flex: 1;
 }
 
-button {
+.button {
   padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
+  border: none;
 }
 
-.cancel-btn {
-  background-color: #edf2f7;
-  color: #4a5568;
+.button-secondary {
+  background: white;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
 }
 
-.save-btn {
-  background-color: #2b6cb0;
+.button-secondary:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.button-primary {
+  background: #3b82f6;
   color: white;
 }
 
-.save-btn:hover {
-  background-color: #2c5282;
+.button-primary:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.delete-btn {
-  background-color: #e53e3e;
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button-delete {
+  background: #dc2626;
   color: white;
 }
 
-.delete-btn:hover {
-  background-color: #c53030;
+.button-delete:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+@media (max-width: 640px) {
+  .modal-footer {
+    flex-direction: column-reverse;
+    padding: 16px 20px;
+  }
+
+  .button {
+    width: 100%;
+  }
 }
 </style>

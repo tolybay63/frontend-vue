@@ -1,18 +1,19 @@
 <template>
   <div class="table-wrapper" :class="{ 'mobile-view': isMobile }">
     <div class="header-content">
-      <h2 class="title" v-if="!isMobile">{{ title }}</h2>
+      <h2 class="title" v-if="!isMobile && hasActiveFilters">{{ title }}</h2>
       <div v-if="isMobile" class="mobile-header-top">
         <h2 class="title">{{ title }}</h2>
         <TableActions :actions="actions" :isMobile="isMobile" />
       </div>
 
-      <div class="controls-header">
-        <div class="filters" v-if="showFilters">
+      <div v-if="!isMobile" class="controls-header">
+        <h2 class="title" v-if="!hasActiveFilters">{{ title }}</h2>
+        <div class="filters" v-if="showFilters && hasActiveFilters">
           <AppDatePicker
             v-if="datePickerConfig"
             :modelValue="filters.date"
-            :label="isMobile ? '' : datePickerConfig.label"
+            :label="datePickerConfig.label"
             :placeholder="datePickerConfig.placeholder"
             @update:modelValue="updateFilter('date', $event)"
           />
@@ -20,13 +21,13 @@
           <AppDropdown
             v-if="dropdownConfig"
             :modelValue="filters.periodType"
-            :label="isMobile ? '' : dropdownConfig.label"
+            :label="dropdownConfig.label"
             :options="dropdownConfig.options"
             :placeholder="dropdownConfig.placeholder"
             @update:modelValue="updateFilter('periodType', $event)"
           />
         </div>
-        <TableActions v-if="!isMobile" :actions="actions" :isMobile="isMobile" />
+        <TableActions :actions="actions" :isMobile="isMobile" />
       </div>
     </div>
 
@@ -152,6 +153,10 @@ const activeFilters = computed(() => {
     active[key] = columnFilters.value[key] && columnFilters.value[key].trim().length > 0;
   });
   return active;
+});
+
+const hasActiveFilters = computed(() => {
+  return !!(props.datePickerConfig || props.dropdownConfig);
 });
 
 const sortedAndFilteredRows = computed(() => {

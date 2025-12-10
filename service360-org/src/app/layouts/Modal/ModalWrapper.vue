@@ -75,32 +75,34 @@ const onDelete = () => emit('delete')
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
 }
 
 .modal-wrapper {
-  width: 800px;
-  max-height: 90vh;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 800px;
+  width: 100%;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
-  background-color: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .modal-card {
   display: flex;
   flex-direction: column;
+  height: 100%;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid #e5e7eb;
-  height: 100%;
 }
 
 .modal-scrollable {
@@ -109,10 +111,34 @@ const onDelete = () => emit('delete')
 }
 
 .modal-body {
-  padding: 32px;
-  background-color: #f9fafb;
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  padding: 24px;
+  background-color: white;
+}
+
+.modal-body :deep(.form-group) {
+  margin-bottom: 24px !important;
+}
+
+.modal-body :deep(.form-group:last-child) {
+  margin-bottom: 0 !important;
+}
+
+.modal-body :deep(> *) {
+  margin-bottom: 24px;
+}
+
+.modal-body :deep(> *:last-child) {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .modal-wrapper {
+    max-width: 100%;
+    max-height: 90vh;
+  }
+
+  .modal-body {
+    padding: 20px;
+  }
 }
 </style>

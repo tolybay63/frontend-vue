@@ -173,7 +173,7 @@ onMounted(() => {
 .form-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  
   padding: 20px;
 }
 

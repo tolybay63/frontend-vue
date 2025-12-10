@@ -31,23 +31,37 @@
     @close="closePlanWorkModal"
     @update-table="handleTableUpdate"
   />
+
+  <ConfirmationModal
+    v-if="isConfirmModalOpen"
+    title="Завершение работы"
+    message="Вы уверены, что хотите завершить эту работу?"
+    @confirm="handleConfirmComplete"
+    @cancel="isConfirmModalOpen = false"
+  />
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, h } from 'vue';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue';
 import ModalEditPlan from '@/features/work-plan/components/ModalEditPlan.vue';
 import ModalPlanWork from '@/features/work-plan/components/ModalPlanWork.vue';
-import { loadWorkPlan } from '@/shared/api/plans/planApi';
+import { loadWorkPlan, completeThePlanWork } from '@/shared/api/plans/planApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
 import WorkStatus from '@/features/work-log/components/WorkStatus.vue';
+import UiButton from '@/shared/ui/UiButton.vue';
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue';
+import { useNotificationStore } from '@/app/stores/notificationStore';
 
 const { hasPermission } = usePermissions();
 
 const limit = 10;
 const isPlanWorkModalOpen = ref(false);
 const tableWrapperRef = ref(null);
+const isConfirmModalOpen = ref(false);
+const recordToComplete = ref(null);
+const notificationStore = useNotificationStore();
 
 const filters = ref({
   date: new Date(),
@@ -106,6 +120,52 @@ const formatDateToString = (date) => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const formatDateToISO = (date) => {
+  if (!date) return null;
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const openConfirmationModal = (row) => {
+  recordToComplete.value = row;
+  isConfirmModalOpen.value = true;
+};
+
+const handleConfirmComplete = async () => {
+  if (!recordToComplete.value || !recordToComplete.value.id) {
+    notificationStore.showNotification('Ошибка: Нет записи для завершения.', 'error');
+    return;
+  }
+
+  try {
+    const today = formatDateToISO(new Date());
+
+    // У записи в WorkPlan.vue должен быть cls из rawData
+    const cls = recordToComplete.value.rawData?.cls;
+
+    if (!cls) {
+      notificationStore.showNotification('Ошибка: Не найден cls записи.', 'error');
+      return;
+    }
+
+    await completeThePlanWork(recordToComplete.value.id, cls, today);
+
+    notificationStore.showNotification('Работа успешно завершена!', 'success');
+
+    handleTableUpdate();
+
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || 'Не удалось завершить работу';
+    notificationStore.showNotification(`Не удалось завершить работу: ${errorMessage}`, 'error');
+  } finally {
+    isConfirmModalOpen.value = false;
+    recordToComplete.value = null;
+  }
 };
 
 const formatCoordinates = (startKm, startPk, startZv, finishKm, finishPk, finishZv) => {
@@ -200,6 +260,30 @@ const columns = [
   { key: 'object', label: 'Объект' },
   { key: 'planDate', label: 'Плановая дата' },
   { key: 'status', label: 'Статус работы', component: WorkStatus },
+  {
+    key: 'actions',
+    label: 'ДЕЙСТВИЯ',
+    component: {
+      setup(props, context) {
+        const rowData = context.attrs.row;
+
+        const onClickHandler = (event) => {
+          event.stopPropagation();
+          openConfirmationModal(rowData);
+        };
+
+        return () => {
+          // Не показываем кнопку если работа уже завершена
+          if (rowData?.status?.showCheck) return null;
+
+          return h(UiButton, {
+            text: 'Завершить работу',
+            onClick: onClickHandler,
+          });
+        };
+      },
+    },
+  },
 ];
 
 const tableActions = computed(() => {

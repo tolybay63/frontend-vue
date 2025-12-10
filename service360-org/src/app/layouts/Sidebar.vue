@@ -60,7 +60,10 @@ const allItems = [
     label: 'Объекты',
     icon: 'Package',
     children: [
-      { label: 'Обслуживаемые объекты', path: '/objects', permission: 'obj' }
+      { label: 'Обслуживаемые объекты', path: '/objects', permission: 'obj' },
+      { label: 'Участки', path: '/sections' },
+      { label: 'Раздельные пункты', path: '/stations' },
+      { label: 'Перегоны', path: '/stages' }
     ]
   },
   {
@@ -70,7 +73,7 @@ const allItems = [
       { label: 'Материалы', path: '/resources/materials', permission: 'mat' },
       { label: 'Инструменты', path: '/resources/tools', permission: 'tool' },
       { label: 'Техника', path: '/resources/equipment', permission: 'equ' },
-      { label: 'Услуги сторонних организаций', path: '/resources/services', permission: 'tps' }
+      { label: 'Услуги сторонних организаций', path: '/resources/thirdparty-services', permission: 'tps' }
     ]
   },
   {

@@ -40,16 +40,18 @@ async function loadObjectTypes() {
   return loadObjList("Typ_ObjectTyp", "Prop_ObjectType", "nsidata")
 }
 
-const formatCoordinates = (startKm, startPk, finishKm, finishPk) => {
+const formatCoordinates = (startKm, startPk, startZv, finishKm, finishPk, finishZv) => {
   const isPresent = (val) => val !== null && val !== undefined && val !== '';
 
   const startPart = [];
   if (isPresent(startKm)) startPart.push(`${startKm}км`);
   if (isPresent(startPk)) startPart.push(`${startPk}пк`);
+  if (isPresent(startZv)) startPart.push(`${startZv}зв`);
 
   const finishPart = [];
   if (isPresent(finishKm)) finishPart.push(`${finishKm}км`);
   if (isPresent(finishPk)) finishPart.push(`${finishPk}пк`);
+  if (isPresent(finishZv)) finishPart.push(`${finishZv}зв`);
 
   const start = startPart.join(' ');
   const finish = finishPart.join(' ');
@@ -80,7 +82,7 @@ export async function loadObjectServed({ page = 1, limit = 10 }) {
       cls: item.cls,
       type: typeMap[item.objObjectType] || 'Неизвестно',
       name: item.name || '',
-      coords: `${item.StartKm} км ${item.StartPicket} пк - ${item.FinishKm} км ${item.FinishPicket} пк`,
+      coords: formatCoordinates(item.StartKm, item.StartPicket, item.StartLink, item.FinishKm, item.FinishPicket, item.FinishLink),
       feature: item.Specs || '',
       location: item.LocationDetails || '',
       replacement: item.PeriodicityReplacement || '',
@@ -97,6 +99,8 @@ export async function loadObjectServed({ page = 1, limit = 10 }) {
       idFinishKm: item.idFinishKm,
       idStartPicket: item.idStartPicket,
       idFinishPicket: item.idFinishPicket,
+      idStartLink: item.idStartLink,
+      idFinishLink: item.idFinishLink,
       idCreatedAt: item.idCreatedAt,
       idUpdatedAt: item.idUpdatedAt,
       idPeriodicityReplacement: item.idPeriodicityReplacement,
@@ -110,7 +114,7 @@ export async function loadObjectServed({ page = 1, limit = 10 }) {
       // Для мобильной версии
       nameObjectType: item.nameObjectType || typeMap[item.objObjectType] || '',
       fullName: item.fullName || '',
-      coordinates: formatCoordinates(item.StartKm, item.StartPicket, item.FinishKm, item.FinishPicket),
+      coordinates: formatCoordinates(item.StartKm, item.StartPicket, item.StartLink, item.FinishKm, item.FinishPicket, item.FinishLink),
       date: item.CreatedAt,
       nameSection: item.nameSection || '',
 

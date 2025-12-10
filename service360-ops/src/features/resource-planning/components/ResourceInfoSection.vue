@@ -82,6 +82,13 @@
   <CompleteTaskModal
     :isOpen="isModalOpen"
     :maxVolume="recordData.volume"
+    :resources="{
+      materials: recordData.materials || [],
+      tools: recordData.tools || [],
+      equipment: recordData.equipment || [],
+      services: recordData.services || [],
+      performers: recordData.performers || []
+    }"
     @close="isModalOpen = false"
     @confirm="handleCompleteTask"
   />
@@ -183,14 +190,16 @@ const handleStartTask = async () => {
   }
 };
 
-const handleCompleteTask = async (actualVolume) => {
+const handleCompleteTask = async (actualVolume, reasonDeviation) => {
   try {
     const payload = {
       id: props.taskLogId,
+      objWorkPlan: props.objWorkPlan,
       Value: actualVolume, // Фактический объем из модального окна
       FactDateEnd: getFormattedDate(),
+      ReasonDeviation: reasonDeviation || '', // Причина отклонения от плана
     };
-    
+
     await saveTaskLogFact(payload);
     isModalOpen.value = false;
     notificationStore.showNotification('Задача успешно завершена!', 'success');

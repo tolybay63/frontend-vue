@@ -30,7 +30,7 @@
         :modelValue="currentStartZv"
         label="Начало (зв)"
         placeholder="зв"
-        :max="8"
+        :max="4"
         :disabled="disabled"
         :status="shouldShowError && (isInvalid || isOutOfBounds) ? 'error' : null"
         @update:modelValue="handleStartZv"
@@ -62,7 +62,7 @@
         :modelValue="currentEndZv"
         label="Конец (зв)"
         placeholder="зв"
-        :max="8"
+        :max="4"
         :disabled="disabled"
         :status="shouldShowError && (isInvalid || isOutOfBounds) ? 'error' : null"
         @update:modelValue="handleEndZv"
@@ -113,12 +113,12 @@ const notificationStore = useNotificationStore()
 const isUserTyping = ref(false)
 const shouldShowError = ref(false)
 
-const currentStartKm = computed(() => props.modelValue.coordStartKm ?? 0)
-const currentStartPk = computed(() => props.modelValue.coordStartPk ?? 0)
-const currentStartZv = computed(() => props.modelValue.coordStartZv ?? 0)
-const currentEndKm = computed(() => props.modelValue.coordEndKm ?? 0)
-const currentEndPk = computed(() => props.modelValue.coordEndPk ?? 0)
-const currentEndZv = computed(() => props.modelValue.coordEndZv ?? 0)
+const currentStartKm = computed(() => props.modelValue.coordStartKm ?? 1)
+const currentStartPk = computed(() => props.modelValue.coordStartPk ?? 1)
+const currentStartZv = computed(() => props.modelValue.coordStartZv ?? 1)
+const currentEndKm = computed(() => props.modelValue.coordEndKm ?? 1)
+const currentEndPk = computed(() => props.modelValue.coordEndPk ?? 1)
+const currentEndZv = computed(() => props.modelValue.coordEndZv ?? 1)
 
 // Расчет абсолютной координаты
 const startAbs = computed(() => currentStartKm.value * 1000 + currentStartPk.value * 100 + currentStartZv.value * 25)
@@ -155,12 +155,12 @@ const updateCoords = (field, value) => {
   })
 }
 
-const handleStartKm = (value) => updateCoords('coordStartKm', clamp(value, 0, 9999))
-const handleStartPk = (value) => updateCoords('coordStartPk', clamp(value, 0, 10))
-const handleStartZv = (value) => updateCoords('coordStartZv', clamp(value, 0, 99))
-const handleEndKm = (value) => updateCoords('coordEndKm', clamp(value, 0, 9999))
-const handleEndPk = (value) => updateCoords('coordEndPk', clamp(value, 0, 10))
-const handleEndZv = (value) => updateCoords('coordEndZv', clamp(value, 0, 99))
+const handleStartKm = (value) => updateCoords('coordStartKm', clamp(value, 1, 9999))
+const handleStartPk = (value) => updateCoords('coordStartPk', clamp(value, 1, 10))
+const handleStartZv = (value) => updateCoords('coordStartZv', clamp(value, 1, 4))
+const handleEndKm = (value) => updateCoords('coordEndKm', clamp(value, 1, 9999))
+const handleEndPk = (value) => updateCoords('coordEndPk', clamp(value, 1, 10))
+const handleEndZv = (value) => updateCoords('coordEndZv', clamp(value, 1, 4))
 
 const performValidation = () => {
   if (isInvalid.value) {

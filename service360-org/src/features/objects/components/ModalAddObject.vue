@@ -26,9 +26,10 @@
       @update:value="onTypeChange"
       />
 
-      <CoordinateInputs 
-      v-model="coordinates" 
-      :required="true" 
+      <FullCoordinates
+      class="col-span-2"
+      v-model="coordinates"
+      :required="true"
       />
 
       <AppInput 
@@ -108,7 +109,7 @@ import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue'
-import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
+import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import { loadTypes, loadSides, fetchStationOfCoord, saveObjectServed } from '@/shared/api/objects/objectService'
 import { getUserData } from '@/shared/api/common/userCache'
 import { useNotificationStore } from '@/app/stores/notificationStore'
@@ -130,10 +131,12 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: null,
-  coordStartPk: null,
-  coordEndKm: null,
-  coordEndPk: null,
+  coordStartKm: 1,
+  coordStartPk: 1,
+  coordStartZv: 1,
+  coordEndKm: 1,
+  coordEndPk: 1,
+  coordEndZv: 1,
 })
 
 const typeOptions = ref([])
@@ -187,10 +190,12 @@ const saveData = async () => {
     const sectionName = stationData.value?.name || ''
 
     const startCoordStr = `${coordinates.value.coordStartKm ?? ''}км` +
-      (coordinates.value.coordStartPk != null ? ` ${coordinates.value.coordStartPk}пк` : '')
+      (coordinates.value.coordStartPk != null ? ` ${coordinates.value.coordStartPk}пк` : '') +
+      (coordinates.value.coordStartZv != null ? ` ${coordinates.value.coordStartZv}зв` : '')
 
     const endCoordStr = `${coordinates.value.coordEndKm ?? ''}км` +
-      (coordinates.value.coordEndPk != null ? ` ${coordinates.value.coordEndPk}пк` : '')
+      (coordinates.value.coordEndPk != null ? ` ${coordinates.value.coordEndPk}пк` : '') +
+      (coordinates.value.coordEndZv != null ? ` ${coordinates.value.coordEndZv}зв` : '')
 
     const coordsString = `[${startCoordStr} - ${endCoordStr}]`
 
@@ -200,15 +205,17 @@ const saveData = async () => {
     const payload = {
       CreatedAt: createdAt,
       Description: form.value.description || '',
-      FinishKm: coordinates.value.coordEndKm ?? 0,
-      FinishPicket: coordinates.value.coordEndPk ?? 0,
+      FinishKm: coordinates.value.coordEndKm,
+      FinishPicket: coordinates.value.coordEndPk,
+      FinishLink: coordinates.value.coordEndZv,
       InstallationDate: installDate,
       LocationDetails: form.value.additionalInfo || '',
       Number: form.value.deviceNumber || '',
       PeriodicityReplacement: form.value.replacementPeriod || '',
       Specs: form.value.characteristic || '',
-      StartKm: coordinates.value.coordStartKm ?? 0,
-      StartPicket: coordinates.value.coordStartPk ?? 0,
+      StartKm: coordinates.value.coordStartKm,
+      StartPicket: coordinates.value.coordStartPk,
+      StartLink: coordinates.value.coordStartZv,
       UpdatedAt: updatedAt,
       fullName,
       fvSide: selectedSide.value?.value ?? null,
@@ -240,14 +247,16 @@ const onSideChange = (value) => {
 }
 
 const fetchPlace = async () => {
-  const { coordStartKm, coordStartPk, coordEndKm, coordEndPk } = coordinates.value
+  const { coordStartKm, coordStartPk, coordStartZv, coordEndKm, coordEndPk, coordEndZv } = coordinates.value
   if (coordStartKm == null || coordEndKm == null) return
   isFetching.value = true
   const data = await fetchStationOfCoord({
     StartKm: coordStartKm,
     FinishKm: coordEndKm,
-    StartPicket: coordStartPk ?? 0,
-    FinishPicket: coordEndPk ?? 0,
+    StartPicket: coordStartPk,
+    FinishPicket: coordEndPk,
+    StartLink: coordStartZv,
+    FinishLink: coordEndZv,
   })
   const records = data?.result?.records || []
   if (records.length > 0) {
@@ -283,7 +292,7 @@ onMounted(async () => {
 .form-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  
   padding: 0 32px 32px;
   background-color: #f9fafb;
 }

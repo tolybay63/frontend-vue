@@ -84,10 +84,10 @@ const notificationStore = useNotificationStore()
 const isUserTyping = ref(false)
 const shouldShowError = ref(false)
 
-const currentStartKm = computed(() => props.modelValue.coordStartKm ?? 0)
-const currentStartPk = computed(() => props.modelValue.coordStartPk ?? 0)
-const currentEndKm = computed(() => props.modelValue.coordEndKm ?? 0)
-const currentEndPk = computed(() => props.modelValue.coordEndPk ?? 0)
+const currentStartKm = computed(() => props.modelValue.coordStartKm ?? 1)
+const currentStartPk = computed(() => props.modelValue.coordStartPk ?? 1)
+const currentEndKm = computed(() => props.modelValue.coordEndKm ?? 1)
+const currentEndPk = computed(() => props.modelValue.coordEndPk ?? 1)
 
 const startAbs = computed(() => currentStartKm.value * 1000 + currentStartPk.value * 100)
 const endAbs = computed(() => currentEndKm.value * 1000 + currentEndPk.value * 100)
@@ -121,10 +121,10 @@ const updateCoords = (field, value) => {
   })
 }
 
-const handleStartKm = (value) => updateCoords('coordStartKm', clamp(value, 0, 9999))
-const handleStartPk = (value) => updateCoords('coordStartPk', clamp(value, 0, 10))
-const handleEndKm = (value) => updateCoords('coordEndKm', clamp(value, 0, 9999))
-const handleEndPk = (value) => updateCoords('coordEndPk', clamp(value, 0, 10))
+const handleStartKm = (value) => updateCoords('coordStartKm', clamp(value, 1, 9999))
+const handleStartPk = (value) => updateCoords('coordStartPk', clamp(value, 1, 10))
+const handleEndKm = (value) => updateCoords('coordEndKm', clamp(value, 1, 9999))
+const handleEndPk = (value) => updateCoords('coordEndPk', clamp(value, 1, 10))
 
 const performValidation = () => {
   if (isInvalid.value) {

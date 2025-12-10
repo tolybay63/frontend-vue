@@ -133,10 +133,10 @@ const createNewObjectForm = () => ({
   object: null,
   section: null,
   coordinates: {
-    coordStartKm: null,
-    coordStartPk: null,
-    coordEndKm: null,
-    coordEndPk: null
+    coordStartKm: 1,
+    coordStartPk: 1,
+    coordEndKm: 1,
+    coordEndPk: 1
   },
   objectBounds: null,
 
@@ -355,7 +355,7 @@ const onWorkChange = async (selectedWorkId) => {
     objectForm.objectType = null
     objectForm.object = null
     objectForm.section = null
-    objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordEndKm: null, coordEndPk: null }
+    objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
     objectForm.objectBounds = null
     objectForm.objectTypeOptions = []
     objectForm.objectOptions = []
@@ -375,7 +375,7 @@ const onPlaceChange = async (selectedPlaceId, index) => {
   objectForm.objectType = null
   objectForm.object = null
   objectForm.section = null
-  objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordEndKm: null, coordEndPk: null }
+  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
   objectForm.objectBounds = null
   objectForm.objectOptions = []
   objectForm.sectionOptions = []
@@ -416,7 +416,7 @@ const onObjectTypeChange = async (selectedObjectTypeId, index) => {
   const objectForm = form.value.objects[index]
   objectForm.object = null
   objectForm.section = null
-  objectForm.coordinates = { coordStartKm: null, coordStartPk: null, coordEndKm: null, coordEndPk: null }
+  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
   objectForm.objectBounds = null
   objectForm.sectionOptions = []
 

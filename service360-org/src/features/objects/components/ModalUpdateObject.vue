@@ -31,8 +31,9 @@
         @update:value="onTypeChange"
       />
 
-      <CoordinateInputs 
-      v-model="coordinates" 
+      <FullCoordinates
+      class="col-span-2"
+      v-model="coordinates"
       :required="true"
       :disabled="!canUpdate"
       />
@@ -127,7 +128,7 @@ import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue'
-import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
+import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { loadTypes, loadSides, fetchStationOfCoord, deleteObject, updateObjectServed } from '@/shared/api/objects/objectService'
 import { getUserData } from '@/shared/api/common/userCache'
@@ -164,10 +165,12 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: null,
-  coordStartPk: null,
-  coordEndKm: null,
-  coordEndPk: null,
+  coordStartKm: 1,
+  coordStartPk: 1,
+  coordStartZv: 1,
+  coordEndKm: 1,
+  coordEndPk: 1,
+  coordEndZv: 1,
 })
 
 const typeOptions = ref([])
@@ -232,10 +235,12 @@ onMounted(async () => {
     }
 
     coordinates.value = {
-      coordStartKm: props.rowData.rawData?.StartKm ?? 0,
-      coordStartPk: props.rowData.rawData?.StartPicket ?? 0,
-      coordEndKm: props.rowData.rawData?.FinishKm ?? 0,
-      coordEndPk: props.rowData.rawData?.FinishPicket ?? 0,
+      coordStartKm: props.rowData.rawData?.StartKm ?? 1,
+      coordStartPk: props.rowData.rawData?.StartPicket ?? 1,
+      coordStartZv: props.rowData.rawData?.StartLink ?? 1,
+      coordEndKm: props.rowData.rawData?.FinishKm ?? 1,
+      coordEndPk: props.rowData.rawData?.FinishPicket ?? 1,
+      coordEndZv: props.rowData.rawData?.FinishLink ?? 1,
     }
   }
 })
@@ -253,10 +258,12 @@ const saveData = async () => {
     const sectionName = stationData.value?.name || props.rowData.nameSection || form.value.place || ''
 
     const startCoordStr = `${coordinates.value.coordStartKm ?? ''}км` +
-      (coordinates.value.coordStartPk != null ? ` ${coordinates.value.coordStartPk}пк` : '')
+      (coordinates.value.coordStartPk != null ? ` ${coordinates.value.coordStartPk}пк` : '') +
+      (coordinates.value.coordStartZv != null ? ` ${coordinates.value.coordStartZv}зв` : '')
 
     const endCoordStr = `${coordinates.value.coordEndKm ?? ''}км` +
-      (coordinates.value.coordEndPk != null ? ` ${coordinates.value.coordEndPk}пк` : '')
+      (coordinates.value.coordEndPk != null ? ` ${coordinates.value.coordEndPk}пк` : '') +
+      (coordinates.value.coordEndZv != null ? ` ${coordinates.value.coordEndZv}зв` : '')
 
     const coordsString = `[${startCoordStr} - ${endCoordStr}]`
 
@@ -268,15 +275,17 @@ const saveData = async () => {
       id: props.rowData.id, // Явно указываем id для обновления
       cls: props.rowData.cls, // Явно указываем cls для обновления
       Description: form.value.description || '',
-      FinishKm: coordinates.value.coordEndKm ?? 0,
-      FinishPicket: coordinates.value.coordEndPk ?? 0,
+      FinishKm: coordinates.value.coordEndKm,
+      FinishPicket: coordinates.value.coordEndPk,
+      FinishLink: coordinates.value.coordEndZv,
       InstallationDate: installDate,
       LocationDetails: form.value.additionalInfo || '',
       Number: form.value.deviceNumber || '',
       PeriodicityReplacement: form.value.replacementPeriod || '',
       Specs: form.value.characteristic || '',
-      StartKm: coordinates.value.coordStartKm ?? 0,
-      StartPicket: coordinates.value.coordStartPk ?? 0,
+      StartKm: coordinates.value.coordStartKm,
+      StartPicket: coordinates.value.coordStartPk,
+      StartLink: coordinates.value.coordStartZv,
       UpdatedAt: updatedAt,
       fullName,
       fvSide: form.value.side,
@@ -337,14 +346,16 @@ const onSideChange = (value) => {
 }
 
 const fetchPlace = async () => {
-  const { coordStartKm, coordStartPk, coordEndKm, coordEndPk } = coordinates.value
+  const { coordStartKm, coordStartPk, coordStartZv, coordEndKm, coordEndPk, coordEndZv } = coordinates.value
   if (coordStartKm == null || coordEndKm == null) return
   isFetching.value = true
   const data = await fetchStationOfCoord({
     StartKm: coordStartKm,
     FinishKm: coordEndKm,
-    StartPicket: coordStartPk ?? 0,
-    FinishPicket: coordEndPk ?? 0,
+    StartPicket: coordStartPk,
+    FinishPicket: coordEndPk,
+    StartLink: coordStartZv,
+    FinishLink: coordEndZv,
   })
   const records = data?.result?.records || []
   if (records.length > 0) {
@@ -371,7 +382,7 @@ watch(
 .form-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  
   padding: 0 32px 32px;
   background-color: #f9fafb;
 }

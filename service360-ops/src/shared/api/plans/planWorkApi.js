@@ -49,16 +49,18 @@ const fetchPlacesForWork = async (workId) => {
   }
 };
 
-const fetchLocationByCoords = async (workId, startKm, finishKm, startPicket, finishPicket) => {
-  const response = await axios.post(DATA_API_URL, { 
+const fetchLocationByCoords = async (workId, startKm, finishKm, startPicket, finishPicket, startLink = 0, finishLink = 0) => {
+  const response = await axios.post(DATA_API_URL, {
     method: 'data/findLocationOfCoord',
     params: [
       {
-        objWork: workId ?? 0, // Если workId не передан, используем 0
+        objWork: workId ?? 0,
         StartKm: startKm,
         FinishKm: finishKm,
         StartPicket: startPicket,
-        FinishPicket: finishPicket
+        FinishPicket: finishPicket,
+        StartLink: startLink,
+        FinishLink: finishLink
       }
     ]
   });

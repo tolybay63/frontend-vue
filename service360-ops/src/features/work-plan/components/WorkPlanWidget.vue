@@ -52,7 +52,7 @@ const hasCoordinates = (event) => {
 };
 
 const formatCoordinates = (event) => {
-  const { StartKm, StartPicket, FinishKm, FinishPicket } = event;
+  const { StartKm, StartPicket, StartLink, FinishKm, FinishPicket, FinishLink } = event;
   const hasStart = StartKm !== undefined && StartPicket !== undefined;
   const hasFinish = FinishKm !== undefined && FinishPicket !== undefined;
 
@@ -60,8 +60,18 @@ const formatCoordinates = (event) => {
     return '';
   }
 
-  const startStr = hasStart ? `${StartKm}км ${StartPicket}пк` : '';
-  const finishStr = hasFinish ? `${FinishKm}км ${FinishPicket}пк` : '';
+  const startParts = [];
+  if (StartKm !== undefined) startParts.push(`${StartKm}км`);
+  if (StartPicket !== undefined) startParts.push(`${StartPicket}пк`);
+  if (StartLink !== undefined && StartLink !== null) startParts.push(`${StartLink}зв`);
+  const startStr = hasStart ? startParts.join(' ') : '';
+
+  const finishParts = [];
+  if (FinishKm !== undefined) finishParts.push(`${FinishKm}км`);
+  if (FinishPicket !== undefined) finishParts.push(`${FinishPicket}пк`);
+  if (FinishLink !== undefined && FinishLink !== null) finishParts.push(`${FinishLink}зв`);
+  const finishStr = hasFinish ? finishParts.join(' ') : '';
+
   return `${startStr}${startStr && finishStr ? ' - ' : ''}${finishStr}`;
 };
 </script>

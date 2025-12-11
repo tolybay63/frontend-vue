@@ -131,12 +131,12 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: 1,
-  coordStartPk: 1,
-  coordStartZv: 1,
-  coordEndKm: 1,
-  coordEndPk: 1,
-  coordEndZv: 1,
+  coordStartKm: 0,
+  coordStartPk: 0,
+  coordStartZv: 0,
+  coordEndKm: 0,
+  coordEndPk: 0,
+  coordEndZv: 0,
 })
 
 const typeOptions = ref([])

@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const axiosAuthInstance = axios.create({
-  baseURL: "http://192.168.1.20:9177",
-  withCredentials: true, 
+  baseURL: import.meta.env.VITE_AUTH_URL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json"
   }

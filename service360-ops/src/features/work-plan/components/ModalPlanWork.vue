@@ -57,7 +57,7 @@
             :required="true"
           />
 
-          <CoordinateInputs
+          <FullCoordinates
             class="col-span-2"
             v-model="object.coordinates"
             :object-bounds="object.objectBounds"
@@ -109,7 +109,7 @@ import { ref, onMounted, computed } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
-import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
+import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -133,10 +133,12 @@ const createNewObjectForm = () => ({
   object: null,
   section: null,
   coordinates: {
-    coordStartKm: 1,
-    coordStartPk: 1,
-    coordEndKm: 1,
-    coordEndPk: 1
+    coordStartKm: 0,
+    coordStartPk: 0,
+    coordStartZv: 0,
+    coordEndKm: 0,
+    coordEndPk: 0,
+    coordEndZv: 0
   },
   objectBounds: null,
 
@@ -164,7 +166,7 @@ const isAddingObject = ref(false)
 
 const isDateDisabled = (timestamp) => {
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Устанавливаем время на начало дня
+  today.setHours(0, 0, 0, 0);
   return timestamp < today.getTime();
 };
 
@@ -208,17 +210,19 @@ const validateForm = () => {
     // Проверка координат
     const coords = obj.coordinates
     if (
-      coords.coordStartKm === null ||
-      coords.coordStartPk === null ||
-      coords.coordEndKm === null ||
-      coords.coordEndPk === null
+      coords.coordStartKm === null || coords.coordStartKm === 0 ||
+      coords.coordStartPk === null || coords.coordStartPk === 0 ||
+      coords.coordStartZv === null || coords.coordStartZv === 0 ||
+      coords.coordEndKm === null || coords.coordEndKm === 0 ||
+      coords.coordEndPk === null || coords.coordEndPk === 0 ||
+      coords.coordEndZv === null || coords.coordEndZv === 0
     ) {
       notificationStore.showNotification(`Объект #${objectNum}: не заполнены все Координаты`, 'error')
       return false
     }
 
-    const startAbs = (coords.coordStartKm || 0) * 1000 + (coords.coordStartPk || 0) * 100
-    const endAbs = (coords.coordEndKm || 0) * 1000 + (coords.coordEndPk || 0) * 100
+    const startAbs = (coords.coordStartKm || 0) * 1000 + (coords.coordStartPk || 0) * 100 + (coords.coordStartZv || 0) * 25
+    const endAbs = (coords.coordEndKm || 0) * 1000 + (coords.coordEndPk || 0) * 100 + (coords.coordEndZv || 0) * 25
 
     if (startAbs > endAbs) {
       notificationStore.showNotification(`Объект #${objectNum}: Начало не может быть больше конца`, 'error')
@@ -264,8 +268,10 @@ const saveData = async () => {
 
       obj.coordStartKm = obj.coordinates.coordStartKm
       obj.coordStartPk = obj.coordinates.coordStartPk
+      obj.coordStartZv = obj.coordinates.coordStartZv
       obj.coordEndKm = obj.coordinates.coordEndKm
       obj.coordEndPk = obj.coordinates.coordEndPk
+      obj.coordEndZv = obj.coordinates.coordEndZv
 
       return {
         ...obj,
@@ -355,7 +361,7 @@ const onWorkChange = async (selectedWorkId) => {
     objectForm.objectType = null
     objectForm.object = null
     objectForm.section = null
-    objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
+    objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
     objectForm.objectBounds = null
     objectForm.objectTypeOptions = []
     objectForm.objectOptions = []
@@ -375,7 +381,7 @@ const onPlaceChange = async (selectedPlaceId, index) => {
   objectForm.objectType = null
   objectForm.object = null
   objectForm.section = null
-  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
+  objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
   objectForm.objectBounds = null
   objectForm.objectOptions = []
   objectForm.sectionOptions = []
@@ -416,7 +422,7 @@ const onObjectTypeChange = async (selectedObjectTypeId, index) => {
   const objectForm = form.value.objects[index]
   objectForm.object = null
   objectForm.section = null
-  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordEndKm: 1, coordEndPk: 1 }
+  objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
   objectForm.objectBounds = null
   objectForm.sectionOptions = []
 
@@ -452,20 +458,27 @@ const onObjectChange = async (selectedObjectId, index) => {
 
   const full = record.fullRecord
 
+  const startZv = full.StartLink ?? 0
+  const finishZv = full.FinishLink ?? 0
+
   objectForm.coordinates = {
-    coordStartKm: full.StartKm ?? null, 
+    coordStartKm: full.StartKm ?? null,
     coordStartPk: full.StartPicket ?? null,
+    coordStartZv: startZv || null,
     coordEndKm: full.FinishKm ?? null,
-    coordEndPk: full.FinishPicket ?? null
+    coordEndPk: full.FinishPicket ?? null,
+    coordEndZv: finishZv || null
   }
 
   objectForm.objectBounds = {
-    startAbs: (full.StartKm || 0) * 1000 + (full.StartPicket || 0) * 100,
-    endAbs: (full.FinishKm || 0) * 1000 + (full.FinishPicket || 0) * 100,
+    startAbs: (full.StartKm || 0) * 1000 + (full.StartPicket || 0) * 100 + startZv * 25,
+    endAbs: (full.FinishKm || 0) * 1000 + (full.FinishPicket || 0) * 100 + finishZv * 25,
     StartKm: full.StartKm,
     StartPicket: full.StartPicket,
+    StartLink: startZv,
     FinishKm: full.FinishKm,
-    FinishPicket: full.FinishPicket
+    FinishPicket: full.FinishPicket,
+    FinishLink: finishZv
   }
 
   await loadSectionsForObject(objectForm)
@@ -485,8 +498,10 @@ const loadSectionsForObject = async (objectForm) => {
       form.value.work.value,
       objectForm.coordinates.coordStartKm,
       objectForm.coordinates.coordEndKm,
-      objectForm.coordinates.coordStartPk || 0,
-      objectForm.coordinates.coordEndPk || 0
+      objectForm.coordinates.coordStartPk,
+      objectForm.coordinates.coordEndPk,
+      objectForm.coordinates.coordStartZv,
+      objectForm.coordinates.coordEndZv
     )
 
     if (Array.isArray(sections) && sections.length > 0) {

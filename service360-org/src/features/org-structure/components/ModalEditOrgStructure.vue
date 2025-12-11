@@ -242,10 +242,10 @@ const handleActivityTypeChange = (selectedOption) => {
     form.value.address = ''
     form.value.phone = ''
     form.value.coordinates = {
-      coordStartKm: 1,
-      coordStartPk: 1,
-      coordEndKm: 1,
-      coordEndPk: 1
+      coordStartKm: 0,
+      coordStartPk: 0,
+      coordEndKm: 0,
+      coordEndPk: 0
     }
     form.value.distance = ''
   }

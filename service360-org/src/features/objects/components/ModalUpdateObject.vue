@@ -165,12 +165,12 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: 1,
-  coordStartPk: 1,
-  coordStartZv: 1,
-  coordEndKm: 1,
-  coordEndPk: 1,
-  coordEndZv: 1,
+  coordStartKm: 0,
+  coordStartPk: 0,
+  coordStartZv: 0,
+  coordEndKm: 0,
+  coordEndPk: 0,
+  coordEndZv: 0,
 })
 
 const typeOptions = ref([])
@@ -235,12 +235,12 @@ onMounted(async () => {
     }
 
     coordinates.value = {
-      coordStartKm: props.rowData.rawData?.StartKm ?? 1,
-      coordStartPk: props.rowData.rawData?.StartPicket ?? 1,
-      coordStartZv: props.rowData.rawData?.StartLink ?? 1,
-      coordEndKm: props.rowData.rawData?.FinishKm ?? 1,
-      coordEndPk: props.rowData.rawData?.FinishPicket ?? 1,
-      coordEndZv: props.rowData.rawData?.FinishLink ?? 1,
+      coordStartKm: props.rowData.rawData?.StartKm ?? 0,
+      coordStartPk: props.rowData.rawData?.StartPicket ?? 0,
+      coordStartZv: props.rowData.rawData?.StartLink ?? 0,
+      coordEndKm: props.rowData.rawData?.FinishKm ?? 0,
+      coordEndPk: props.rowData.rawData?.FinishPicket ?? 0,
+      coordEndZv: props.rowData.rawData?.FinishLink ?? 0,
     }
   }
 })

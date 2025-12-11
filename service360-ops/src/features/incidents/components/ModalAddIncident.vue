@@ -133,12 +133,12 @@ const createNewObjectForm = (dataToCopy = {}) => ({
   object: dataToCopy.object || null,
   description: '',
   coordinates: dataToCopy.coordinates ? JSON.parse(JSON.stringify(dataToCopy.coordinates)) : {
-    coordStartKm: 1,
-    coordStartPk: 1,
-    coordStartZv: 1,
-    coordEndKm: 1,
-    coordEndPk: 1,
-    coordEndZv: 1,
+    coordStartKm: 0,
+    coordStartPk: 0,
+    coordStartZv: 0,
+    coordEndKm: 0,
+    coordEndPk: 0,
+    coordEndZv: 0,
   },
   objectBounds: dataToCopy.objectBounds ? JSON.parse(JSON.stringify(dataToCopy.objectBounds)) : null,
   isInvalidRange: false,
@@ -241,7 +241,7 @@ const onPlaceChange = (selectedPlaceId, index) => {
   objectForm.objectTypeOptions = []
   objectForm.objectOptions = []
   objectForm.filteredRecordsByPlace = []
-  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
+  objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false
@@ -276,7 +276,7 @@ const onObjectTypeChange = (selectedObjectTypeId, index) => {
   const objectForm = form.value.incidents[index];
   objectForm.object = null
   objectForm.objectOptions = []
-  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
+  objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false
@@ -305,7 +305,7 @@ const onObjectTypeChange = (selectedObjectTypeId, index) => {
 
 const onObjectChange = async (selectedObjectId, index) => {
   const objectForm = form.value.incidents[index];
-  objectForm.coordinates = { coordStartKm: 1, coordStartPk: 1, coordStartZv: 1, coordEndKm: 1, coordEndPk: 1, coordEndZv: 1 }
+  objectForm.coordinates = { coordStartKm: 0, coordStartPk: 0, coordStartZv: 0, coordEndKm: 0, coordEndPk: 0, coordEndZv: 0 }
   objectForm.objectBounds = null
   objectForm.isInvalidRange = false
   objectForm.isOutOfBounds = false

@@ -337,6 +337,8 @@ export async function assignWorkToIncident(incident, work, completionDate, selec
           FinishKm: incident.FinishKm,
           StartPicket: incident.StartPicket,
           FinishPicket: incident.FinishPicket,
+          StartLink: incident.StartLink,
+          FinishLink: incident.FinishLink,
           idStatus: incident.idStatus,
           name: `${incident.id}-${planDateEnd}`,
           PlanDateEnd: planDateEnd,

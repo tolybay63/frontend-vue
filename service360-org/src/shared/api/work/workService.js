@@ -66,7 +66,7 @@ export async function fetchObjectsForSelect(objWork) {
   }
 }
 
-export async function fetchLocationByCoords(workId, startKm, finishKm, startPicket, finishPicket) {
+export async function fetchLocationByCoords(workId, startKm, finishKm, startPicket, finishPicket, startLink = 0, finishLink = 0) {
   const response = await axios.post(DATA_API_URL, {
     method: 'data/findLocationOfCoord',
     params: [
@@ -75,7 +75,9 @@ export async function fetchLocationByCoords(workId, startKm, finishKm, startPick
         StartKm: startKm,
         FinishKm: finishKm,
         StartPicket: startPicket,
-        FinishPicket: finishPicket
+        FinishPicket: finishPicket,
+        StartLink: startLink,
+        FinishLink: finishLink
       }
     ]
   });

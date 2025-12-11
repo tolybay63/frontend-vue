@@ -236,12 +236,12 @@ const notificationStore = useNotificationStore();
 
 const newRecord = ref({
   coordinates: {
-    coordStartKm: 1,
-    coordStartPk: 1,
-    coordStartZv: 1,
-    coordEndKm: 1,
-    coordEndPk: 1,
-    coordEndZv: 1,
+    coordStartKm: 0,
+    coordStartPk: 0,
+    coordStartZv: 0,
+    coordEndKm: 0,
+    coordEndPk: 0,
+    coordEndZv: 0,
   },
   date: null,
   deviationReason: '',
@@ -249,11 +249,11 @@ const newRecord = ref({
 
 const defectRecord = ref({
   startCoordinates: {
-    coordStartKm: 1,
-    coordStartPk: 1,
-    coordEndKm: 1,
-    coordEndPk: 1,
-    coordEndZv: 1,
+    coordStartKm: 0,
+    coordStartPk: 0,
+    coordEndKm: 0,
+    coordEndPk: 0,
+    coordEndZv: 0,
   },
   defectType: null,
   note: '',
@@ -262,11 +262,11 @@ const defectRecord = ref({
 
 const parameterRecord = ref({
   startCoordinates: {
-    coordStartKm: 1,
-    coordStartPk: 1,
-    coordEndKm: 1,
-    coordEndPk: 1,
-    coordEndZv: 1,
+    coordStartKm: 0,
+    coordStartPk: 0,
+    coordEndKm: 0,
+    coordEndPk: 0,
+    coordEndZv: 0,
   },
   component: null,
   parameterType: null,

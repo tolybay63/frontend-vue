@@ -77,10 +77,10 @@ export async function loadStation({ page = 1, limit = 10 }) {
       coords: formatCoordinates(
         item.StartKm,
         item.StartPicket,
-        null, // StartZv пока пустое
+        item.StartLink,
         item.FinishKm,
         item.FinishPicket,
-        null  // FinishZv пока пустое
+        item.FinishLink
       ),
 
       _originalIndex: i + 1,
@@ -107,10 +107,10 @@ export async function loadStage({ page = 1, limit = 10 }) {
       coords: formatCoordinates(
         item.StartKm,
         item.StartPicket,
-        null, // StartZv пока пустое
+        item.StartLink,
         item.FinishKm,
         item.FinishPicket,
-        null  // FinishZv пока пустое
+        item.FinishLink
       ),
       StageLength: item.StageLength || 0,
 

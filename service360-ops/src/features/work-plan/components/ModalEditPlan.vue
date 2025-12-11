@@ -60,7 +60,7 @@
             @update:value="onObjectChange"
             :required="true" />
 
-          <CoordinateInputs
+          <FullCoordinates
             class="col-span-2"
             v-model="coordinates"
             :object-bounds="objectBounds"
@@ -106,7 +106,7 @@ import { ref, onMounted, computed } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
-import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
+import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -138,10 +138,12 @@ const form = ref({
 })
 
 const coordinates = ref({
-  coordStartKm: 1,
-  coordStartPk: 1,
-  coordEndKm: 1,
-  coordEndPk: 1
+  coordStartKm: 0,
+  coordStartPk: 0,
+  coordStartZv: 0,
+  coordEndKm: 0,
+  coordEndPk: 0,
+  coordEndZv: 0
 })
 
 const objectBounds = ref(null)
@@ -189,8 +191,21 @@ const saveData = async () => {
       return
     }
 
-    const startAbs = coordinates.value.coordStartKm * 1000 + coordinates.value.coordStartPk * 100
-    const endAbs = coordinates.value.coordEndKm * 1000 + coordinates.value.coordEndPk * 100
+    // Проверка координат
+    if (
+      coordinates.value.coordStartKm === null || coordinates.value.coordStartKm === 0 ||
+      coordinates.value.coordStartPk === null || coordinates.value.coordStartPk === 0 ||
+      coordinates.value.coordStartZv === null || coordinates.value.coordStartZv === 0 ||
+      coordinates.value.coordEndKm === null || coordinates.value.coordEndKm === 0 ||
+      coordinates.value.coordEndPk === null || coordinates.value.coordEndPk === 0 ||
+      coordinates.value.coordEndZv === null || coordinates.value.coordEndZv === 0
+    ) {
+      notificationStore.showNotification('Необходимо заполнить все координаты', 'error')
+      return
+    }
+
+    const startAbs = coordinates.value.coordStartKm * 1000 + coordinates.value.coordStartPk * 100 + coordinates.value.coordStartZv * 25
+    const endAbs = coordinates.value.coordEndKm * 1000 + coordinates.value.coordEndPk * 100 + coordinates.value.coordEndZv * 25
 
     if (startAbs > endAbs) {
       notificationStore.showNotification('Начало не может быть больше конца', 'error')
@@ -235,8 +250,10 @@ const saveData = async () => {
 
     updatedPlan.StartKm = coordinates.value.coordStartKm
     updatedPlan.StartPicket = coordinates.value.coordStartPk
+    updatedPlan.StartLink = coordinates.value.coordStartZv
     updatedPlan.FinishKm = coordinates.value.coordEndKm
     updatedPlan.FinishPicket = coordinates.value.coordEndPk
+    updatedPlan.FinishLink = coordinates.value.coordEndZv
     updatedPlan.PlanDateEnd = formatDateForBackend(form.value.plannedDate)
     updatedPlan.UpdatedAt = formatDateForBackend(new Date())
 
@@ -350,6 +367,29 @@ const onObjectTypeChange = async (selectedObjectTypeId) => {
   }))
 }
 
+// Функция для парсинга координат из строки nameObject
+// Пример строки: "Перегон [30км 1пк 1зв - 46км 9пк 4зв] [ЖД пути на перегоне] [Сарыжаз -Шалабай]"
+const parseCoordinatesFromName = (nameObject) => {
+  if (!nameObject) return null
+
+  // Ищем координаты в квадратных скобках формата [Xкм Yпк Zзв - Aкм Bпк Cзв]
+  const coordPattern = /\[(\d+)км\s+(\d+)пк\s+(\d+)зв\s*-\s*(\d+)км\s+(\d+)пк\s+(\d+)зв\]/
+  const match = nameObject.match(coordPattern)
+
+  if (match) {
+    return {
+      StartKm: parseInt(match[1]),
+      StartPicket: parseInt(match[2]),
+      StartLink: parseInt(match[3]),
+      FinishKm: parseInt(match[4]),
+      FinishPicket: parseInt(match[5]),
+      FinishLink: parseInt(match[6])
+    }
+  }
+
+  return null
+}
+
 const onObjectChange = async (selectedObjectId) => {
   if (!selectedObjectId) return
   const record = fullRecordsForWork.value.find(r => r.objObject === selectedObjectId)
@@ -360,19 +400,39 @@ const onObjectChange = async (selectedObjectId) => {
 
   selectedObjectData.value = record
 
-  objectBounds.value = {
-    startAbs: record.StartKm * 1000 + record.StartPicket * 100,
-    endAbs: record.FinishKm * 1000 + record.FinishPicket * 100,
-    StartKm: record.StartKm,
-    StartPicket: record.StartPicket,
-    FinishKm: record.FinishKm,
-    FinishPicket: record.FinishPicket
+  // Пытаемся получить звенья из record, если нет - парсим из nameObject
+  let startZv = record.StartLink
+  let finishZv = record.FinishLink
+
+  if ((startZv === undefined || startZv === null) || (finishZv === undefined || finishZv === null)) {
+    const parsed = parseCoordinatesFromName(record.nameObject)
+    if (parsed) {
+      startZv = startZv ?? parsed.StartLink
+      finishZv = finishZv ?? parsed.FinishLink
+    }
   }
 
-  coordinates.value.coordStartKm = Math.floor(record.StartKm) || 1
-  coordinates.value.coordStartPk = Math.floor(record.StartPicket) || 1
-  coordinates.value.coordEndKm = Math.floor(record.FinishKm) || 1
-  coordinates.value.coordEndPk = Math.floor(record.FinishPicket) || 1
+  // Если всё равно null/undefined, ставим 0
+  startZv = startZv ?? 0
+  finishZv = finishZv ?? 0
+
+  objectBounds.value = {
+    startAbs: record.StartKm * 1000 + record.StartPicket * 100 + startZv * 25,
+    endAbs: record.FinishKm * 1000 + record.FinishPicket * 100 + finishZv * 25,
+    StartKm: record.StartKm,
+    StartPicket: record.StartPicket,
+    StartLink: startZv,
+    FinishKm: record.FinishKm,
+    FinishPicket: record.FinishPicket,
+    FinishLink: finishZv
+  }
+
+  coordinates.value.coordStartKm = Math.floor(record.StartKm) || null
+  coordinates.value.coordStartPk = Math.floor(record.StartPicket) || null
+  coordinates.value.coordStartZv = Math.floor(startZv) || null
+  coordinates.value.coordEndKm = Math.floor(record.FinishKm) || null
+  coordinates.value.coordEndPk = Math.floor(record.FinishPicket) || null
+  coordinates.value.coordEndZv = Math.floor(finishZv) || null
 
   form.value.section = null
   selectedSectionData.value = null
@@ -389,7 +449,9 @@ const loadSections = async () => {
       coordinates.value.coordStartKm,
       coordinates.value.coordEndKm,
       coordinates.value.coordStartPk,
-      coordinates.value.coordEndPk
+      coordinates.value.coordEndPk,
+      coordinates.value.coordStartZv,
+      coordinates.value.coordEndZv
     )
 
     if (Array.isArray(sections) && sections.length > 0) {
@@ -458,10 +520,12 @@ const populateFormFromRowData = () => {
   if (row.planDate) {
     form.value.plannedDate = new Date(row.planDate)
   }
-  coordinates.value.coordStartKm = row.StartKm || 1
-  coordinates.value.coordStartPk = row.StartPicket || 1
-  coordinates.value.coordEndKm = row.FinishKm || 1
-  coordinates.value.coordEndPk = row.FinishPicket || 1
+  coordinates.value.coordStartKm = row.StartKm || null
+  coordinates.value.coordStartPk = row.StartPicket || null
+  coordinates.value.coordStartZv = row.StartLink || null
+  coordinates.value.coordEndKm = row.FinishKm || null
+  coordinates.value.coordEndPk = row.FinishPicket || null
+  coordinates.value.coordEndZv = row.FinishLink || null
 }
 
 const findOptionInArray = (array, key, value) => {
@@ -488,13 +552,31 @@ const restoreFullSelection = async () => {
 
     selectedObjectData.value = targetRecord
 
+    // Пытаемся получить звенья из targetRecord, если нет - парсим из nameObject
+    let startZv = targetRecord.StartLink
+    let finishZv = targetRecord.FinishLink
+
+    if ((startZv === undefined || startZv === null) || (finishZv === undefined || finishZv === null)) {
+      const parsed = parseCoordinatesFromName(targetRecord.nameObject)
+      if (parsed) {
+        startZv = startZv ?? parsed.StartLink
+        finishZv = finishZv ?? parsed.FinishLink
+      }
+    }
+
+    // Если всё равно null/undefined, ставим 0
+    startZv = startZv ?? 0
+    finishZv = finishZv ?? 0
+
     objectBounds.value = {
-      startAbs: targetRecord.StartKm * 1000 + targetRecord.StartPicket * 100,
-      endAbs: targetRecord.FinishKm * 1000 + targetRecord.FinishPicket * 100,
+      startAbs: targetRecord.StartKm * 1000 + targetRecord.StartPicket * 100 + startZv * 25,
+      endAbs: targetRecord.FinishKm * 1000 + targetRecord.FinishPicket * 100 + finishZv * 25,
       StartKm: targetRecord.StartKm,
       StartPicket: targetRecord.StartPicket,
+      StartLink: startZv,
       FinishKm: targetRecord.FinishKm,
-      FinishPicket: targetRecord.FinishPicket
+      FinishPicket: targetRecord.FinishPicket,
+      FinishLink: finishZv
     }
 
     const placeOption = findOptionInArray(placeOptions.value, 'value', targetRecord.objSection)

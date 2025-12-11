@@ -15,16 +15,26 @@
     @close="closeAddModal"
     @refresh="handleRefresh"
   />
+
+  <ModalEditSection
+    v-if="isEditModalOpen"
+    :sectionData="selectedSection"
+    @close="closeEditModal"
+    @refresh="handleRefresh"
+  />
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue'
 import ModalAddSection from '@/features/sections/components/ModalAddSection.vue'
+import ModalEditSection from '@/features/sections/components/ModalEditSection.vue'
 import { loadSection } from '@/shared/api/sections/sectionService'
 
 const tableWrapperRef = ref(null)
 const isAddModalOpen = ref(false)
+const isEditModalOpen = ref(false)
+const selectedSection = ref(null)
 
 const openAddModal = () => {
   isAddModalOpen.value = true
@@ -34,12 +44,22 @@ const closeAddModal = () => {
   isAddModalOpen.value = false
 }
 
+const openEditModal = (sectionData) => {
+  selectedSection.value = sectionData
+  isEditModalOpen.value = true
+}
+
+const closeEditModal = () => {
+  isEditModalOpen.value = false
+  selectedSection.value = null
+}
+
 const handleRefresh = () => {
   tableWrapperRef.value?.refreshTable()
 }
 
 const onRowDoubleClick = (row) => {
-  // Пока пустая функция, модалки редактирования добавим позже
+  openEditModal(row)
 }
 
 const tableActions = computed(() => [

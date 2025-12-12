@@ -363,7 +363,10 @@
                       ></span>
                     </td>
                     <td v-for="cell in row.cells" :key="cell.key" class="cell">
-                      {{ cell.display }}
+                      <ConditionalCellValue
+                        :display="cell.display"
+                        :formatting="cell.formatting"
+                      />
                     </td>
                     <template v-if="shouldShowRowTotals(container)">
                       <td
@@ -371,7 +374,10 @@
                         :key="`row-${row.key}-${total.metricId}`"
                         class="total"
                       >
-                        {{ total.display }}
+                        <ConditionalCellValue
+                          :display="total.display"
+                          :formatting="total.formatting"
+                        />
                       </td>
                     </template>
                   </tr>
@@ -393,11 +399,14 @@
                         :key="`total-${column.key}`"
                         class="total"
                       >
-                        {{
-                          shouldDisplayColumnTotal(container, column.metricId)
-                            ? column.totalDisplay
-                            : '—'
-                        }}
+                        <ConditionalCellValue
+                          v-if="
+                            shouldDisplayColumnTotal(container, column.metricId)
+                          "
+                          :display="column.totalDisplay"
+                          :formatting="column.totalFormatting"
+                        />
+                        <span v-else>—</span>
                       </td>
                     </template>
                     <template v-if="shouldShowRowTotals(container)">
@@ -406,11 +415,17 @@
                         :key="`grand-${total.metricId}`"
                         class="grand-total"
                       >
-                        {{
-                          containerState(container.id).view.grandTotals[
-                            total.metricId
-                          ]?.display || '—'
-                        }}
+                        <ConditionalCellValue
+                          :display="
+                            containerGrandTotalDisplay(container, total.metricId)
+                          "
+                          :formatting="
+                            containerGrandTotalFormatting(
+                              container,
+                              total.metricId,
+                            )
+                          "
+                        />
                       </td>
                     </template>
                   </tr>
@@ -456,6 +471,7 @@ import { fetchParameterRecords } from '@/shared/api/parameter'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import { loadReportSources } from '@/shared/api/report'
 import ReportChart from '@/components/ReportChart.vue'
+import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import {
   buildPivotView,
   normalizeValue,
@@ -463,6 +479,10 @@ import {
   augmentPivotViewWithFormulas,
   filterPivotViewByVisibility,
 } from '@/shared/lib/pivotUtils'
+import {
+  applyConditionalFormattingToView,
+  normalizeConditionalFormatting,
+} from '@/shared/lib/conditionalFormatting'
 import FilterRangeControl from '@/components/FilterRangeControl.vue'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import {
@@ -776,6 +796,20 @@ function containerRowTotals(container, row) {
   const allowed = rowTotalsAllowed(container)
   if (!allowed.size) return []
   return (row.totals || []).filter((total) => allowed.has(total.metricId))
+}
+
+function containerGrandTotalEntry(container, metricId) {
+  const view = containerState(container.id).view
+  if (!view) return null
+  return view.grandTotals?.[metricId] || null
+}
+function containerGrandTotalDisplay(container, metricId) {
+  const entry = containerGrandTotalEntry(container, metricId)
+  return entry?.display ?? '—'
+}
+function containerGrandTotalFormatting(container, metricId) {
+  const entry = containerGrandTotalEntry(container, metricId)
+  return entry?.formatting || null
 }
 
 function containerMetricColumnGroups(container) {
@@ -1531,12 +1565,16 @@ function prepareMetrics(list = []) {
     )
     .map((metric, index) => {
       const displayLabel = metricDisplayLabel(metric)
+      const conditionalFormatting = normalizeConditionalFormatting(
+        metric.conditionalFormatting,
+      )
       return {
         ...metric,
         id: metric.id || `metric-${index}`,
         type: metric.type || 'base',
         label: displayLabel,
         enabled: metric.enabled !== false,
+        conditionalFormatting,
         outputFormat:
           metric.outputFormat ||
           (metric.type === 'formula' ? 'number' : 'auto'),
@@ -1767,7 +1805,8 @@ async function hydrateContainer(container) {
       throw err
     }
     const augmented = augmentPivotViewWithFormulas(baseView, metrics)
-    const view = filterPivotViewByVisibility(augmented, metrics)
+    const visibleView = filterPivotViewByVisibility(augmented, metrics)
+    const view = applyConditionalFormattingToView(visibleView, metrics)
     if (!view || !view.rows.length) {
       state.error = 'Нет данных после применения фильтров.'
       return

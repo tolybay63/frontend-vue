@@ -711,7 +711,10 @@
                     ></span>
                   </td>
                   <td v-for="cell in row.cells" :key="cell.key" class="cell">
-                    {{ cell.display }}
+                    <ConditionalCellValue
+                      :display="cell.display"
+                      :formatting="cell.formatting"
+                    />
                   </td>
                   <template v-if="hasRowTotals">
                     <td
@@ -719,7 +722,10 @@
                       :key="`row-${row.key}-${total.metricId}`"
                       class="total"
                     >
-                      {{ total.display }}
+                      <ConditionalCellValue
+                        :display="total.display"
+                        :formatting="total.formatting"
+                      />
                     </td>
                   </template>
                 </tr>
@@ -735,11 +741,12 @@
                     class="total"
                   >
                     <template v-if="hasColumnTotals">
-                      {{
-                        shouldShowColumnTotal(column.metricId)
-                          ? column.totalDisplay
-                          : '—'
-                      }}
+                      <ConditionalCellValue
+                        v-if="shouldShowColumnTotal(column.metricId)"
+                        :display="column.totalDisplay"
+                        :formatting="column.totalFormatting"
+                      />
+                      <span v-else>—</span>
                     </template>
                   </td>
                   <template v-if="hasRowTotals">
@@ -748,7 +755,10 @@
                       :key="`grand-${total.metricId}`"
                       class="grand-total"
                     >
-                      {{ formatGrandTotal(total.metricId) }}
+                      <ConditionalCellValue
+                        :display="grandTotalDisplay(total.metricId)"
+                        :formatting="grandTotalFormatting(total.metricId)"
+                      />
                     </td>
                   </template>
                 </tr>
@@ -1019,6 +1029,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { NButton, NTooltip, NSelect, NInput, NModal } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
 import PivotLayout from '@/components/PivotLayout.vue'
+import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import {
   loadReportConfigurations,
@@ -1045,6 +1056,10 @@ import {
   extractFormulaMetricIds,
   filterPivotViewByVisibility,
 } from '@/shared/lib/pivotUtils'
+import {
+  applyConditionalFormattingToView,
+  normalizeConditionalFormatting,
+} from '@/shared/lib/conditionalFormatting'
 import {
   createJoinTemplate,
   normalizeJoinList,
@@ -2339,7 +2354,11 @@ const pivotView = computed(() => {
   const { view, errorMetricId } = basePivotResult.value
   if (!view || errorMetricId) return null
   const withFormulas = augmentPivotViewWithFormulas(view, preparedMetrics.value)
-  return filterPivotViewByVisibility(withFormulas, preparedMetrics.value)
+  const filtered = filterPivotViewByVisibility(
+    withFormulas,
+    preparedMetrics.value,
+  )
+  return applyConditionalFormattingToView(filtered, preparedMetrics.value)
 })
 
 watch(
@@ -2494,11 +2513,15 @@ function filteredRowTotals(row) {
 function shouldShowColumnTotal(metricId) {
   return columnTotalMetricSet.value.has(metricId)
 }
-function formatGrandTotal(metricId) {
-  const map = pivotView.value?.grandTotals || {}
-  const entry = map[metricId]
-  if (!entry) return '—'
-  return entry.display ?? '—'
+function grandTotalEntry(metricId) {
+  return pivotView.value?.grandTotals?.[metricId] || null
+}
+function grandTotalDisplay(metricId) {
+  const entry = grandTotalEntry(metricId)
+  return entry?.display ?? '—'
+}
+function grandTotalFormatting(metricId) {
+  return grandTotalEntry(metricId)?.formatting || null
 }
 
 function columnWidthStyle(key) {
@@ -3310,6 +3333,9 @@ function createMetric(overrides = {}) {
       : type === 'formula'
         ? 2
         : 2,
+    conditionalFormatting: normalizeConditionalFormatting(
+      overrides.conditionalFormatting,
+    ),
     remoteMeta: overrides.remoteMeta || null,
   }
 }
@@ -3826,6 +3852,7 @@ function encodeFilterPayload() {
         : 2,
       outputFormat:
         metric.outputFormat || (metric.type === 'formula' ? 'number' : 'auto'),
+      conditionalFormatting: metric.conditionalFormatting,
     })),
     filtersMeta: buildFiltersMetaSnapshot(),
     fieldMeta: buildFieldMetaSnapshot(),
@@ -3940,6 +3967,7 @@ function mergeMetricSettings(remoteList = [], settings = []) {
               ? Number(saved.precision)
               : 2,
             outputFormat: saved.outputFormat || 'number',
+            conditionalFormatting: saved?.conditionalFormatting,
           }),
         )
         return
@@ -3979,6 +4007,7 @@ function normalizeRemoteMetric(entry = {}, saved = null, index = 0) {
     showRowTotals: saved?.showRowTotals !== false,
     showColumnTotals: saved?.showColumnTotals !== false,
     outputFormat: saved?.outputFormat || 'auto',
+    conditionalFormatting: saved?.conditionalFormatting,
     remoteMeta: {
       idMetricsComplex: entry?.idMetricsComplex,
       idFieldVal: entry?.idFieldVal,

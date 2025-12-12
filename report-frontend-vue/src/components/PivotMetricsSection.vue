@@ -105,6 +105,132 @@
             Итоги по столбцам
           </n-checkbox>
         </div>
+        <div class="metric-formatting">
+          <div class="metric-formatting__header">
+            <span>Условное форматирование</span>
+            <div class="metric-formatting__controls">
+              <n-select
+                v-model:value="formattingConfig(metric).type"
+                :options="formattingTypeOptions"
+                size="small"
+                class="formatting-type-select"
+              />
+              <span
+                v-if="formattingConfig(metric).type === 'iconSet'"
+                class="metric-formatting__preview"
+              >
+                {{ iconSetPreview(metric) }}
+              </span>
+            </div>
+          </div>
+          <div
+            v-if="formattingConfig(metric).type === 'dataBar'"
+            class="formatting-options"
+          >
+            <label class="formatting-option">
+              <span>Цвет гистограммы</span>
+              <n-color-picker
+                v-model:value="formattingConfig(metric).dataBar.color"
+                :modes="['hex']"
+                size="small"
+              />
+            </label>
+            <n-switch
+              v-model:value="formattingConfig(metric).dataBar.showValue"
+              size="small"
+            >
+              Показывать значение поверх заливки
+            </n-switch>
+          </div>
+          <div
+            v-else-if="formattingConfig(metric).type === 'colorScale'"
+            class="formatting-options formatting-options--colors"
+          >
+            <div class="color-pickers">
+              <label class="formatting-option">
+                <span>Минимум</span>
+                <n-color-picker
+                  v-model:value="formattingConfig(metric).colorScale.minColor"
+                  :modes="['hex']"
+                  size="small"
+                />
+              </label>
+              <label class="formatting-option">
+                <span>Середина</span>
+                <n-color-picker
+                  v-model:value="formattingConfig(metric).colorScale.midColor"
+                  :modes="['hex']"
+                  size="small"
+                />
+              </label>
+              <label class="formatting-option">
+                <span>Максимум</span>
+                <n-color-picker
+                  v-model:value="formattingConfig(metric).colorScale.maxColor"
+                  :modes="['hex']"
+                  size="small"
+                />
+              </label>
+            </div>
+            <label class="slider-label">
+              <span>
+                Положение середины —
+                {{
+                  Math.round(formattingConfig(metric).colorScale.midpoint * 100)
+                }}%
+              </span>
+              <n-slider
+                :value="
+                  Math.round(formattingConfig(metric).colorScale.midpoint * 100)
+                "
+                :min="5"
+                :max="95"
+                :step="1"
+                @update:value="(value) => updateColorScaleMidpoint(metric, value)"
+              />
+            </label>
+          </div>
+          <div
+            v-else-if="formattingConfig(metric).type === 'iconSet'"
+            class="formatting-options"
+          >
+            <label class="formatting-option">
+              <span>Набор значков</span>
+              <n-select
+                v-model:value="formattingConfig(metric).iconSet.style"
+                :options="iconSetOptions"
+                size="small"
+                class="icon-set-select"
+              >
+                <template #option="{ option }">
+                  <div class="icon-option">
+                    <span>{{ option.label }}</span>
+                    <span class="icon-option__preview">
+                      {{ option.preview }}
+                    </span>
+                  </div>
+                </template>
+              </n-select>
+            </label>
+            <label class="slider-label">
+              <span>Границы уровней</span>
+              <n-slider
+                :value="iconThresholdSlider(metric)"
+                range
+                :step="1"
+                :min="5"
+                :max="95"
+                @update:value="(value) => updateIconThresholdSlider(metric, value)"
+              />
+            </label>
+            <n-switch
+              v-model:value="formattingConfig(metric).iconSet.reversed"
+              size="small"
+            >
+              Инвертировать порядок
+            </n-switch>
+          </div>
+        </div>
         <div class="metric-actions">
           <n-tooltip trigger="hover">
             <template #trigger>
@@ -162,11 +288,18 @@ import { computed } from 'vue'
 import {
   NButton,
   NCheckbox,
+  NColorPicker,
   NInput,
   NInputNumber,
   NSelect,
+  NSlider,
+  NSwitch,
   NTooltip,
 } from 'naive-ui'
+import {
+  ICON_SET_LIBRARY,
+  normalizeConditionalFormatting,
+} from '@/shared/lib/conditionalFormatting'
 
 const props = defineProps({
   metrics: {
@@ -205,6 +338,19 @@ const metricTypeOptions = [
   { label: 'Поле источника', value: 'base' },
   { label: 'Формула', value: 'formula' },
 ]
+const formattingTypeOptions = [
+  { label: 'Нет', value: 'none' },
+  { label: 'Гистограмма', value: 'dataBar' },
+  { label: 'Цветовая шкала', value: 'colorScale' },
+  { label: 'Набор значков', value: 'iconSet' },
+]
+const iconSetOptions = Object.entries(ICON_SET_LIBRARY).map(
+  ([value, meta]) => ({
+    label: meta.label,
+    value,
+    preview: meta.icons.join(' '),
+  }),
+)
 const formulaFormatOptions = [
   { label: 'Авто', value: 'auto' },
   { label: 'Число', value: 'number' },
@@ -247,6 +393,60 @@ function isNumericFormat(format) {
     format === 'currency'
   )
 }
+
+function formattingConfig(metric) {
+  const config = metric.conditionalFormatting
+  if (
+    !config ||
+    !config.dataBar ||
+    !config.colorScale ||
+    !config.iconSet ||
+    !config.type
+  ) {
+    metric.conditionalFormatting = normalizeConditionalFormatting(config)
+  }
+  return metric.conditionalFormatting
+}
+
+function iconSetPreview(metric) {
+  const config = formattingConfig(metric)
+  const library =
+    ICON_SET_LIBRARY[config.iconSet.style] || ICON_SET_LIBRARY.arrows
+  return library.icons.join(' ')
+}
+
+function iconThresholdSlider(metric) {
+  const config = formattingConfig(metric)
+  const [first, second] = config.iconSet.thresholds || [0.33, 0.66]
+  return [Math.round(first * 100), Math.round(second * 100)]
+}
+
+function updateIconThresholdSlider(metric, value) {
+  if (!Array.isArray(value) || value.length !== 2) return
+  const [left, right] = [...value].sort((a, b) => a - b)
+  formattingConfig(metric).iconSet.thresholds = [
+    clampThreshold(left / 100),
+    clampThreshold(right / 100),
+  ]
+}
+
+function updateColorScaleMidpoint(metric, value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return
+  formattingConfig(metric).colorScale.midpoint = clamp01(numeric / 100)
+}
+
+function clampThreshold(value) {
+  const numeric = Number(value)
+  if (Number.isNaN(numeric)) return 0.5
+  return Math.min(Math.max(numeric, 0.05), 0.95)
+}
+
+function clamp01(value) {
+  const numeric = Number(value)
+  if (Number.isNaN(numeric)) return 0.5
+  return Math.min(Math.max(numeric, 0), 1)
+}
 </script>
 
 <style scoped>
@@ -288,6 +488,72 @@ function isNumericFormat(format) {
   gap: 16px;
   flex-wrap: wrap;
   font-size: 13px;
+}
+.metric-formatting {
+  border-top: 1px dashed #d1d5db;
+  margin-top: 4px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.metric-formatting__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.metric-formatting__controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.metric-formatting__preview {
+  font-size: 13px;
+  color: #6b7280;
+  letter-spacing: 2px;
+}
+.formatting-type-select {
+  min-width: 200px;
+}
+.icon-set-select {
+  min-width: 220px;
+}
+.formatting-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+.formatting-options--colors .color-pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+.formatting-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.slider-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.icon-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.icon-option__preview {
+  font-size: 14px;
+  color: #6b7280;
+  letter-spacing: 2px;
 }
 .metric-actions {
   display: flex;

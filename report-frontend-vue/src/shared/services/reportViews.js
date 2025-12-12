@@ -8,6 +8,7 @@ import {
   parseJoinConfig,
   extractJoinsFromBody,
 } from '@/shared/lib/sourceJoins.js'
+import { normalizeConditionalFormatting } from '@/shared/lib/conditionalFormatting'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
@@ -246,6 +247,9 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           precision: Number.isFinite(saved.precision)
             ? Number(saved.precision)
             : 2,
+          conditionalFormatting: normalizeConditionalFormatting(
+            saved?.conditionalFormatting,
+          ),
         })
         return
       }
@@ -295,6 +299,9 @@ function buildNormalizedMetric(
     fieldLabel: saved?.title || entry?.FieldLabel || fieldKey,
     showRowTotals: saved?.showRowTotals !== false,
     showColumnTotals: saved?.showColumnTotals !== false,
+    conditionalFormatting: normalizeConditionalFormatting(
+      saved?.conditionalFormatting,
+    ),
     remoteMeta: entry || {},
   }
 }

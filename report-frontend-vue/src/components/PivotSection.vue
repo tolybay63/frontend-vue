@@ -142,11 +142,70 @@
             </div>
           </div>
           <div v-if="activeFilterKey === key" class="pivot-card__filters">
-            <MultiSelectDropdown
-              v-model="localFilters"
-              :options="valueOptions(key)"
-              placeholder="Выберите значения"
-            />
+            <div v-if="supportsRangeKey(key)" class="filter-mode">
+              <button
+                type="button"
+                :class="{ active: filterMode === 'values' }"
+                @click="filterMode = 'values'"
+              >
+                Значения
+              </button>
+              <button
+                type="button"
+                :class="{ active: filterMode === 'range' }"
+                @click="filterMode = 'range'"
+              >
+                Диапазон
+              </button>
+            </div>
+            <div v-if="!supportsRangeKey(key) || filterMode === 'values'">
+              <MultiSelectDropdown
+                v-model="localFilters"
+                :options="valueOptions(key)"
+                placeholder="Выберите значения"
+              />
+            </div>
+            <div v-else class="range-editor">
+              <div
+                v-if="activeRangeType === 'date'"
+                class="range-inputs"
+              >
+                <n-date-picker
+                  v-model:value="rangeDraft.start"
+                  type="date"
+                  value-format="yyyy-MM-dd"
+                  clearable
+                  placeholder="От"
+                />
+                <span class="range-separator">—</span>
+                <n-date-picker
+                  v-model:value="rangeDraft.end"
+                  type="date"
+                  value-format="yyyy-MM-dd"
+                  clearable
+                  placeholder="До"
+                />
+              </div>
+              <div v-else class="range-inputs">
+                <n-input-number
+                  v-model:value="rangeDraft.start"
+                  class="range-input"
+                  clearable
+                  placeholder="От"
+                />
+                <span class="range-separator">—</span>
+                <n-input-number
+                  v-model:value="rangeDraft.end"
+                  class="range-input"
+                  clearable
+                  placeholder="До"
+                />
+              </div>
+              <p class="range-hint">
+                Укажите границы. Пустые значения отключают проверку по краю
+                диапазона.
+              </p>
+            </div>
             <div class="filter-actions">
               <button class="btn-outline btn-sm" type="button" @click="applyFilters(key)">
                 Применить
@@ -165,7 +224,14 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { NButton, NInput, NSelect, NTooltip } from 'naive-ui'
+import {
+  NButton,
+  NDatePicker,
+  NInput,
+  NInputNumber,
+  NSelect,
+  NTooltip,
+} from 'naive-ui'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 
 const props = defineProps({
@@ -205,6 +271,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  rangeStore: {
+    type: Object,
+    default: () => ({}),
+  },
   valueOptionsResolver: {
     type: Function,
     default: () => [],
@@ -225,12 +295,17 @@ const props = defineProps({
     type: Function,
     default: null,
   },
+  supportsRange: {
+    type: Function,
+    default: null,
+  },
 })
 
 const emit = defineEmits([
   'update:modelValue',
   'rename',
   'update-filter-values',
+  'update-range-values',
   'update-sort',
 ])
 
@@ -238,6 +313,9 @@ const editingKey = ref('')
 const aliasDraft = ref('')
 const activeFilterKey = ref('')
 const localFilters = ref([])
+const filterMode = ref('values')
+const rangeDraft = ref(createEmptyRange())
+const activeRangeType = ref('number')
 
 const selectedKeys = computed({
   get: () => props.modelValue,
@@ -249,6 +327,13 @@ const fieldOptions = computed(() =>
     label: displayName(field.key),
     value: field.key,
   })),
+)
+
+const fieldMap = computed(() =>
+  props.fields.reduce((acc, field) => {
+    acc.set(field.key, field)
+    return acc
+  }, new Map()),
 )
 
 function displayName(key) {
@@ -274,10 +359,56 @@ function applyAlias(key) {
 function valueOptions(key) {
   return props.valueOptionsResolver(key) || []
 }
-function hasFilter(key) {
+
+function hasValueFilter(key) {
   const values = props.valueStore[key]
   return Array.isArray(values) && values.length > 0
 }
+
+function hasRangeFilter(key) {
+  const range = props.rangeStore[key]
+  if (!range || typeof range !== 'object') return false
+  return (
+    (range.start !== null &&
+      typeof range.start !== 'undefined' &&
+      range.start !== '') ||
+    (range.end !== null && typeof range.end !== 'undefined' && range.end !== '')
+  )
+}
+
+function hasFilter(key) {
+  return hasValueFilter(key) || hasRangeFilter(key)
+}
+
+function supportsRangeKey(key) {
+  if (typeof props.supportsRange === 'function') {
+    return props.supportsRange(key, fieldMap.value.get(key))
+  }
+  return false
+}
+
+function fieldRangeType(key) {
+  const descriptor = fieldMap.value.get(key)
+  if (descriptor?.type === 'date') return 'date'
+  return 'number'
+}
+
+function cloneRange(range = {}) {
+  if (!range || typeof range !== 'object') return createEmptyRange()
+  return {
+    start:
+      range.start === '' || typeof range.start === 'undefined'
+        ? null
+        : range.start,
+    end:
+      range.end === '' || typeof range.end === 'undefined' ? null : range.end,
+  }
+}
+
+function createEmptyRange() {
+  return { start: null, end: null }
+}
+
 function toggleFilter(key) {
   if (activeFilterKey.value === key) {
     cancelFilters()
@@ -285,14 +416,30 @@ function toggleFilter(key) {
   }
   activeFilterKey.value = key
   localFilters.value = [...(props.valueStore[key] || [])]
+  const supports = supportsRangeKey(key)
+  const hasRange = supports && hasRangeFilter(key)
+  filterMode.value = hasRange ? 'range' : 'values'
+  activeRangeType.value = supports ? fieldRangeType(key) : 'number'
+  rangeDraft.value = hasRange
+    ? cloneRange(props.rangeStore[key])
+    : createEmptyRange()
 }
 function applyFilters(key) {
-  emit('update-filter-values', { key, values: [...localFilters.value] })
+  if (filterMode.value === 'range' && supportsRangeKey(key)) {
+    emit('update-range-values', {
+      key,
+      range: { ...rangeDraft.value },
+    })
+  } else {
+    emit('update-filter-values', { key, values: [...localFilters.value] })
+  }
   cancelFilters()
 }
 function cancelFilters() {
   activeFilterKey.value = ''
   localFilters.value = []
+  filterMode.value = 'values'
+  rangeDraft.value = createEmptyRange()
 }
 
 function cycleSort(key, type) {
@@ -420,6 +567,46 @@ function remove(key) {
 .pivot-card__filters {
   border-top: 1px dashed #d4d4d8;
   padding-top: 10px;
+}
+.filter-mode {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.filter-mode button {
+  flex: 1;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.filter-mode button.active {
+  border-color: #4338ca;
+  color: #4338ca;
+}
+.range-editor {
+  border: 1px dashed #d4d4d8;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.range-input {
+  flex: 1;
+}
+.range-separator {
+  color: #6b7280;
+}
+.range-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #6b7280;
 }
 .filter-actions {
   margin-top: 8px;

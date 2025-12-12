@@ -258,7 +258,7 @@
                 <label class="field">
                   <span class="field__label">Список полей</span>
                   <n-input
-                    :value="join.fields?.join(', ')"
+                    :value="join.fieldsInput ?? join.fields?.join(', ') ?? ''"
                     placeholder="Например: name, status"
                     size="large"
                     @update:value="updateJoinFieldsInput(join, $event)"
@@ -541,21 +541,28 @@
               :metric-tokens="formulaMetricTokens"
               :header-overrides="headerOverrides"
               :filter-values="filterValues"
+              :filter-range-values="filterRangeValues"
               :row-value-filters="dimensionValueFilters.rows"
+              :row-range-filters="dimensionRangeFilters.rows"
               :column-value-filters="dimensionValueFilters.columns"
+              :column-range-filters="dimensionRangeFilters.columns"
               :row-sorts="pivotSortState.rows"
               :column-sorts="pivotSortState.columns"
               :filter-sorts="pivotSortState.filters"
               :value-options-resolver="fieldValueOptions"
               :get-field-label="getFieldDisplayNameByKey"
+              :supports-range="supportsFieldRange"
               :aggregator-options="aggregatorOptions"
               @update:rows="updateRows"
               @update:columns="updateColumns"
               @update:filters="updateFilters"
               @rename-field="handleFieldRename"
               @update-filter-values="handleFilterValuesChange"
+              @update-filter-range="handleFilterRangeChange"
               @update-row-values="handleRowValueFiltersChange"
+              @update-row-range="handleRowRangeFiltersChange"
               @update-column-values="handleColumnValueFiltersChange"
+              @update-column-range="handleColumnRangeFiltersChange"
               @update-row-sort="handleRowSortChange"
               @update-column-sort="handleColumnSortChange"
               @update-filter-sort="handleFilterSortChange"
@@ -1043,6 +1050,8 @@ import {
   normalizeJoinList,
   mergeJoinedRecords,
   fetchJoinPayload,
+  extractJoinsFromBody,
+  parseJoinConfig,
 } from '@/shared/lib/sourceJoins'
 
 const dataSourcesStore = useDataSourcesStore()
@@ -1336,9 +1345,14 @@ const pivotConfig = reactive({
 })
 
 const filterValues = reactive({})
+const filterRangeValues = reactive({})
 const pivotMetrics = reactive([])
 const pivotMetricsVersion = ref(0)
 const dimensionValueFilters = reactive({
+  rows: {},
+  columns: {},
+})
+const dimensionRangeFilters = reactive({
   rows: {},
   columns: {},
 })
@@ -1911,8 +1925,10 @@ watch(
     prev.forEach((key) => {
       if (!next.includes(key)) {
         delete filterValues[key]
+        delete filterRangeValues[key]
       }
     })
+    cleanupRangeEntries(filterRangeValues, next)
     syncSortStore(pivotSortState.filters, next)
   },
   { deep: true },
@@ -1929,11 +1945,20 @@ function syncDimensionFilters(type, keys) {
       delete dimensionValueFilters[type][key]
     }
   })
+  cleanupRangeEntries(dimensionRangeFilters[type], keys)
 }
 
 function syncSortStore(store, keys) {
   Object.keys(store).forEach((key) => {
     if (!keys.includes(key)) {
+      delete store[key]
+    }
+  })
+}
+
+function cleanupRangeEntries(store = {}, allowedKeys = []) {
+  Object.keys(store).forEach((key) => {
+    if (!allowedKeys.includes(key)) {
       delete store[key]
     }
   })
@@ -2018,6 +2043,118 @@ const fieldsMap = computed(() => {
   }, new Map())
 })
 
+function supportsFieldRange(key) {
+  const descriptor = fieldsMap.value.get(key)
+  if (!descriptor) return false
+  return descriptor.type === 'number' || descriptor.type === 'date'
+}
+
+function isDefinedRangeValue(value) {
+  return !(value === null || typeof value === 'undefined' || value === '')
+}
+
+function cloneRange(range = {}) {
+  if (!range || typeof range !== 'object') {
+    return { start: null, end: null }
+  }
+  return {
+    start: isDefinedRangeValue(range.start) ? range.start : null,
+    end: isDefinedRangeValue(range.end) ? range.end : null,
+  }
+}
+
+function sanitizeRange(range = {}) {
+  const copy = cloneRange(range)
+  if (!hasActiveRange(copy)) return null
+  return copy
+}
+
+function hasActiveRange(range) {
+  if (!range || typeof range !== 'object') return false
+  return isDefinedRangeValue(range.start) || isDefinedRangeValue(range.end)
+}
+
+function rangeStoreHasValues(store = {}) {
+  return Object.values(store).some((range) => hasActiveRange(range))
+}
+
+function inferRangeType(range, descriptor = null) {
+  if (descriptor?.type) return descriptor.type
+  if (!range || typeof range !== 'object') return ''
+  if (typeof range.start === 'number' || typeof range.end === 'number') {
+    return 'number'
+  }
+  if (typeof range.start === 'string' || typeof range.end === 'string') {
+    return 'date'
+  }
+  return ''
+}
+
+function normalizeComparableValue(value, type) {
+  if (value === null || typeof value === 'undefined') return null
+  if (type === 'number') {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : null
+  }
+  if (type === 'date') {
+    return parseDateValue(value)
+  }
+  return null
+}
+
+function parseDateValue(value) {
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return null
+  }
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.getTime()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const str = String(value).trim()
+  if (!str) return null
+  const dottedMatch = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+  if (dottedMatch) {
+    const [, day, month, year] = dottedMatch
+    const isoString = `${year}-${month}-${day}T00:00:00Z`
+    const timestamp = Date.parse(isoString)
+    return Number.isFinite(timestamp) ? timestamp : null
+  }
+  const parsed = Date.parse(str)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeRangeBoundary(value, type, bound = 'start') {
+  if (!isDefinedRangeValue(value)) return null
+  if (type === 'number') {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : null
+  }
+  if (type === 'date') {
+    const timestamp = parseDateValue(value)
+    if (!Number.isFinite(timestamp)) return null
+    if (bound === 'end') {
+      return timestamp + 86399999
+    }
+    return timestamp
+  }
+  return null
+}
+
+function valueSatisfiesRange(rawValue, range, descriptor = null) {
+  if (!hasActiveRange(range)) return true
+  const type = inferRangeType(range, descriptor)
+  if (!type) return true
+  const comparable = normalizeComparableValue(rawValue, type)
+  if (comparable === null) return false
+  const start = normalizeRangeBoundary(range.start, type, 'start')
+  if (start !== null && comparable < start) return false
+  const end = normalizeRangeBoundary(range.end, type, 'end')
+  if (end !== null && comparable > end) return false
+  return true
+}
+
 const preparedMetrics = computed(() => {
   pivotMetricsVersion.value
   return pivotMetrics
@@ -2066,37 +2203,59 @@ const formulaMetricTokens = computed(() =>
   })),
 )
 
-function matchesFieldValues(record, fieldsList, store) {
+function matchesFieldFilters(record, fieldsList, valueStore, rangeStore = {}) {
   return fieldsList.every((fieldKey) => {
-    const selectedValues = store[fieldKey]
-    if (!selectedValues || !selectedValues.length) return true
-    const normalizedRecordValue = normalizeValue(record[fieldKey])
-    return selectedValues.includes(normalizedRecordValue)
+    const selectedValues = valueStore[fieldKey]
+    if (selectedValues && selectedValues.length) {
+      const normalizedRecordValue = normalizeValue(record[fieldKey])
+      if (!selectedValues.includes(normalizedRecordValue)) {
+        return false
+      }
+    }
+    const range = rangeStore[fieldKey]
+    if (range && hasActiveRange(range)) {
+      const fieldDescriptor = fieldsMap.value.get(fieldKey)
+      if (!valueSatisfiesRange(record[fieldKey], range, fieldDescriptor)) {
+        return false
+      }
+    }
+    return true
   })
 }
 
 const filteredPlanRecords = computed(() => {
   if (!records.value.length) return []
   return records.value.filter((record) => {
-    const basicFiltersMatch = pivotConfig.filters.every((fieldKey) => {
-      const selectedValues = filterValues[fieldKey]
-      if (!selectedValues || !selectedValues.length) return true
-      const normalizedRecordValue = normalizeValue(record[fieldKey])
-      return selectedValues.includes(normalizedRecordValue)
-    })
-    if (!basicFiltersMatch) return false
     if (
-      !matchesFieldValues(record, pivotConfig.rows, dimensionValueFilters.rows)
-    )
+      !matchesFieldFilters(
+        record,
+        pivotConfig.filters,
+        filterValues,
+        filterRangeValues,
+      )
+    ) {
       return false
+    }
     if (
-      !matchesFieldValues(
+      !matchesFieldFilters(
+        record,
+        pivotConfig.rows,
+        dimensionValueFilters.rows,
+        dimensionRangeFilters.rows,
+      )
+    ) {
+      return false
+    }
+    if (
+      !matchesFieldFilters(
         record,
         pivotConfig.columns,
         dimensionValueFilters.columns,
+        dimensionRangeFilters.columns,
       )
-    )
+    ) {
       return false
+    }
     return true
   })
 })
@@ -2219,8 +2378,10 @@ const canSavePresentation = computed(() => {
   if (!selectedVisualization.value) return false
   return !presentationSaving.value
 })
-const hasSelectedFilterValues = computed(() =>
-  Object.values(filterValues).some((values) => values && values.length),
+const hasSelectedFilterValues = computed(
+  () =>
+    Object.values(filterValues).some((values) => values && values.length) ||
+    rangeStoreHasValues(filterRangeValues),
 )
 const rowHeaderTitle = computed(() => {
   if (!pivotConfig.rows.length) return 'Строки'
@@ -2527,10 +2688,22 @@ async function saveCurrentSource() {
     joins: normalizeJoinList(sourceDraft.joins || []),
   }
   try {
-    const id = await dataSourcesStore.saveSource(payload)
-    dataSource.value = id
+    const result = await dataSourcesStore.saveSource(payload)
+    const savedId = result?.id || payload.id
+    dataSource.value = savedId
     isCreatingSource.value = false
     pendingNewSourceName.value = ''
+    if (result?.syncPromise?.then) {
+      result.syncPromise
+        .then((remoteId) => {
+          if (!remoteId) return
+          const normalized = String(remoteId)
+          if (normalized && dataSource.value !== normalized) {
+            dataSource.value = normalized
+          }
+        })
+        .catch(() => {})
+    }
   } catch (err) {
     alert(
       'Не удалось сохранить источник. Проверьте соединение или попробуйте позже.',
@@ -2781,11 +2954,18 @@ function resetPlanState() {
   pivotMetrics.splice(0, pivotMetrics.length)
   pivotMetricsVersion.value += 1
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
+  Object.keys(filterRangeValues).forEach((key) => delete filterRangeValues[key])
   Object.keys(dimensionValueFilters.rows).forEach(
     (key) => delete dimensionValueFilters.rows[key],
   )
+  Object.keys(dimensionRangeFilters.rows).forEach(
+    (key) => delete dimensionRangeFilters.rows[key],
+  )
   Object.keys(dimensionValueFilters.columns).forEach(
     (key) => delete dimensionValueFilters.columns[key],
+  )
+  Object.keys(dimensionRangeFilters.columns).forEach(
+    (key) => delete dimensionRangeFilters.columns[key],
   )
   Object.keys(columnWidths).forEach((key) => delete columnWidths[key])
   Object.keys(rowHeights).forEach((key) => delete rowHeights[key])
@@ -2802,6 +2982,9 @@ function resetPlanState() {
 function resetFilterValues() {
   Object.keys(filterValues).forEach((key) => {
     filterValues[key] = []
+  })
+  Object.keys(filterRangeValues).forEach((key) => {
+    delete filterRangeValues[key]
   })
 }
 
@@ -2827,12 +3010,14 @@ function extractFieldDescriptors(records) {
           sample: formatSample(value),
           total: 0,
           numericCount: 0,
+          dateCount: 0,
           values: new Set(),
         })
       }
       const descriptor = map.get(key)
       descriptor.total += 1
       if (typeof value === 'number') descriptor.numericCount += 1
+      if (isLikelyDateValue(value)) descriptor.dateCount += 1
       if (descriptor.values.size < 20) {
         descriptor.values.add(normalizeValue(value))
       }
@@ -2851,8 +3036,27 @@ function extractFieldDescriptors(records) {
       descriptor.numericCount > 0 &&
       descriptor.numericCount === descriptor.total
         ? 'number'
-        : 'string',
+        : descriptor.dateCount > 0 && descriptor.dateCount === descriptor.total
+          ? 'date'
+          : 'string',
   }))
+}
+
+function isLikelyDateValue(value) {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return true
+  }
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?$/.test(trimmed)) {
+    return true
+  }
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    return true
+  }
+  const parsed = Date.parse(trimmed)
+  return Number.isFinite(parsed)
 }
 
 function formatSample(value) {
@@ -3149,11 +3353,26 @@ function loadDraftFromSource(source) {
     resetSourceDraft()
     return
   }
-  const parsedBody = parseSourceBodyForJoins(source.rawBody)
+  const remoteBody =
+    source.remoteMeta?.MethodBody ||
+    source.remoteMeta?.methodBody ||
+    source.remoteMeta?.methodbody ||
+    ''
+  const sourceBody = source.rawBody || ''
+  const parsedBody = parseSourceBodyForJoins(remoteBody || sourceBody)
+  const remoteJoins = parseJoinConfig(
+    source.remoteMeta?.joinConfig || source.remoteMeta?.JoinConfig,
+  )
   resetSourceDraft({
     ...source,
-    rawBody: parsedBody.cleanedBody,
-    joins: normalizeJoinList(parsedBody.joins || source.joins || []),
+    rawBody:
+      parsedBody.cleanedBody ||
+      sourceBody ||
+      remoteBody ||
+      EMPTY_BODY_TEMPLATE,
+    joins: normalizeJoinList(
+      parsedBody.joins || source.joins || remoteJoins || [],
+    ),
     headers: {
       'Content-Type': 'application/json',
       ...(source.headers || {}),
@@ -3178,7 +3397,9 @@ function removeJoin(joinId) {
 
 function updateJoinFieldsInput(join, value = '') {
   if (!join) return
-  const parsed = String(value || '')
+  const rawValue = String(value ?? '')
+  join.fieldsInput = rawValue
+  const parsed = rawValue
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
@@ -3423,8 +3644,11 @@ function normalizeRemoteConfig(entry = {}) {
     },
     headerOverrides: combinedOverrides,
     filterValues: filterPayload.values || {},
+    filterRanges: filterPayload.ranges || {},
     rowFilters: rowPayload.values || {},
+    rowRanges: rowPayload.ranges || {},
     columnFilters: colPayload.values || {},
+    columnRanges: colPayload.ranges || {},
     filtersMeta: filterPayload.filtersMeta || [],
     fieldMeta: filterPayload.fieldMeta || {},
     sorts: {
@@ -3531,16 +3755,22 @@ function encodeFieldSequence(list = []) {
 }
 
 function parseMetaPayload(value) {
-  if (!value) return { values: {} }
+  const fallback = { values: {}, ranges: {} }
+  if (!value) return fallback
+  let payload = value
   if (typeof value === 'string') {
     try {
-      const parsed = JSON.parse(value)
-      if (parsed && typeof parsed === 'object') return parsed
+      payload = JSON.parse(value)
     } catch {
-      return { values: {} }
+      return fallback
     }
   }
-  return { values: {} }
+  if (!payload || typeof payload !== 'object') return fallback
+  return {
+    ...payload,
+    values: payload.values || {},
+    ranges: payload.ranges || {},
+  }
 }
 
 function collectKnownFieldKeys(...payloads) {
@@ -3548,6 +3778,7 @@ function collectKnownFieldKeys(...payloads) {
   payloads.forEach((payload) => {
     if (!payload || typeof payload !== 'object') return
     collectKeysFromObject(set, payload.values)
+    collectKeysFromObject(set, payload.ranges)
     collectKeysFromObject(set, payload.headerOverrides)
     collectKeysFromObject(set, payload.sorts)
     collectKeysFromObject(set, payload.fieldMeta)
@@ -3576,6 +3807,7 @@ function collectKeysFromObject(target, source) {
 function encodeFilterPayload() {
   return JSON.stringify({
     values: copyFilterStore(filterValues),
+    ranges: copyRangeStore(filterRangeValues),
     headerOverrides: pickHeaderOverrides(pivotConfig.filters),
     sorts: cloneSortState(pivotSortState.filters),
     metricSettings: pivotMetrics.map((metric) => ({
@@ -3600,9 +3832,10 @@ function encodeFilterPayload() {
   })
 }
 
-function encodeDimensionPayload(keys, store, sortStore) {
+function encodeDimensionPayload(keys, store, sortStore, rangeStore = {}) {
   return JSON.stringify({
     values: copyFilterStore(store),
+    ranges: copyRangeStore(rangeStore),
     headerOverrides: pickHeaderOverrides(keys),
     sorts: cloneSortState(sortStore),
   })
@@ -3889,8 +4122,15 @@ function applyConfigRecord(record) {
   ensureMetricExists()
 
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
+  Object.keys(filterRangeValues).forEach((key) => delete filterRangeValues[key])
   Object.entries(record.filterValues || {}).forEach(([key, values]) => {
     filterValues[key] = [...values]
+  })
+  Object.entries(record.filterRanges || {}).forEach(([key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      filterRangeValues[key] = sanitized
+    }
   })
   applyFilterSnapshot(
     dimensionValueFilters.rows,
@@ -3901,6 +4141,16 @@ function applyConfigRecord(record) {
     dimensionValueFilters.columns,
     pivotConfig.columns,
     record.columnFilters || {},
+  )
+  applyRangeSnapshot(
+    dimensionRangeFilters.rows,
+    pivotConfig.rows,
+    record.rowRanges || {},
+  )
+  applyRangeSnapshot(
+    dimensionRangeFilters.columns,
+    pivotConfig.columns,
+    record.columnRanges || {},
   )
   applySortSnapshot(pivotSortState.filters, record.sorts?.filters || {})
   applySortSnapshot(pivotSortState.rows, record.sorts?.rows || {})
@@ -3948,16 +4198,58 @@ function handleFieldRename({ key, title }) {
 function handleFilterValuesChange({ key, values }) {
   if (!key) return
   filterValues[key] = [...(values || [])]
+  delete filterRangeValues[key]
 }
 
 function handleRowValueFiltersChange({ key, values }) {
   if (!key) return
   dimensionValueFilters.rows[key] = [...(values || [])]
+  delete dimensionRangeFilters.rows[key]
 }
 
 function handleColumnValueFiltersChange({ key, values }) {
   if (!key) return
   dimensionValueFilters.columns[key] = [...(values || [])]
+  delete dimensionRangeFilters.columns[key]
+}
+
+function handleFilterRangeChange({ key, range }) {
+  if (!key) return
+  const sanitized = sanitizeRange(range)
+  if (sanitized) {
+    filterRangeValues[key] = sanitized
+  } else {
+    delete filterRangeValues[key]
+  }
+  if (filterValues[key]) {
+    filterValues[key] = []
+  }
+}
+
+function handleRowRangeFiltersChange({ key, range }) {
+  if (!key) return
+  const sanitized = sanitizeRange(range)
+  if (sanitized) {
+    dimensionRangeFilters.rows[key] = sanitized
+  } else {
+    delete dimensionRangeFilters.rows[key]
+  }
+  if (dimensionValueFilters.rows[key]) {
+    dimensionValueFilters.rows[key] = []
+  }
+}
+
+function handleColumnRangeFiltersChange({ key, range }) {
+  if (!key) return
+  const sanitized = sanitizeRange(range)
+  if (sanitized) {
+    dimensionRangeFilters.columns[key] = sanitized
+  } else {
+    delete dimensionRangeFilters.columns[key]
+  }
+  if (dimensionValueFilters.columns[key]) {
+    dimensionValueFilters.columns[key] = []
+  }
 }
 
 function handleRowSortChange(payload) {
@@ -4168,11 +4460,13 @@ function buildConfigPayload(parentId, userContext = null) {
       pivotConfig.rows,
       dimensionValueFilters.rows,
       pivotSortState.rows,
+      dimensionRangeFilters.rows,
     ),
     ColVal: encodeDimensionPayload(
       pivotConfig.columns,
       dimensionValueFilters.columns,
       pivotSortState.columns,
+      dimensionRangeFilters.columns,
     ),
     fvRowTotal: ROW_TOTAL_META.fv,
     pvRowTotal: ROW_TOTAL_META.pv,
@@ -4284,10 +4578,30 @@ function copyFilterStore(store) {
   }, {})
 }
 
+function copyRangeStore(store) {
+  return Object.entries(store).reduce((acc, [key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      acc[key] = sanitized
+    }
+    return acc
+  }, {})
+}
+
 function applyFilterSnapshot(store, keys, snapshot) {
   Object.keys(store).forEach((key) => delete store[key])
   keys.forEach((key) => {
     store[key] = [...(snapshot[key] || [])]
+  })
+}
+
+function applyRangeSnapshot(store, keys, snapshot = {}) {
+  Object.keys(store).forEach((key) => delete store[key])
+  keys.forEach((key) => {
+    const next = sanitizeRange(snapshot[key])
+    if (next) {
+      store[key] = next
+    }
   })
 }
 
@@ -4297,6 +4611,8 @@ function swapPivotAxes() {
   const prevColumns = [...pivotConfig.columns]
   const prevRowFilters = copyFilterStore(dimensionValueFilters.rows)
   const prevColumnFilters = copyFilterStore(dimensionValueFilters.columns)
+  const prevRowRanges = copyRangeStore(dimensionRangeFilters.rows)
+  const prevColumnRanges = copyRangeStore(dimensionRangeFilters.columns)
 
   replaceArray(pivotConfig.rows, prevColumns)
   replaceArray(pivotConfig.columns, prevRows)
@@ -4310,6 +4626,16 @@ function swapPivotAxes() {
     dimensionValueFilters.columns,
     pivotConfig.columns,
     prevRowFilters,
+  )
+  applyRangeSnapshot(
+    dimensionRangeFilters.rows,
+    pivotConfig.rows,
+    prevColumnRanges,
+  )
+  applyRangeSnapshot(
+    dimensionRangeFilters.columns,
+    pivotConfig.columns,
+    prevRowRanges,
   )
 
   Object.keys(columnWidths).forEach((key) => delete columnWidths[key])
@@ -4544,22 +4870,9 @@ function normalizeDictionaryUrl(value) {
 }
 
 function parseSourceBodyForJoins(rawBody = '') {
-  if (!rawBody?.trim()) {
-    return { cleanedBody: rawBody || EMPTY_BODY_TEMPLATE, joins: [] }
-  }
-  try {
-    const parsed = JSON.parse(rawBody)
-    const joins = Array.isArray(parsed.__joins) ? parsed.__joins : []
-    if ('__joins' in parsed) {
-      delete parsed.__joins
-    }
-    return {
-      cleanedBody: JSON.stringify(parsed, null, 2),
-      joins,
-    }
-  } catch {
-    return { cleanedBody: rawBody, joins: [] }
-  }
+  const { cleanedBody, joins } = extractJoinsFromBody(rawBody)
+  const body = cleanedBody || rawBody || EMPTY_BODY_TEMPLATE
+  return { cleanedBody: body, joins }
 }
 
 function buildBasePivotView() {

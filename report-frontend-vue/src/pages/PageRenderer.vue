@@ -40,10 +40,24 @@
           class="page-filter"
         >
           <span>{{ filter.label }}</span>
-          <MultiSelectDropdown
-            v-model="pageFilterValues[filter.key]"
+          <FilterRangeControl
+            :model-value="pageFilterValues[filter.key]"
+            :range="pageFilterRanges[filter.key]"
             :options="globalFilterValueOptions(filter.key)"
+            :supports-range="filterSupportsRange(filter)"
+            :range-type="filter.type === 'date' ? 'date' : 'number'"
             placeholder="Выберите значения"
+            :show-mode-toggle="!isGlobalRangeFilter(filter)"
+            :lock-range="isGlobalRangeFilter(filter)"
+            :show-range-hint="!isGlobalRangeFilter(filter)"
+            @update:model-value="
+              handlePageFilterValuesChange(
+                filter.key,
+                $event,
+                isGlobalRangeFilter(filter),
+              )
+            "
+            @update:range="handlePageFilterRangeChange(filter.key, $event)"
           />
         </label>
       </div>
@@ -101,18 +115,37 @@
                   class="btn-link"
                   type="button"
                   :disabled="
-                    !containerFilterValues[container.id]?.[filter.key]?.length
+                    !hasActiveContainerFilter(container.id, filter.key)
                   "
                   @click="resetContainerFilter(container.id, filter.key)"
                 >
                   Очистить
                 </button>
               </div>
-              <MultiSelectDropdown
-                v-model="containerFilterValues[container.id][filter.key]"
+              <FilterRangeControl
+                :model-value="containerFilterValues[container.id][filter.key]"
+                :range="containerFilterRanges[container.id]?.[filter.key]"
                 :options="fieldOptions(filter)"
+                :supports-range="filterSupportsRange(filter)"
+                :range-type="filter.type === 'date' ? 'date' : 'number'"
                 placeholder="Выберите значения"
-                @update:model-value="requestContainerRefresh(container.id)"
+                :show-mode-toggle="!isContainerRangeFilter(filter)"
+                :lock-range="isContainerRangeFilter(filter)"
+                :show-range-hint="!isContainerRangeFilter(filter)"
+                @update:model-value="
+                  handleContainerFilterValuesChange(
+                    container.id,
+                    filter,
+                    $event,
+                  )
+                "
+                @update:range="
+                  handleContainerFilterRangeChange(
+                    container.id,
+                    filter,
+                    $event,
+                  )
+                "
               />
             </article>
           </div>
@@ -430,7 +463,7 @@ import {
   augmentPivotViewWithFormulas,
   filterPivotViewByVisibility,
 } from '@/shared/lib/pivotUtils'
-import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
+import FilterRangeControl from '@/components/FilterRangeControl.vue'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import {
   normalizeJoinList,
@@ -485,6 +518,7 @@ const layoutStyle = computed(() => {
 
 const containerStates = reactive({})
 const containerFilterValues = reactive({})
+const containerFilterRanges = reactive({})
 const containerRefreshTimers = reactive({})
 const containerTableSizing = reactive({})
 const containerRowCollapse = reactive({})
@@ -504,14 +538,22 @@ const chartPalette = [
 const FILTER_META_VALUE_LIMIT = 20
 const EMPTY_SET = new Set()
 const pageFilterValues = reactive({})
+const pageFilterRanges = reactive({})
 const commonFilterKeys = computed(() =>
   resolveCommonContainerFieldKeys(pageContainers.value, store.templates),
 )
+const globalFieldMetaMap = computed(() => buildGlobalFieldMetaMap())
 const pageFilterOptions = computed(() =>
-  commonFilterKeys.value.map((key) => ({
-    key,
-    label: dictionaryLabelValue(key) || humanizeKey(key),
-  })),
+  commonFilterKeys.value.map((key) => {
+    const descriptor = globalFieldMetaMap.value.get(key) || {}
+    const hasRange = globalFilterRangeDefaults.value.has(key)
+    return {
+      key,
+      label: dictionaryLabelValue(key) || humanizeKey(key),
+      type: descriptor.type || '',
+      rangeOnly: hasRange,
+    }
+  }),
 )
 const filterMap = computed(() =>
   pageFilterOptions.value.reduce((acc, filter) => {
@@ -527,13 +569,15 @@ const activePageFilters = computed(() =>
 const hasActivePageFilters = computed(() =>
   activePageFilters.value.some((filter) => {
     const value = pageFilterValues[filter.key]
-    return Array.isArray(value) && value.length
+    if (Array.isArray(value) && value.length) return true
+    return hasActiveRange(pageFilterRanges[filter.key])
   }),
 )
 const activePageFilterKeySet = computed(
   () => new Set((page.value?.filters || []).filter(Boolean)),
 )
 const globalFilterValueMap = computed(() => buildGlobalFilterValueMap())
+const globalFilterRangeDefaults = computed(() => buildGlobalFilterRangeMap())
 let refreshTimer = null
 const pageRefreshing = ref(false)
 const exportingExcel = ref(false)
@@ -576,6 +620,20 @@ function containerFilterStore(containerId) {
   return containerFilterValues[containerId]
 }
 
+function containerRangeStore(containerId) {
+  if (!containerFilterRanges[containerId]) {
+    containerFilterRanges[containerId] = {}
+  }
+  return containerFilterRanges[containerId]
+}
+
+function hasActiveContainerFilter(containerId, key) {
+  const values = containerFilterStore(containerId)[key]
+  if (Array.isArray(values) && values.length) return true
+  const range = containerRangeStore(containerId)[key]
+  return hasActiveRange(range)
+}
+
 function containerStyle(container) {
   const style = {}
   const span = widthToSpan(container?.width)
@@ -614,14 +672,26 @@ function isContainerRowCollapsed(containerId, nodeKey) {
 }
 
 function ensurePageFilters(keys = []) {
+  const rangeDefaults = globalFilterRangeDefaults.value
   keys.forEach((key) => {
     if (!(key in pageFilterValues)) {
       pageFilterValues[key] = []
+    }
+    if (!(key in pageFilterRanges)) {
+      const defaults = cloneRange(rangeDefaults.get(key))
+      if (defaults && hasActiveRange(defaults)) {
+        pageFilterRanges[key] = defaults
+      }
     }
   })
   Object.keys(pageFilterValues).forEach((key) => {
     if (!keys.includes(key)) {
       delete pageFilterValues[key]
+    }
+  })
+  Object.keys(pageFilterRanges).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete pageFilterRanges[key]
     }
   })
 }
@@ -630,23 +700,45 @@ function templateFilters(container) {
   const tpl = template(container.templateId)
   if (!tpl) return []
   ensureContainerFilters(container.id, tpl)
-  const filtersMeta = tpl.snapshot?.filtersMeta || []
+  const fieldMeta = tpl.snapshot?.fieldMeta || {}
+  const rangeStore = tpl.snapshot?.filterRanges || {}
+  const filtersMeta = (tpl.snapshot?.filtersMeta || []).map((meta) => {
+    const range = sanitizeRange(rangeStore?.[meta.key])
+    return {
+      ...meta,
+      type: fieldMeta?.[meta.key]?.type || '',
+      rangeOnly: Boolean(range),
+    }
+  })
   const excluded = activePageFilterKeySet.value
   return filtersMeta.filter((meta) => !excluded.has(meta.key))
 }
 
 function ensureContainerFilters(containerId, tpl) {
   const store = containerFilterStore(containerId)
+  const rangeStore = containerRangeStore(containerId)
   const list = tpl.snapshot?.filtersMeta || []
+  const defaultRanges = tpl.snapshot?.filterRanges || {}
   list.forEach((filter) => {
     if (!Array.isArray(store[filter.key])) {
       const defaults = tpl.snapshot?.filterValues?.[filter.key] || []
       store[filter.key] = [...defaults]
     }
+    if (!(filter.key in rangeStore)) {
+      const defaults = sanitizeRange(defaultRanges?.[filter.key])
+      if (defaults) {
+        rangeStore[filter.key] = defaults
+      }
+    }
   })
   Object.keys(store).forEach((key) => {
     if (!list.find((item) => item.key === key)) {
       delete store[key]
+    }
+  })
+  Object.keys(rangeStore).forEach((key) => {
+    if (!list.find((item) => item.key === key)) {
+      delete rangeStore[key]
     }
   })
 }
@@ -1222,23 +1314,149 @@ function resolveSourceJoins(source = {}) {
   return normalizeJoinList(parsed)
 }
 
-function matchFieldSet(record, keys = [], store = {}) {
+function matchFieldSet(
+  record,
+  keys = [],
+  store = {},
+  rangeStore = {},
+  fieldMetaMap = new Map(),
+) {
   return (keys || []).every((key) => {
     const selected = store?.[key]
-    if (!selected || !selected.length) return true
-    const value = normalizeValue(record?.[key])
-    return selected.includes(value)
+    if (selected && selected.length) {
+      const value = normalizeValue(record?.[key])
+      if (!selected.includes(value)) {
+        return false
+      }
+    }
+    const range = rangeStore?.[key]
+    if (range && hasActiveRange(range)) {
+      const descriptor = fieldMetaMap.get(key)
+      if (!valueSatisfiesRange(record?.[key], range, descriptor)) {
+        return false
+      }
+    }
+    return true
   })
+}
+
+function isDefinedRangeValue(value) {
+  return !(value === null || typeof value === 'undefined' || value === '')
+}
+
+function cloneRange(range) {
+  if (!range || typeof range !== 'object') return null
+  return {
+    start: isDefinedRangeValue(range.start) ? range.start : null,
+    end: isDefinedRangeValue(range.end) ? range.end : null,
+  }
+}
+
+function sanitizeRange(range) {
+  const copy = cloneRange(range)
+  if (!copy) return null
+  return hasActiveRange(copy) ? copy : null
+}
+
+function hasActiveRange(range) {
+  if (!range || typeof range !== 'object') return false
+  return isDefinedRangeValue(range.start) || isDefinedRangeValue(range.end)
+}
+
+function inferRangeType(range, descriptor = null) {
+  if (descriptor?.type) return descriptor.type
+  if (!range || typeof range !== 'object') return ''
+  if (typeof range.start === 'number' || typeof range.end === 'number') {
+    return 'number'
+  }
+  if (typeof range.start === 'string' || typeof range.end === 'string') {
+    return 'date'
+  }
+  return ''
+}
+
+function normalizeComparableValue(value, type) {
+  if (value === null || typeof value === 'undefined') return null
+  if (type === 'number') {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : null
+  }
+  if (type === 'date') {
+    return parseDateValue(value)
+  }
+  return null
+}
+
+function parseDateValue(value) {
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return null
+  }
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.getTime()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const str = String(value).trim()
+  if (!str) return null
+  const dotted = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+  if (dotted) {
+    const [, day, month, year] = dotted
+    const isoString = `${year}-${month}-${day}T00:00:00Z`
+    const timestamp = Date.parse(isoString)
+    return Number.isFinite(timestamp) ? timestamp : null
+  }
+  const parsed = Date.parse(str)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeRangeBoundary(value, type, bound = 'start') {
+  if (!isDefinedRangeValue(value)) return null
+  if (type === 'number') {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : null
+  }
+  if (type === 'date') {
+    const timestamp = parseDateValue(value)
+    if (!Number.isFinite(timestamp)) return null
+    if (bound === 'end') {
+      return timestamp + 86399999
+    }
+    return timestamp
+  }
+  return null
+}
+
+function valueSatisfiesRange(rawValue, range, descriptor = null) {
+  if (!hasActiveRange(range)) return true
+  const type = inferRangeType(range, descriptor)
+  if (!type) return true
+  const comparable = normalizeComparableValue(rawValue, type)
+  if (comparable === null) return false
+  const start = normalizeRangeBoundary(range.start, type, 'start')
+  if (start !== null && comparable < start) return false
+  const end = normalizeRangeBoundary(range.end, type, 'end')
+  if (end !== null && comparable > end) return false
+  return true
 }
 
 function matchesGlobalFilters(record) {
   if (!activePageFilters.value.length) return true
   return activePageFilters.value.every((filter) => {
-    const value = pageFilterValues[filter.key]
-    if (!Array.isArray(value) || !value.length) return true
-    const recordValue = normalizeValue(record?.[filter.key])
-    if (!recordValue && recordValue !== '') return false
-    return value.includes(recordValue)
+    const values = pageFilterValues[filter.key]
+    if (Array.isArray(values) && values.length) {
+      const recordValue = normalizeValue(record?.[filter.key])
+      if (!recordValue && recordValue !== '') return false
+      if (!values.includes(recordValue)) return false
+    }
+    const range = pageFilterRanges[filter.key]
+    if (range && hasActiveRange(range)) {
+      const descriptor = globalFieldMetaMap.value.get(filter.key)
+      if (!valueSatisfiesRange(record?.[filter.key], range, descriptor)) {
+        return false
+      }
+    }
+    return true
   })
 }
 
@@ -1248,18 +1466,57 @@ function filterRecords(records, snapshot, source, containerId) {
   const filterValues = {
     ...(snapshot?.filterValues || {}),
   }
+  const filterRanges = {
+    ...(snapshot?.filterRanges || {}),
+  }
   const containerOverrides = containerFilterValues[containerId] || {}
   Object.entries(containerOverrides).forEach(([key, values]) => {
     filterValues[key] = [...values]
   })
+  const containerRangeOverrides = containerFilterRanges[containerId] || {}
+  Object.entries(containerRangeOverrides).forEach(([key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      filterRanges[key] = sanitized
+    } else {
+      delete filterRanges[key]
+    }
+  })
   const dimensionValues = snapshot?.dimensionValues || {}
+  const dimensionRanges = snapshot?.dimensionRanges || {}
+  const fieldMetaMap = new Map(Object.entries(snapshot?.fieldMeta || {}))
 
   return records.filter((record) => {
     if (!matchesGlobalFilters(record)) return false
-    if (!matchFieldSet(record, pivot.filters, filterValues)) return false
-    if (!matchFieldSet(record, pivot.rows, dimensionValues.rows || {}))
+    if (
+      !matchFieldSet(
+        record,
+        pivot.filters,
+        filterValues,
+        filterRanges,
+        fieldMetaMap,
+      )
+    )
       return false
-    if (!matchFieldSet(record, pivot.columns, dimensionValues.columns || {}))
+    if (
+      !matchFieldSet(
+        record,
+        pivot.rows,
+        dimensionValues.rows || {},
+        dimensionRanges.rows || {},
+        fieldMetaMap,
+      )
+    )
+      return false
+    if (
+      !matchFieldSet(
+        record,
+        pivot.columns,
+        dimensionValues.columns || {},
+        dimensionRanges.columns || {},
+        fieldMetaMap,
+      )
+    )
       return false
     return true
   })
@@ -1429,7 +1686,15 @@ async function hydrateContainer(container) {
         ? [...pageFilterValues[filter.key]].sort()
         : [],
     })),
+    globalRanges: activePageFilters.value.reduce((acc, filter) => {
+      const range = sanitizeRange(pageFilterRanges[filter.key])
+      if (range) {
+        acc[filter.key] = range
+      }
+      return acc
+    }, {}),
     containerFilters: containerFilterValues[container.id],
+    containerRanges: containerFilterRanges[container.id],
   })
   if (state.signature === signature && state.view) {
     return
@@ -1542,6 +1807,9 @@ function refreshContainers() {
   })
   Object.keys(containerFilterValues).forEach((id) => {
     if (!ids.has(id)) delete containerFilterValues[id]
+  })
+  Object.keys(containerFilterRanges).forEach((id) => {
+    if (!ids.has(id)) delete containerFilterRanges[id]
   })
   Object.keys(containerTableSizing).forEach((id) => {
     if (!ids.has(id)) delete containerTableSizing[id]
@@ -1851,6 +2119,19 @@ function dictionaryLabelValue(key) {
   return dictionaryLabelsLower.value[lower] || ''
 }
 
+function filterSupportsRange(filter = {}) {
+  const type = filter?.type
+  return type === 'number' || type === 'date'
+}
+
+function isGlobalRangeFilter(filter) {
+  return Boolean(filter?.rangeOnly)
+}
+
+function isContainerRangeFilter(filter) {
+  return Boolean(filter?.rangeOnly)
+}
+
 function globalFilterValueOptions(key) {
   return globalFilterValueMap.value.get(key) || []
 }
@@ -1873,6 +2154,47 @@ function buildGlobalFilterValueMap() {
     result.set(key, options)
   })
   return result
+}
+
+function buildGlobalFieldMetaMap() {
+  const containers = pageContainers.value || []
+  const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
+  const result = new Map()
+  containers.forEach((container) => {
+    const tpl = templateMap.get(container.templateId)
+    if (!tpl) return
+    Object.entries(tpl.snapshot?.fieldMeta || {}).forEach(([key, meta]) => {
+      if (!result.has(key)) {
+        result.set(key, meta || {})
+      }
+    })
+  })
+  return result
+}
+
+function buildGlobalFilterRangeMap() {
+  const containers = pageContainers.value || []
+  const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
+  const ranges = new Map()
+  containers.forEach((container) => {
+    const tpl = templateMap.get(container.templateId)
+    if (!tpl) return
+    mergeRangeMap(ranges, tpl.snapshot?.filterRanges || {})
+    mergeRangeMap(ranges, tpl.snapshot?.dimensionRanges?.rows || {})
+    mergeRangeMap(ranges, tpl.snapshot?.dimensionRanges?.columns || {})
+  })
+  return ranges
+}
+
+function mergeRangeMap(target, source = {}) {
+  if (!source || typeof source !== 'object') return
+  Object.entries(source).forEach(([key, range]) => {
+    if (target.has(key)) return
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      target.set(key, sanitized)
+    }
+  })
 }
 
 function collectTemplateFilterValues(targetMap, snapshot = {}) {
@@ -2063,15 +2385,65 @@ watch(
   { deep: true },
 )
 
+watch(
+  pageFilterRanges,
+  () => {
+    scheduleRefresh()
+  },
+  { deep: true },
+)
+
 function resetPageFilters() {
   activePageFilters.value.forEach((filter) => {
     pageFilterValues[filter.key] = []
+    delete pageFilterRanges[filter.key]
   })
 }
 
 function resetContainerFilter(containerId, key) {
   const store = containerFilterStore(containerId)
   store[key] = []
+  delete containerRangeStore(containerId)[key]
+  requestContainerRefresh(containerId)
+}
+
+function handlePageFilterValuesChange(key, values, rangeOnly = false) {
+  pageFilterValues[key] = Array.isArray(values) ? [...values] : []
+  if (!rangeOnly) {
+    delete pageFilterRanges[key]
+  }
+}
+
+function handlePageFilterRangeChange(key, range) {
+  const sanitized = sanitizeRange(range)
+  if (sanitized) {
+    pageFilterRanges[key] = sanitized
+    pageFilterValues[key] = []
+  } else {
+    delete pageFilterRanges[key]
+  }
+}
+
+function handleContainerFilterValuesChange(containerId, filter, values) {
+  const key = filter.key
+  const store = containerFilterStore(containerId)
+  store[key] = Array.isArray(values) ? [...values] : []
+  if (!isContainerRangeFilter(filter)) {
+    delete containerRangeStore(containerId)[key]
+  }
+  requestContainerRefresh(containerId)
+}
+
+function handleContainerFilterRangeChange(containerId, filter, range) {
+  const key = filter.key
+  const rangeStore = containerRangeStore(containerId)
+  const sanitized = sanitizeRange(range)
+  if (sanitized) {
+    rangeStore[key] = sanitized
+    containerFilterStore(containerId)[key] = []
+  } else {
+    delete rangeStore[key]
+  }
   requestContainerRefresh(containerId)
 }
 

@@ -10,13 +10,16 @@
           :model-value="rows"
           :header-overrides="headerOverrides"
           :value-store="rowValueFilters"
+          :range-store="rowRangeFilters"
           :value-options-resolver="valueOptionsResolver"
           :sort-state="rowSorts"
           :allow-metric-sort="true"
           :get-field-label="getFieldLabel"
+          :supports-range="supportsRange"
           @update:model-value="$emit('update:rows', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-row-values', $event)"
+          @update-range-values="$emit('update-row-range', $event)"
           @update-sort="$emit('update-row-sort', $event)"
         />
       </div>
@@ -29,13 +32,16 @@
           :model-value="columns"
           :header-overrides="headerOverrides"
           :value-store="columnValueFilters"
+          :range-store="columnRangeFilters"
           :value-options-resolver="valueOptionsResolver"
           :sort-state="columnSorts"
           :allow-metric-sort="true"
           :get-field-label="getFieldLabel"
+          :supports-range="supportsRange"
           @update:model-value="$emit('update:columns', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-column-values', $event)"
+          @update-range-values="$emit('update-column-range', $event)"
           @update-sort="$emit('update-column-sort', $event)"
         />
       </div>
@@ -50,13 +56,16 @@
           :model-value="filters"
           :header-overrides="headerOverrides"
           :value-store="filterValues"
+          :range-store="filterRangeValues"
           :value-options-resolver="valueOptionsResolver"
           :sort-state="filterSorts"
           :allow-metric-sort="false"
           :get-field-label="getFieldLabel"
+          :supports-range="supportsRange"
           @update:model-value="$emit('update:filters', $event)"
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-filter-values', $event)"
+          @update-range-values="$emit('update-filter-range', $event)"
           @update-sort="$emit('update-filter-sort', $event)"
         />
       </div>
@@ -109,11 +118,23 @@ defineProps({
     type: Object,
     default: () => ({}),
   },
+  filterRangeValues: {
+    type: Object,
+    default: () => ({}),
+  },
   rowValueFilters: {
     type: Object,
     default: () => ({}),
   },
+  rowRangeFilters: {
+    type: Object,
+    default: () => ({}),
+  },
   columnValueFilters: {
+    type: Object,
+    default: () => ({}),
+  },
+  columnRangeFilters: {
     type: Object,
     default: () => ({}),
   },
@@ -137,6 +158,10 @@ defineProps({
     type: Function,
     default: null,
   },
+  supportsRange: {
+    type: Function,
+    default: null,
+  },
   aggregatorOptions: {
     type: Array,
     default: () => [],
@@ -155,6 +180,9 @@ defineEmits([
   'update-filter-values',
   'update-row-values',
   'update-column-values',
+  'update-filter-range',
+  'update-row-range',
+  'update-column-range',
   'update-row-sort',
   'update-column-sort',
   'update-filter-sort',

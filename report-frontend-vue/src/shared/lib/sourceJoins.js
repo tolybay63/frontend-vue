@@ -34,6 +34,7 @@ export function createJoinTemplate(overrides = {}) {
     joinType: overrides.joinType || 'left',
     resultPrefix: overrides.resultPrefix || '',
     fields: Array.isArray(overrides.fields) ? overrides.fields : [],
+    fieldsInput: overrides.fieldsInput,
   })
 }
 
@@ -42,6 +43,38 @@ export function normalizeJoinList(list = []) {
   return list
     .map((entry) => normalizeJoinEntry(entry))
     .filter((entry) => Boolean(entry.targetSourceId))
+}
+
+export function extractJoinsFromBody(rawBody = '') {
+  if (!rawBody) {
+    return { cleanedBody: '', joins: [] }
+  }
+  let payload = rawBody
+  if (typeof payload !== 'string') {
+    try {
+      payload = JSON.stringify(payload)
+    } catch {
+      return { cleanedBody: '', joins: [] }
+    }
+  }
+  try {
+    const parsed = JSON.parse(payload)
+    if (!parsed || typeof parsed !== 'object') {
+      return { cleanedBody: payload, joins: [] }
+    }
+    const joins = Array.isArray(parsed.__joins)
+      ? normalizeJoinList(parsed.__joins)
+      : []
+    if ('__joins' in parsed) {
+      delete parsed.__joins
+    }
+    return {
+      cleanedBody: JSON.stringify(parsed, null, 2),
+      joins,
+    }
+  } catch {
+    return { cleanedBody: payload, joins: [] }
+  }
 }
 
 export function parseJoinConfig(raw) {
@@ -63,7 +96,7 @@ export function parseJoinConfig(raw) {
 }
 
 export function serializeJoinConfig(list = []) {
-  const normalized = normalizeJoinList(list)
+  const normalized = normalizeJoinList(list).map(stripJoinPresentationFields)
   return JSON.stringify(normalized)
 }
 
@@ -176,6 +209,13 @@ function extractKey(record, key) {
 }
 
 function normalizeJoinEntry(entry = {}) {
+  const normalizedFields = Array.isArray(entry.fields)
+    ? entry.fields.map((field) => String(field || '').trim()).filter(Boolean)
+    : []
+  const normalizedInput =
+    typeof entry.fieldsInput === 'string'
+      ? entry.fieldsInput
+      : normalizedFields.join(', ')
   return {
     id: entry.id || createJoinId(),
     targetSourceId: String(entry.targetSourceId || '').trim(),
@@ -185,10 +225,15 @@ function normalizeJoinEntry(entry = {}) {
       ? entry.joinType.toLowerCase()
       : 'left',
     resultPrefix: String(entry.resultPrefix || '').trim(),
-    fields: Array.isArray(entry.fields)
-      ? entry.fields.map((field) => String(field || '').trim()).filter(Boolean)
-      : [],
+    fields: normalizedFields,
+    fieldsInput: normalizedInput,
   }
+}
+
+export function stripJoinPresentationFields(entry = {}) {
+  if (!entry || typeof entry !== 'object') return {}
+  const { fieldsInput, ...rest } = entry
+  return rest
 }
 
 function createJoinId() {

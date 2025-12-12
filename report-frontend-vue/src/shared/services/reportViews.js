@@ -4,7 +4,10 @@ import {
   loadReportSources,
 } from '@/shared/api/report'
 import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
-import { parseJoinConfig } from '@/shared/lib/sourceJoins.js'
+import {
+  parseJoinConfig,
+  extractJoinsFromBody,
+} from '@/shared/lib/sourceJoins.js'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
@@ -85,7 +88,9 @@ function buildSnapshot(config) {
       pivot: { filters: [], rows: [], columns: [] },
       metrics: [],
       filterValues: {},
+      filterRanges: {},
       dimensionValues: { rows: {}, columns: {} },
+      dimensionRanges: { rows: {}, columns: {} },
       options: { headerOverrides: {}, sorts: {} },
       filtersMeta: [],
       fieldMeta: {},
@@ -95,9 +100,14 @@ function buildSnapshot(config) {
     pivot: config.pivot,
     metrics: config.metrics,
     filterValues: config.filterValues,
+    filterRanges: config.filterRanges || {},
     dimensionValues: {
       rows: config.rowFilters,
       columns: config.columnFilters,
+    },
+    dimensionRanges: {
+      rows: config.rowRanges || {},
+      columns: config.columnRanges || {},
     },
     options: {
       headerOverrides: config.headerOverrides,
@@ -164,8 +174,11 @@ function normalizeConfig(entry = {}, index = 0, aggregatorMap) {
       columns: parseFieldSequence(entry?.Col, knownKeys),
     },
     filterValues: filterPayload.values || {},
+    filterRanges: filterPayload.ranges || {},
     rowFilters: rowPayload.values || {},
+    rowRanges: rowPayload.ranges || {},
     columnFilters: colPayload.values || {},
+    columnRanges: colPayload.ranges || {},
     filtersMeta: filterPayload.filtersMeta || [],
     fieldMeta: filterPayload.fieldMeta || {},
     sorts: {
@@ -181,6 +194,17 @@ function normalizeConfig(entry = {}, index = 0, aggregatorMap) {
 
 function normalizeSource(entry = {}, index = 0) {
   const remoteId = toStableId(entry?.id ?? entry?.Id ?? entry?.ID)
+  const baseBody =
+    entry?.MethodBody ||
+    entry?.body ||
+    entry?.payload ||
+    entry?.requestBody ||
+    entry?.rawBody ||
+    ''
+  const { cleanedBody, joins: embeddedJoins } = extractJoinsFromBody(baseBody)
+  const formattedBody = cleanedBody || baseBody
+  const parsedBody = parseMaybeJson(formattedBody || baseBody)
+  const joinConfig = parseJoinConfig(entry?.joinConfig || entry?.JoinConfig)
   return {
     id: remoteId || createLocalId(`source-${index}`),
     remoteId,
@@ -188,10 +212,10 @@ function normalizeSource(entry = {}, index = 0) {
     description: entry?.description || entry?.Description || '',
     method: (entry?.nameMethodTyp || entry?.Method || 'POST').toUpperCase(),
     url: entry?.URL || entry?.url || entry?.requestUrl || '',
-    body: parseMaybeJson(entry?.MethodBody || entry?.body || entry?.payload),
+    body: parsedBody,
     headers: parseHeaderPayload(entry?.headers || entry?.Headers),
-    rawBody: entry?.MethodBody || entry?.body || entry?.payload || '',
-    joins: parseJoinConfig(entry?.joinConfig || entry?.JoinConfig),
+    rawBody: formatRawBody(formattedBody),
+    joins: embeddedJoins.length ? embeddedJoins : joinConfig,
     remoteMeta: entry || {},
   }
 }
@@ -418,17 +442,22 @@ function parseFieldSequence(value, knownKeys = null) {
 }
 
 function parseMetaPayload(raw) {
-  if (!raw) return {}
-  if (typeof raw === 'object') return raw
+  const fallback = { values: {}, ranges: {} }
+  if (!raw) return fallback
+  let payload = raw
   if (typeof raw === 'string') {
     try {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') return parsed
+      payload = JSON.parse(raw)
     } catch {
-      return {}
+      return fallback
     }
   }
-  return {}
+  if (!payload || typeof payload !== 'object') return fallback
+  return {
+    ...payload,
+    values: payload.values || {},
+    ranges: payload.ranges || {},
+  }
 }
 
 function collectKnownFieldKeys(...payloads) {
@@ -436,6 +465,7 @@ function collectKnownFieldKeys(...payloads) {
   payloads.forEach((payload) => {
     if (!payload || typeof payload !== 'object') return
     collectKeysFromPayload(set, payload.values)
+    collectKeysFromPayload(set, payload.ranges)
     collectKeysFromPayload(set, payload.headerOverrides)
     collectKeysFromPayload(set, payload.sorts)
     collectKeysFromPayload(set, payload.fieldMeta)
@@ -528,6 +558,23 @@ function parseHeaderPayload(raw) {
     // ignore
   }
   return { 'Content-Type': 'application/json' }
+}
+
+function formatRawBody(body) {
+  if (!body) return ''
+  if (typeof body === 'string') {
+    try {
+      const parsed = JSON.parse(body)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return body
+    }
+  }
+  try {
+    return JSON.stringify(body, null, 2)
+  } catch {
+    return ''
+  }
 }
 
 function toNumericId(value) {

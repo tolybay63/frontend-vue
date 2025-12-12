@@ -8,6 +8,8 @@ import {
   normalizeJoinList,
   parseJoinConfig,
   serializeJoinConfig,
+  extractJoinsFromBody,
+  stripJoinPresentationFields,
 } from '@/shared/lib/sourceJoins'
 
 const STORAGE_KEY = 'report-data-sources'
@@ -168,6 +170,8 @@ export const useDataSourcesStore = defineStore('dataSources', {
       base.httpMethod = base.httpMethod?.toUpperCase?.() || 'POST'
       base.rawBody = base.rawBody || ''
       base.headers = base.headers || { 'Content-Type': 'application/json' }
+      const index = this.sources.findIndex((item) => item.id === base.id)
+      const existing = index >= 0 ? this.sources[index] : null
       base.supportsPivot = payload.supportsPivot !== false
       base.updatedAt = new Date().toISOString()
       base.joins = normalizeJoinList(base.joins || existing?.joins || [])
@@ -175,8 +179,6 @@ export const useDataSourcesStore = defineStore('dataSources', {
         base.createdAt = base.updatedAt
       }
 
-      const index = this.sources.findIndex((item) => item.id === base.id)
-      const existing = index >= 0 ? this.sources[index] : null
       base.remoteMeta = base.remoteMeta || existing?.remoteMeta || {}
       if (index >= 0) {
         this.sources.splice(index, 1, base)
@@ -184,13 +186,18 @@ export const useDataSourcesStore = defineStore('dataSources', {
         this.sources.push(base)
       }
       persistSources(this.sources)
-      try {
-        await this.saveRemoteRecord(base)
-        persistSources(this.sources)
-      } catch (err) {
-        console.warn('Failed to sync data source', err)
-      }
-      return base.id
+
+      const syncPromise = this.saveRemoteRecord(base)
+        .then((nextId) => {
+          persistSources(this.sources)
+          return nextId || base.id
+        })
+        .catch((err) => {
+          console.warn('Failed to sync data source', err)
+          return base.id
+        })
+
+      return { id: base.id, syncPromise }
     },
     removeSource(sourceId) {
       const index = this.sources.findIndex((item) => item.id === sourceId)
@@ -208,8 +215,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
         const mapped = records.map((entry, index) =>
           normalizeRemoteSource(entry, index),
         )
-        if (mapped.length) {
-          this.sources = mapped
+        const normalized = mapped.map(applyJoinDefaults)
+        if (normalized.length) {
+          this.sources = normalized
           this.loadedFromRemote = true
           persistSources(this.sources)
         }
@@ -300,7 +308,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
       const fallbackUserContext = loadExternalUserContext()
       const userContext = fallbackUserContext || (await this.fetchUserContext())
       const payload = buildRemotePayload(source, this.methodTypes, userContext)
-      if (!payload) return
+      if (!payload) return source.id
       const numericId = toNumericId(source.remoteMeta?.id || source.id)
       const operation = numericId ? 'upd' : 'ins'
       const data = await callReportMethod('report/saveReportSource', [
@@ -313,7 +321,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
         if (saved.id) {
           source.id = String(saved.id)
         }
+        return source.id
       }
+      return source.id
     },
   },
 })
@@ -336,13 +346,14 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     entry.method?.toUpperCase?.() ||
     entry.Method?.toUpperCase?.() ||
     'POST'
-  const rawBody = toRawBody(
+  const baseBody =
     entry.body ||
-      entry.payload ||
-      entry.requestBody ||
-      entry.rawBody ||
-      entry.MethodBody,
-  )
+    entry.payload ||
+    entry.requestBody ||
+    entry.rawBody ||
+    entry.MethodBody
+  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(baseBody)
+  const rawBody = cleanedBody || toRawBody(baseBody)
   const headers = entry.headers ||
     entry.Headers || { 'Content-Type': 'application/json' }
   return {
@@ -357,7 +368,10 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     createdAt: entry.createdAt || new Date().toISOString(),
     updatedAt: entry.updatedAt || new Date().toISOString(),
     remoteMeta: buildRemoteMeta(entry),
-    joins: parseJoinConfig(entry.joinConfig || entry.JoinConfig),
+    joins:
+      bodyJoins.length
+        ? bodyJoins
+        : parseJoinConfig(entry.joinConfig || entry.JoinConfig),
   }
 }
 
@@ -470,7 +484,7 @@ function serializeSourcePayload(source = {}) {
     }
   }
   if (Array.isArray(source.joins) && source.joins.length) {
-    payload.__joins = source.joins
+    payload.__joins = source.joins.map(stripJoinPresentationFields)
   }
   return JSON.stringify(payload)
 }
@@ -535,6 +549,22 @@ function hasValidUserContext(context) {
 function applyJoinDefaults(source = {}) {
   if (!source) return source
   const next = { ...source }
-  next.joins = normalizeJoinList(source.joins || [])
+  const rawBodySource =
+    source.rawBody ||
+    source.remoteMeta?.MethodBody ||
+    source.remoteMeta?.methodBody ||
+    ''
+  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(rawBodySource)
+  next.rawBody = cleanedBody || source.rawBody || rawBodySource || ''
+  let normalized = normalizeJoinList(source.joins || [])
+  if (!normalized.length) {
+    normalized = parseJoinConfig(
+      source.remoteMeta?.joinConfig || source.remoteMeta?.JoinConfig,
+    )
+  }
+  if (!normalized.length) {
+    normalized = bodyJoins
+  }
+  next.joins = normalized
   return next
 }

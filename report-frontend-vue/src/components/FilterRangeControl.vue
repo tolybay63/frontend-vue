@@ -30,6 +30,7 @@
     <div v-else class="filter-range-control__range">
       <div v-if="rangeType === 'date'" class="range-inputs">
         <n-date-picker
+          class="range-input"
           v-model:value="rangeDraft.start"
           type="date"
           value-format="yyyy-MM-dd"
@@ -39,6 +40,7 @@
         />
         <span class="range-separator">—</span>
         <n-date-picker
+          class="range-input"
           v-model:value="rangeDraft.end"
           type="date"
           value-format="yyyy-MM-dd"
@@ -237,18 +239,33 @@ function isDefined(value) {
   color: #4338ca;
 }
 .filter-range-control__range {
-  border: 1px dashed #d4d4d8;
-  border-radius: 10px;
-  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 6px 10px;
   background: #fff;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .range-inputs {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 .range-input {
   flex: 1;
+}
+.filter-range-control__range :deep(.n-input),
+.filter-range-control__range :deep(.n-input-number),
+.filter-range-control__range :deep(.n-input-wrapper) {
+  min-height: 40px;
+}
+.filter-range-control__range :deep(.n-input__input-el),
+.filter-range-control__range :deep(.n-input-number-input),
+.filter-range-control__range :deep(.n-input__textarea-el) {
+  min-height: 38px;
 }
 .range-separator {
   color: #6b7280;

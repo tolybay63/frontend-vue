@@ -542,6 +542,7 @@
               :header-overrides="headerOverrides"
               :filter-values="filterValues"
               :filter-range-values="filterRangeValues"
+              :filter-mode-store="filterModeSelections"
               :row-value-filters="dimensionValueFilters.rows"
               :row-range-filters="dimensionRangeFilters.rows"
               :column-value-filters="dimensionValueFilters.columns"
@@ -559,6 +560,7 @@
               @rename-field="handleFieldRename"
               @update-filter-values="handleFilterValuesChange"
               @update-filter-range="handleFilterRangeChange"
+              @update-filter-mode="handleFilterModePreference"
               @update-row-values="handleRowValueFiltersChange"
               @update-row-range="handleRowRangeFiltersChange"
               @update-column-values="handleColumnValueFiltersChange"
@@ -1055,6 +1057,12 @@ import {
   augmentPivotViewWithFormulas,
   extractFormulaMetricIds,
   filterPivotViewByVisibility,
+  DATE_PARTS,
+  buildDatePartKey,
+  parseDatePartKey,
+  resolvePivotFieldValue,
+  resolveDatePartValue,
+  formatDatePartFieldLabel,
 } from '@/shared/lib/pivotUtils'
 import {
   applyConditionalFormattingToView,
@@ -1165,6 +1173,21 @@ watch(
 
 const records = ref([])
 const fields = ref([])
+const dimensionFieldKeys = computed(() => {
+  const keys = []
+  fields.value.forEach((field) => {
+    if (!field?.key) return
+    keys.push(field.key)
+    if (field.type === 'date' && Array.isArray(field.dateParts)) {
+      field.dateParts.forEach((part) => {
+        if (part?.key) {
+          keys.push(part.key)
+        }
+      })
+    }
+  })
+  return keys
+})
 const planLoading = ref(false)
 const planError = ref('')
 const selectedSource = computed(
@@ -1361,6 +1384,7 @@ const pivotConfig = reactive({
 
 const filterValues = reactive({})
 const filterRangeValues = reactive({})
+const filterModeSelections = reactive({})
 const pivotMetrics = reactive([])
 const pivotMetricsVersion = ref(0)
 const dimensionValueFilters = reactive({
@@ -1913,7 +1937,7 @@ watch(
 )
 
 watch(
-  () => fields.value.map((field) => field.key),
+  dimensionFieldKeys,
   (validKeys) => {
     ;['filters', 'rows', 'columns'].forEach((section) => {
       pivotConfig[section] = pivotConfig[section].filter((key) =>
@@ -2058,8 +2082,31 @@ const fieldsMap = computed(() => {
   }, new Map())
 })
 
+function baseFieldDescriptor(key) {
+  if (!key) return null
+  return fieldsMap.value.get(key) || null
+}
+
+function resolveDimensionDescriptor(key) {
+  if (!key) return null
+  const meta = parseDatePartKey(key)
+  if (!meta) return baseFieldDescriptor(key)
+  const base = baseFieldDescriptor(meta.fieldKey)
+  if (!base) return null
+  return {
+    ...base,
+    key,
+    type: 'string',
+    datePart: meta.part,
+    dateSourceKey: meta.fieldKey,
+    values:
+      (base.datePartValues && base.datePartValues[meta.part]) ||
+      [],
+  }
+}
+
 function supportsFieldRange(key) {
-  const descriptor = fieldsMap.value.get(key)
+  const descriptor = resolveDimensionDescriptor(key)
   if (!descriptor) return false
   return descriptor.type === 'number' || descriptor.type === 'date'
 }
@@ -2222,15 +2269,17 @@ function matchesFieldFilters(record, fieldsList, valueStore, rangeStore = {}) {
   return fieldsList.every((fieldKey) => {
     const selectedValues = valueStore[fieldKey]
     if (selectedValues && selectedValues.length) {
-      const normalizedRecordValue = normalizeValue(record[fieldKey])
+      const resolvedValue = resolvePivotFieldValue(record, fieldKey)
+      const normalizedRecordValue = normalizeValue(resolvedValue)
       if (!selectedValues.includes(normalizedRecordValue)) {
         return false
       }
     }
     const range = rangeStore[fieldKey]
     if (range && hasActiveRange(range)) {
-      const fieldDescriptor = fieldsMap.value.get(fieldKey)
-      if (!valueSatisfiesRange(record[fieldKey], range, fieldDescriptor)) {
+      const fieldDescriptor = resolveDimensionDescriptor(fieldKey)
+      const resolvedValue = resolvePivotFieldValue(record, fieldKey)
+      if (!valueSatisfiesRange(resolvedValue, range, fieldDescriptor)) {
         return false
       }
     }
@@ -2725,7 +2774,11 @@ async function saveCurrentSource() {
             dataSource.value = normalized
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          alert(
+            'Источник сохранён только локально. Сервер не подтвердил сохранение, поэтому макет будет недоступен, пока источник не синхронизируется.',
+          )
+        })
     }
   } catch (err) {
     alert(
@@ -3022,6 +3075,8 @@ function extractRecordsFromResponse(payload) {
   return []
 }
 
+const DATE_PART_VALUE_LIMIT = 50
+
 function extractFieldDescriptors(records) {
   const map = new Map()
   records.forEach((record) => {
@@ -3035,6 +3090,7 @@ function extractFieldDescriptors(records) {
           numericCount: 0,
           dateCount: 0,
           values: new Set(),
+          datePartValues: {},
         })
       }
       const descriptor = map.get(key)
@@ -3044,25 +3100,60 @@ function extractFieldDescriptors(records) {
       if (descriptor.values.size < 20) {
         descriptor.values.add(normalizeValue(value))
       }
+      if (isLikelyDateValue(value)) {
+        DATE_PARTS.forEach((part) => {
+          const resolved = resolveDatePartValue(value, part.key)
+          if (!resolved) return
+          if (!descriptor.datePartValues[part.key]) {
+            descriptor.datePartValues[part.key] = new Set()
+          }
+          if (
+            descriptor.datePartValues[part.key].size <
+            DATE_PART_VALUE_LIMIT
+          ) {
+            descriptor.datePartValues[part.key].add(resolved)
+          }
+        })
+      }
       if (!descriptor.sample && value !== undefined && value !== null) {
         descriptor.sample = formatSample(value)
       }
     })
   })
 
-  return Array.from(map.values()).map((descriptor) => ({
-    key: descriptor.key,
-    label: descriptor.label,
-    sample: descriptor.sample || '—',
-    values: Array.from(descriptor.values),
-    type:
+  return Array.from(map.values()).map((descriptor) => {
+    const type =
       descriptor.numericCount > 0 &&
       descriptor.numericCount === descriptor.total
         ? 'number'
         : descriptor.dateCount > 0 && descriptor.dateCount === descriptor.total
           ? 'date'
-          : 'string',
-  }))
+          : 'string'
+    const datePartValues = {}
+    DATE_PARTS.forEach((part) => {
+      datePartValues[part.key] = Array.from(
+        descriptor.datePartValues?.[part.key] || [],
+      )
+    })
+    const dateParts =
+      type === 'date'
+        ? DATE_PARTS.map((part) => ({
+            key: buildDatePartKey(descriptor.key, part.key),
+            label: formatDatePartFieldLabel(descriptor.label, part.key),
+            part: part.key,
+            values: datePartValues[part.key],
+          }))
+        : []
+    return {
+      key: descriptor.key,
+      label: descriptor.label,
+      sample: descriptor.sample || '—',
+      values: Array.from(descriptor.values),
+      type,
+      dateParts,
+      datePartValues,
+    }
+  })
 }
 
 function isLikelyDateValue(value) {
@@ -3336,6 +3427,9 @@ function createMetric(overrides = {}) {
     conditionalFormatting: normalizeConditionalFormatting(
       overrides.conditionalFormatting,
     ),
+    detailFields: Array.isArray(overrides.detailFields)
+      ? [...overrides.detailFields]
+      : [],
     remoteMeta: overrides.remoteMeta || null,
   }
 }
@@ -3671,6 +3765,10 @@ function normalizeRemoteConfig(entry = {}) {
     headerOverrides: combinedOverrides,
     filterValues: filterPayload.values || {},
     filterRanges: filterPayload.ranges || {},
+    filterModes:
+      Object.keys(filterPayload.modes || {}).length
+        ? sanitizeModeSnapshot(filterPayload.modes)
+        : extractModesFromMeta(filterPayload.filtersMeta),
     rowFilters: rowPayload.values || {},
     rowRanges: rowPayload.ranges || {},
     columnFilters: colPayload.values || {},
@@ -3781,7 +3879,7 @@ function encodeFieldSequence(list = []) {
 }
 
 function parseMetaPayload(value) {
-  const fallback = { values: {}, ranges: {} }
+  const fallback = { values: {}, ranges: {}, modes: {} }
   if (!value) return fallback
   let payload = value
   if (typeof value === 'string') {
@@ -3796,6 +3894,7 @@ function parseMetaPayload(value) {
     ...payload,
     values: payload.values || {},
     ranges: payload.ranges || {},
+    modes: payload.modes || {},
   }
 }
 
@@ -3834,6 +3933,7 @@ function encodeFilterPayload() {
   return JSON.stringify({
     values: copyFilterStore(filterValues),
     ranges: copyRangeStore(filterRangeValues),
+    modes: copyModeStore(filterModeSelections),
     headerOverrides: pickHeaderOverrides(pivotConfig.filters),
     sorts: cloneSortState(pivotSortState.filters),
     metricSettings: pivotMetrics.map((metric) => ({
@@ -3853,6 +3953,9 @@ function encodeFilterPayload() {
       outputFormat:
         metric.outputFormat || (metric.type === 'formula' ? 'number' : 'auto'),
       conditionalFormatting: metric.conditionalFormatting,
+      detailFields: Array.isArray(metric.detailFields)
+        ? metric.detailFields
+        : [],
     })),
     filtersMeta: buildFiltersMetaSnapshot(),
     fieldMeta: buildFieldMetaSnapshot(),
@@ -3895,6 +3998,9 @@ function buildFiltersMetaSnapshot() {
     key,
     label: getFieldDisplayNameByKey(key),
     values: collectFilterMetaValues(key),
+    mode:
+      normalizeFilterMode(filterModeSelections[key]) ||
+      (hasActiveRange(filterRangeValues[key]) ? 'range' : ''),
   }))
 }
 
@@ -3919,6 +4025,19 @@ function buildFieldMetaSnapshot(limit = 20) {
         : [],
       type: field.type || 'string',
     }
+    if (field.type === 'date' && Array.isArray(field.dateParts)) {
+      field.dateParts.forEach((part) => {
+        if (!part?.key) return
+        meta[part.key] = {
+          label: getFieldDisplayNameByKey(part.key),
+          sample: part.values?.[0] || label,
+          values: Array.isArray(part.values)
+            ? part.values.slice(0, limit)
+            : [],
+          type: 'string',
+        }
+      })
+    }
   })
   return meta
 }
@@ -3934,6 +4053,18 @@ function collectFilterMetaValues(key) {
     }
   })
   return Array.from(unique)
+}
+
+function extractModesFromMeta(list = []) {
+  if (!Array.isArray(list) || !list.length) return {}
+  return list.reduce((acc, meta) => {
+    if (!meta?.key) return acc
+    const normalized = normalizeFilterMode(meta.mode)
+    if (normalized) {
+      acc[meta.key] = normalized
+    }
+    return acc
+  }, {})
 }
 
 function mergeMetricSettings(remoteList = [], settings = []) {
@@ -3968,6 +4099,9 @@ function mergeMetricSettings(remoteList = [], settings = []) {
               : 2,
             outputFormat: saved.outputFormat || 'number',
             conditionalFormatting: saved?.conditionalFormatting,
+            detailFields: Array.isArray(saved?.detailFields)
+              ? [...saved.detailFields]
+              : [],
           }),
         )
         return
@@ -4008,6 +4142,9 @@ function normalizeRemoteMetric(entry = {}, saved = null, index = 0) {
     showColumnTotals: saved?.showColumnTotals !== false,
     outputFormat: saved?.outputFormat || 'auto',
     conditionalFormatting: saved?.conditionalFormatting,
+    detailFields: Array.isArray(saved?.detailFields)
+      ? [...saved.detailFields]
+      : [],
     remoteMeta: {
       idMetricsComplex: entry?.idMetricsComplex,
       idFieldVal: entry?.idFieldVal,
@@ -4161,6 +4298,14 @@ function applyConfigRecord(record) {
       filterRangeValues[key] = sanitized
     }
   })
+  Object.keys(filterModeSelections).forEach((key) => delete filterModeSelections[key])
+  Object.entries(record.filterModes || {}).forEach(([key, mode]) => {
+    const normalized = normalizeFilterMode(mode)
+    if (normalized) {
+      filterModeSelections[key] = normalized
+    }
+  })
+  pruneFilterModes()
   applyFilterSnapshot(
     dimensionValueFilters.rows,
     pivotConfig.rows,
@@ -4213,6 +4358,7 @@ function updateColumns(next = []) {
 
 function updateFilters(next = []) {
   replaceArray(pivotConfig.filters, next || [])
+  pruneFilterModes(next || [])
 }
 
 function handleFieldRename({ key, title }) {
@@ -4224,10 +4370,21 @@ function handleFieldRename({ key, title }) {
   headerOverrides[key] = title.trim()
 }
 
+function handleFilterModePreference({ key, mode }) {
+  if (!key) return
+  const normalized = normalizeFilterMode(mode)
+  if (normalized) {
+    filterModeSelections[key] = normalized
+  } else {
+    delete filterModeSelections[key]
+  }
+}
+
 function handleFilterValuesChange({ key, values }) {
   if (!key) return
   filterValues[key] = [...(values || [])]
   delete filterRangeValues[key]
+  handleFilterModePreference({ key, mode: 'values' })
 }
 
 function handleRowValueFiltersChange({ key, values }) {
@@ -4253,6 +4410,7 @@ function handleFilterRangeChange({ key, range }) {
   if (filterValues[key]) {
     filterValues[key] = []
   }
+  handleFilterModePreference({ key, mode: 'range' })
 }
 
 function handleRowRangeFiltersChange({ key, range }) {
@@ -4617,6 +4775,40 @@ function copyRangeStore(store) {
   }, {})
 }
 
+function copyModeStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, mode]) => {
+    const normalized = normalizeFilterMode(mode)
+    if (normalized) {
+      acc[key] = normalized
+    }
+    return acc
+  }, {})
+}
+
+function pruneFilterModes(allowed = pivotConfig.filters) {
+  const allowedSet = new Set(allowed || [])
+  Object.keys(filterModeSelections).forEach((key) => {
+    if (!allowedSet.has(key)) {
+      delete filterModeSelections[key]
+    }
+  })
+}
+
+function normalizeFilterMode(mode) {
+  if (mode === 'range' || mode === 'values') return mode
+  return ''
+}
+
+function sanitizeModeSnapshot(snapshot = {}) {
+  return Object.entries(snapshot || {}).reduce((acc, [key, mode]) => {
+    const normalized = normalizeFilterMode(mode)
+    if (normalized) {
+      acc[key] = normalized
+    }
+    return acc
+  }, {})
+}
+
 function applyFilterSnapshot(store, keys, snapshot) {
   Object.keys(store).forEach((key) => delete store[key])
   keys.forEach((key) => {
@@ -4781,34 +4973,51 @@ function createId() {
 }
 
 function getFieldDisplayName(field) {
-  if (!field) return ''
-  const override = headerOverrides[field.key]
-  if (override && override.trim()) return override.trim()
-  const dictionaryLabel = dictionaryLabelValue(field.key)
-  if (dictionaryLabel) return dictionaryLabel
-  return field.label || humanizeKey(field.key)
+  if (!field?.key) return ''
+  return getFieldDisplayNameByKey(field.key)
 }
 
 function getFieldDisplayNameByKey(key = '') {
-  const field = fieldsMap.value.get(key)
+  if (!key) return ''
+  const override = headerOverrides[key]
+  if (override && override.trim()) return override.trim()
+  const dictionaryLabel = dictionaryLabelValue(key)
+  if (dictionaryLabel) return dictionaryLabel
+  const dateMeta = parseDatePartKey(key)
+  if (dateMeta) {
+    const baseOverride = headerOverrides[dateMeta.fieldKey]
+    if (baseOverride && baseOverride.trim()) {
+      return formatDatePartFieldLabel(baseOverride, dateMeta.part)
+    }
+    const baseDictionary = dictionaryLabelValue(dateMeta.fieldKey)
+    if (baseDictionary) {
+      return formatDatePartFieldLabel(baseDictionary, dateMeta.part)
+    }
+    const baseDescriptor = baseFieldDescriptor(dateMeta.fieldKey)
+    const baseLabel =
+      baseDescriptor?.label || humanizeKey(dateMeta.fieldKey)
+    return formatDatePartFieldLabel(baseLabel, dateMeta.part)
+  }
+  const field = baseFieldDescriptor(key)
   if (!field) {
-    const override = headerOverrides[key]
-    if (override && override.trim()) return override.trim()
-    const dictionaryLabel = dictionaryLabelValue(key)
-    if (dictionaryLabel) return dictionaryLabel
     return humanizeKey(key)
   }
-  return getFieldDisplayName(field)
+  return field.label || humanizeKey(key)
 }
 
 function fieldValueOptions(field) {
   if (!field) return []
   let descriptor = field
   if (typeof field === 'string') {
-    descriptor = fieldsMap.value.get(field)
+    descriptor = resolveDimensionDescriptor(field)
+  } else if (field?.key) {
+    descriptor = resolveDimensionDescriptor(field.key)
   }
   if (!descriptor) return []
-  return (descriptor.values || []).map((value) => ({
+  const values = Array.isArray(descriptor.values)
+    ? descriptor.values
+    : descriptor.datePartValues?.[descriptor.datePart] || []
+  return (values || []).map((value) => ({
     value,
     label: value || 'пусто',
   }))

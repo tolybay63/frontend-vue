@@ -232,7 +232,8 @@ function normalizeJoinEntry(entry = {}) {
 
 export function stripJoinPresentationFields(entry = {}) {
   if (!entry || typeof entry !== 'object') return {}
-  const { fieldsInput, ...rest } = entry
+  const { fieldsInput: _omit, ...rest } = entry
+  void _omit
   return rest
 }
 

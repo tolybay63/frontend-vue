@@ -57,6 +57,7 @@
           :header-overrides="headerOverrides"
           :value-store="filterValues"
           :range-store="filterRangeValues"
+          :mode-store="filterModeStore"
           :value-options-resolver="valueOptionsResolver"
           :sort-state="filterSorts"
           :allow-metric-sort="false"
@@ -66,6 +67,7 @@
           @rename="$emit('rename-field', $event)"
           @update-filter-values="$emit('update-filter-values', $event)"
           @update-range-values="$emit('update-filter-range', $event)"
+          @update-filter-mode="$emit('update-filter-mode', $event)"
           @update-sort="$emit('update-filter-sort', $event)"
         />
       </div>
@@ -119,6 +121,10 @@ defineProps({
     default: () => ({}),
   },
   filterRangeValues: {
+    type: Object,
+    default: () => ({}),
+  },
+  filterModeStore: {
     type: Object,
     default: () => ({}),
   },
@@ -181,6 +187,7 @@ defineEmits([
   'update-row-values',
   'update-column-values',
   'update-filter-range',
+  'update-filter-mode',
   'update-row-range',
   'update-column-range',
   'update-row-sort',

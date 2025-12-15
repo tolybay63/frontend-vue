@@ -95,8 +95,13 @@ function buildSnapshot(config) {
       options: { headerOverrides: {}, sorts: {} },
       filtersMeta: [],
       fieldMeta: {},
+      filterModes: {},
     }
   }
+  const filtersMeta = applyFilterModes(
+    ensureFilterMeta(config),
+    config.filterModes || {},
+  )
   return {
     pivot: config.pivot,
     metrics: config.metrics,
@@ -114,8 +119,9 @@ function buildSnapshot(config) {
       headerOverrides: config.headerOverrides,
       sorts: config.sorts,
     },
-    filtersMeta: ensureFilterMeta(config),
+    filtersMeta,
     fieldMeta: config.fieldMeta,
+    filterModes: config.filterModes || {},
   }
 }
 
@@ -165,6 +171,10 @@ function normalizeConfig(entry = {}, index = 0, aggregatorMap) {
     filterPayload.metricSettings,
     aggregatorMap,
   )
+  const filterModes =
+    Object.keys(filterPayload.modes || {}).length
+      ? sanitizeModeMap(filterPayload.modes)
+      : extractModesFromMeta(filterPayload.filtersMeta)
   return {
     id: remoteId || createLocalId(`config-${index}`),
     remoteId,
@@ -176,6 +186,7 @@ function normalizeConfig(entry = {}, index = 0, aggregatorMap) {
     },
     filterValues: filterPayload.values || {},
     filterRanges: filterPayload.ranges || {},
+    filterModes,
     rowFilters: rowPayload.values || {},
     rowRanges: rowPayload.ranges || {},
     columnFilters: colPayload.values || {},
@@ -191,6 +202,46 @@ function normalizeConfig(entry = {}, index = 0, aggregatorMap) {
     metrics,
     remoteMeta: entry || {},
   }
+}
+
+function applyFilterModes(metaList, modes = {}) {
+  const sanitized = sanitizeModeMap(modes)
+  if (!metaList || !metaList.length) return metaList || []
+  if (!Object.keys(sanitized).length) return metaList
+  return metaList.map((meta) => {
+    if (!meta?.key || meta.mode) return meta
+    const normalized = sanitized[meta.key]
+    if (normalized) {
+      return { ...meta, mode: normalized }
+    }
+    return meta
+  })
+}
+
+function sanitizeModeMap(map = {}) {
+  return Object.entries(map || {}).reduce((acc, [key, mode]) => {
+    const normalized = normalizeFilterMode(mode)
+    if (normalized) {
+      acc[key] = normalized
+    }
+    return acc
+  }, {})
+}
+
+function extractModesFromMeta(list = []) {
+  return (list || []).reduce((acc, meta) => {
+    if (!meta?.key) return acc
+    const normalized = normalizeFilterMode(meta.mode)
+    if (normalized) {
+      acc[meta.key] = normalized
+    }
+    return acc
+  }, {})
+}
+
+function normalizeFilterMode(mode) {
+  if (mode === 'range' || mode === 'values') return mode
+  return ''
 }
 
 function normalizeSource(entry = {}, index = 0) {
@@ -250,6 +301,9 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           conditionalFormatting: normalizeConditionalFormatting(
             saved?.conditionalFormatting,
           ),
+          detailFields: Array.isArray(saved?.detailFields)
+            ? saved.detailFields
+            : [],
         })
         return
       }
@@ -289,6 +343,9 @@ function buildNormalizedMetric(
       aggregatorMap,
     ) ||
     'sum'
+  const precision = Number.isFinite(saved?.precision)
+    ? Number(saved.precision)
+    : 2
   return {
     id: entry?.idMetricsComplex
       ? String(entry.idMetricsComplex)
@@ -297,11 +354,19 @@ function buildNormalizedMetric(
     fieldKey,
     aggregator,
     fieldLabel: saved?.title || entry?.FieldLabel || fieldKey,
+    outputFormat:
+      saved?.outputFormat ||
+      (saved?.type === 'formula' ? 'number' : 'auto') ||
+      'auto',
+    precision,
     showRowTotals: saved?.showRowTotals !== false,
     showColumnTotals: saved?.showColumnTotals !== false,
     conditionalFormatting: normalizeConditionalFormatting(
       saved?.conditionalFormatting,
     ),
+    detailFields: Array.isArray(saved?.detailFields)
+      ? saved.detailFields
+      : [],
     remoteMeta: entry || {},
   }
 }

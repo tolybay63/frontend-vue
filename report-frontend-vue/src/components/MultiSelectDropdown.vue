@@ -31,7 +31,7 @@
       </div>
       <div class="multi-select__actions">
         <button class="btn-outline btn-sm" type="button" @click="clear">Очистить</button>
-        <button class="btn-primary btn-sm" type="button" @click="close">Готово</button>
+        <button class="btn-primary btn-sm" type="button" @click.stop="confirm">Готово</button>
       </div>
     </div>
   </div>
@@ -84,6 +84,9 @@ function toggle() {
 }
 function close() {
   open.value = false
+}
+function confirm() {
+  close()
 }
 function toggleValue(value) {
   const next = new Set(props.modelValue || [])

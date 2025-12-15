@@ -114,10 +114,42 @@ function loadExternalUserContext() {
     const currentUser = curParsed?.result || curParsed
     const personnel = extractPersonRecord(personParsed)
     const context = buildUserContext(currentUser, personnel)
-    return hasValidUserContext(context) ? context : null
+    if (hasValidUserContext(context)) return context
   } catch (err) {
     console.warn('Failed to parse external user context', err)
-    return null
+  }
+  const stored = loadStoredUserMeta()
+  if (stored) return stored
+  return null
+}
+
+function loadStoredUserMeta() {
+  if (typeof window === 'undefined') return null
+  const parseNumericValue = (raw) => {
+    if (raw === null || typeof raw === 'undefined') return null
+    try {
+      return toNumericId(JSON.parse(raw))
+    } catch {
+      return toNumericId(raw)
+    }
+  }
+  const objUser = parseNumericValue(window.localStorage.getItem('objUser'))
+  const pvUser = parseNumericValue(window.localStorage.getItem('pvUser'))
+  if (objUser === null || pvUser === null) return null
+  let fullNameUser = ''
+  const fullNameRaw = window.localStorage.getItem('fullNameUser')
+  if (typeof fullNameRaw === 'string') {
+    try {
+      fullNameUser = String(JSON.parse(fullNameRaw) || '')
+    } catch {
+      fullNameUser = fullNameRaw
+    }
+  }
+  return {
+    idUser: objUser,
+    objUser,
+    pvUser,
+    fullNameUser: fullNameUser || '',
   }
 }
 
@@ -217,7 +249,11 @@ export const useDataSourcesStore = defineStore('dataSources', {
         )
         const normalized = mapped.map(applyJoinDefaults)
         if (normalized.length) {
-          this.sources = normalized
+          const remoteIds = new Set(normalized.map((item) => item.id))
+          const locals = this.sources.filter(
+            (source) => !remoteIds.has(source.id),
+          )
+          this.sources = [...normalized, ...locals]
           this.loadedFromRemote = true
           persistSources(this.sources)
         }

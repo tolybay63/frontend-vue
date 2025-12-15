@@ -19,13 +19,17 @@ export function formatValue(value) {
   return String(value)
 }
 
-function formatMetricOutput(value, aggregator) {
+function formatMetricOutput(value, aggregator, format = 'auto', precision = 2) {
+  const override = format && format !== 'auto'
+  if (override) {
+    return formatFormulaValue(value, format, precision)
+  }
   if (aggregator === 'value') {
     if (value === null || typeof value === 'undefined' || value === '')
       return '—'
     return String(value)
   }
-  return formatNumber(value)
+  return formatNumber(value, precision)
 }
 
 export function formatFormulaValue(value, format = 'number', precision = 2) {
@@ -82,6 +86,116 @@ export function humanizeKey(key = '') {
     .replace(/^./, (char) => char.toUpperCase())
 }
 
+const DATE_PART_MARKER = '__date_part__'
+const MONTH_LABELS = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+]
+const DATE_PART_DEFINITIONS = [
+  { key: 'year', label: 'Год' },
+  { key: 'month', label: 'Месяц' },
+  { key: 'day', label: 'День' },
+]
+const DATE_PART_LABEL_MAP = DATE_PART_DEFINITIONS.reduce((acc, part) => {
+  acc[part.key] = part.label
+  return acc
+}, {})
+
+export const DATE_PARTS = DATE_PART_DEFINITIONS
+
+export function buildDatePartKey(fieldKey, part) {
+  if (!fieldKey || !DATE_PART_LABEL_MAP[part]) return fieldKey
+  return `${fieldKey}${DATE_PART_MARKER}${part}`
+}
+
+export function parseDatePartKey(key = '') {
+  if (!key || typeof key !== 'string') return null
+  const index = key.lastIndexOf(DATE_PART_MARKER)
+  if (index === -1) return null
+  const fieldKey = key.slice(0, index)
+  const part = key.slice(index + DATE_PART_MARKER.length)
+  if (!fieldKey || !DATE_PART_LABEL_MAP[part]) return null
+  return { fieldKey, part }
+}
+
+export function isDatePartKey(key) {
+  return Boolean(parseDatePartKey(key))
+}
+
+export function formatDatePartLabel(part) {
+  return DATE_PART_LABEL_MAP[part] || ''
+}
+
+export function formatDatePartFieldLabel(baseLabel = '', part = '') {
+  const partLabel = formatDatePartLabel(part)
+  const cleanedBase = (baseLabel || '').trim()
+  if (!cleanedBase) return partLabel
+  if (!partLabel) return cleanedBase
+  return `${cleanedBase} • ${partLabel}`
+}
+
+function parseDateInput(value) {
+  if (value === null || typeof value === 'undefined') return null
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.getTime()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const str = String(value).trim()
+  if (!str) return null
+  const dottedMatch = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+  if (dottedMatch) {
+    const [, day, month, year] = dottedMatch
+    const isoString = `${year}-${month}-${day}T00:00:00Z`
+    const timestamp = Date.parse(isoString)
+    return Number.isFinite(timestamp) ? timestamp : null
+  }
+  const parsed = Date.parse(str)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function padTwo(value) {
+  return String(value).padStart(2, '0')
+}
+
+export function resolveDatePartValue(value, part) {
+  const timestamp = parseDateInput(value)
+  if (!Number.isFinite(timestamp)) return null
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return null
+  if (part === 'year') {
+    return String(date.getUTCFullYear())
+  }
+  if (part === 'month') {
+    const monthIndex = date.getUTCMonth()
+    const numeric = padTwo(monthIndex + 1)
+    const monthLabel = MONTH_LABELS[monthIndex] || ''
+    return monthLabel ? `${numeric} — ${monthLabel}` : numeric
+  }
+  if (part === 'day') {
+    return padTwo(date.getUTCDate())
+  }
+  return null
+}
+
+export function resolvePivotFieldValue(record = {}, key = '') {
+  if (!record || typeof record !== 'object') return null
+  const meta = parseDatePartKey(key)
+  if (!meta) return record?.[key]
+  return resolveDatePartValue(record?.[meta.fieldKey], meta.part)
+}
+
 const VALUE_COLLATOR =
   typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
     ? new Intl.Collator('ru-RU', { sensitivity: 'base', numeric: true })
@@ -98,14 +212,29 @@ function normalizeFieldMetaMap(fieldMeta) {
 
 function resolveFieldMeta(fieldMetaMap, key) {
   if (!fieldMetaMap) return {}
-  return fieldMetaMap.get(key) || {}
+  if (fieldMetaMap instanceof Map) {
+    return fieldMetaMap.get(key) || {}
+  }
+  return fieldMetaMap?.[key] || {}
 }
 
 function displayFieldLabel(fieldMetaMap, overrides, key) {
   const override = overrides?.[key]
   if (override && override.trim()) return override.trim()
-  const meta = resolveFieldMeta(fieldMetaMap, key)
-  return meta?.label || humanizeKey(key)
+  const dateMeta = parseDatePartKey(key)
+  const baseKey = dateMeta?.fieldKey || key
+  const baseOverride = overrides?.[baseKey]
+  if (baseOverride && baseOverride.trim()) {
+    return dateMeta
+      ? formatDatePartFieldLabel(baseOverride, dateMeta.part)
+      : baseOverride.trim()
+  }
+  const meta = resolveFieldMeta(fieldMetaMap, baseKey)
+  const baseLabel = meta?.label || humanizeKey(baseKey)
+  if (dateMeta) {
+    return formatDatePartFieldLabel(baseLabel, dateMeta.part)
+  }
+  return baseLabel
 }
 
 function buildDimensionKey(
@@ -121,9 +250,11 @@ function buildDimensionKey(
   const levels = []
   let prefix = ''
   dimensions.forEach((fieldKey, index) => {
-    const partKey = `${fieldKey}:${normalizeValue(record[fieldKey])}`
+    const resolvedValue = resolvePivotFieldValue(record, fieldKey)
+    const normalizedValue = normalizeValue(resolvedValue)
+    const partKey = `${fieldKey}:${normalizedValue}`
     prefix = prefix ? `${prefix}|${partKey}` : partKey
-    const value = formatValue(record[fieldKey])
+    const value = formatValue(resolvedValue)
     const fieldLabel = displayFieldLabel(fieldMetaMap, overrides, fieldKey)
     const entry = {
       fieldKey,
@@ -201,6 +332,10 @@ function flattenColumns(columnIndex, metrics) {
             ? `${column.label} • ${metric.label}`
             : metric.label,
         aggregator: metric.aggregator,
+        format: metric.outputFormat || 'auto',
+        precision: Number.isFinite(metric.precision)
+          ? Number(metric.precision)
+          : 2,
         levels: column.levels || [],
       })
     })
@@ -325,6 +460,10 @@ export function buildPivotView({
         metricId: metric.id,
         label: metric.label,
         aggregator: metric.aggregator,
+        format: metric.outputFormat || 'auto',
+        precision: Number.isFinite(metric.precision)
+          ? Number(metric.precision)
+          : 2,
       }))
 
   const rowsView = rowIndex.length
@@ -346,7 +485,12 @@ export function buildPivotView({
       }
       return {
         key: cellKey,
-        display: formatMetricOutput(value, column.aggregator),
+        display: formatMetricOutput(
+          value,
+          column.aggregator,
+          column.format,
+          column.precision,
+        ),
         value,
       }
     })
@@ -363,7 +507,12 @@ export function buildPivotView({
       }
       return {
         metricId: metric.id,
-        display: formatMetricOutput(value, metric.aggregator),
+        display: formatMetricOutput(
+          value,
+          metric.aggregator,
+          metric.outputFormat,
+          metric.precision,
+        ),
         value,
       }
     })
@@ -393,7 +542,12 @@ export function buildPivotView({
     }
     return {
       ...column,
-      totalDisplay: formatMetricOutput(value, column.aggregator),
+      totalDisplay: formatMetricOutput(
+        value,
+        column.aggregator,
+        column.format,
+        column.precision,
+      ),
       value,
       levels: column.levels || [],
     }
@@ -417,7 +571,12 @@ export function buildPivotView({
     }
     acc[metric.id] = {
       value,
-      display: formatMetricOutput(value, metric.aggregator),
+      display: formatMetricOutput(
+        value,
+        metric.aggregator,
+        metric.outputFormat,
+        metric.precision,
+      ),
     }
     return acc
   }, {})
@@ -491,7 +650,12 @@ function buildRowTree({
       }
       return {
         key: `${meta.pathKey}||${column.key}`,
-        display: formatMetricOutput(value, column.aggregator),
+        display: formatMetricOutput(
+          value,
+          column.aggregator,
+          column.format,
+          column.precision,
+        ),
         value,
       }
     })
@@ -508,7 +672,12 @@ function buildRowTree({
       }
       return {
         metricId: metric.id,
-        display: formatMetricOutput(value, metric.aggregator),
+        display: formatMetricOutput(
+          value,
+          metric.aggregator,
+          metric.outputFormat,
+          metric.precision,
+        ),
         value,
       }
     })

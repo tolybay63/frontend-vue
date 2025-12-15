@@ -29,6 +29,15 @@ export async function loadPresentationLinks() {
   return extractRecords(data)
 }
 
+export async function fetchPersonnelAccessList() {
+  const data = await callObjectsMethod('data/loadObjList', [
+    'Cls_Personnel',
+    'Prop_UserMulti',
+    'personnaldata',
+  ])
+  return extractRecords(data)
+}
+
 export function fetchMethodTypeRecords() {
   return fetchFactorValues('Prop_MethodTyp')
 }

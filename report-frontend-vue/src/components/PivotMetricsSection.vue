@@ -48,11 +48,36 @@
             />
           </label>
         </div>
-          <div v-else class="metric-card__formula">
-            <label class="metric-field">
-              <span>Формула</span>
-              <n-input
-                v-model:value="metric.expression"
+        <div
+          v-if="metric.type !== 'formula'"
+          class="metric-card__row metric-card__row--format"
+        >
+          <label class="metric-field">
+            <span>Формат значения</span>
+            <n-select
+              v-model:value="metric.outputFormat"
+              :options="valueFormatOptions"
+              size="large"
+            />
+          </label>
+          <label
+            v-if="isNumericFormat(metric.outputFormat)"
+            class="metric-field"
+          >
+            <span>Знаков после запятой</span>
+            <n-input-number
+              v-model:value="metric.precision"
+              :min="0"
+              :max="6"
+              size="large"
+            />
+          </label>
+        </div>
+        <div v-else class="metric-card__formula">
+          <label class="metric-field">
+            <span>Формула</span>
+            <n-input
+              v-model:value="metric.expression"
                 type="textarea"
               :autosize="{ minRows: 2, maxRows: 4 }"
               placeholder="Например: {{metric-1}} / {{metric-2}}"
@@ -70,7 +95,7 @@
             <span>Формат значения</span>
             <n-select
               v-model:value="metric.outputFormat"
-              :options="formulaFormatOptions"
+              :options="valueFormatOptions"
               size="large"
             />
           </label>
@@ -93,6 +118,21 @@
             v-model:value="metric.title"
             placeholder="Например: Количество заявок"
           />
+        </label>
+        <label class="metric-field">
+          <span>Поля детализации</span>
+          <n-select
+            v-model:value="metric.detailFields"
+            multiple
+            filterable
+            clearable
+            :options="detailFieldOptions"
+            placeholder="Выберите поля для расшифровки"
+            size="large"
+          />
+          <small class="metric-hint">
+            Эти поля будут показаны при раскрытии значения.
+          </small>
         </label>
         <div class="metric-settings">
           <n-checkbox v-model:checked="metric.enabled">
@@ -284,7 +324,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import {
   NButton,
   NCheckbox,
@@ -332,6 +372,12 @@ const fieldOptions = computed(() =>
     value: field.key,
   })),
 )
+const detailFieldOptions = computed(() =>
+  props.fields.map((field) => ({
+    label: props.getFieldLabel ? props.getFieldLabel(field.key) : field.label,
+    value: field.key,
+  })),
+)
 const aggregatorOptions = computed(() => props.aggregators)
 const metricTokens = computed(() => props.metricTokens || [])
 const metricTypeOptions = [
@@ -351,7 +397,7 @@ const iconSetOptions = Object.entries(ICON_SET_LIBRARY).map(
     preview: meta.icons.join(' '),
   }),
 )
-const formulaFormatOptions = [
+const valueFormatOptions = [
   { label: 'Авто', value: 'auto' },
   { label: 'Число', value: 'number' },
   { label: 'Целое число', value: 'integer' },
@@ -393,6 +439,19 @@ function isNumericFormat(format) {
     format === 'currency'
   )
 }
+
+watch(
+  () => props.metrics,
+  (list) => {
+    if (!Array.isArray(list)) return
+    list.forEach((metric) => {
+      if (!Array.isArray(metric.detailFields)) {
+        metric.detailFields = []
+      }
+    })
+  },
+  { deep: true, immediate: true },
+)
 
 function formattingConfig(metric) {
   const config = metric.conditionalFormatting
@@ -563,6 +622,10 @@ function clamp01(value) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.metric-hint {
+  font-size: 12px;
+  color: #6b7280;
 }
 .formula-hints {
   font-size: 12px;

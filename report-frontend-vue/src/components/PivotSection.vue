@@ -9,12 +9,14 @@
     </header>
 
     <div class="pivot-card__body">
-      <n-select
+      <n-tree-select
         v-model:value="selectedKeys"
         multiple
+        checkable
+        :cascade="false"
         filterable
         clearable
-        :options="fieldOptions"
+        :options="fieldTreeOptions"
         :placeholder="placeholder"
         size="large"
       />
@@ -146,14 +148,14 @@
               <button
                 type="button"
                 :class="{ active: filterMode === 'values' }"
-                @click="filterMode = 'values'"
+                @click="setFilterMode('values')"
               >
                 Значения
               </button>
               <button
                 type="button"
                 :class="{ active: filterMode === 'range' }"
-                @click="filterMode = 'range'"
+                @click="setFilterMode('range')"
               >
                 Диапазон
               </button>
@@ -229,7 +231,7 @@ import {
   NDatePicker,
   NInput,
   NInputNumber,
-  NSelect,
+  NTreeSelect,
   NTooltip,
 } from 'naive-ui'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
@@ -264,6 +266,10 @@ const props = defineProps({
     default: () => ({}),
   },
   valueStore: {
+    type: Object,
+    default: () => ({}),
+  },
+  modeStore: {
     type: Object,
     default: () => ({}),
   },
@@ -306,6 +312,7 @@ const emit = defineEmits([
   'rename',
   'update-filter-values',
   'update-range-values',
+  'update-filter-mode',
   'update-sort',
 ])
 
@@ -322,25 +329,48 @@ const selectedKeys = computed({
   set: (value) => emit('update:modelValue', value.filter(Boolean)),
 })
 
-const fieldOptions = computed(() =>
-  props.fields.map((field) => ({
-    label: displayName(field.key),
-    value: field.key,
-  })),
+const fieldTreeOptions = computed(() =>
+  props.fields.map((field) => {
+    const option = {
+      label: displayName(field.key),
+      key: field.key,
+      value: field.key,
+    }
+    const children = Array.isArray(field.dateParts)
+      ? field.dateParts.map((part) => ({
+          label: displayName(part.key),
+          key: part.key,
+          value: part.key,
+        }))
+      : []
+    if (children.length) {
+      option.children = children
+    }
+    return option
+  }),
 )
 
-const fieldMap = computed(() =>
-  props.fields.reduce((acc, field) => {
-    acc.set(field.key, field)
-    return acc
-  }, new Map()),
-)
+const fieldMap = computed(() => {
+  const map = new Map()
+  props.fields.forEach((field) => {
+    map.set(field.key, field)
+    if (Array.isArray(field.dateParts)) {
+      field.dateParts.forEach((part) => {
+        map.set(part.key, {
+          ...part,
+          parentKey: field.key,
+        })
+      })
+    }
+  })
+  return map
+})
 
 function displayName(key) {
   if (props.headerOverrides[key]) return props.headerOverrides[key]
   if (props.getFieldLabel) return props.getFieldLabel(key)
-  const field = props.fields.find((item) => item.key === key)
-  return field?.label || key
+  const descriptor = fieldMap.value.get(key)
+  return descriptor?.label || key
 }
 
 function startAliasEdit(key) {
@@ -418,13 +448,17 @@ function toggleFilter(key) {
   localFilters.value = [...(props.valueStore[key] || [])]
   const supports = supportsRangeKey(key)
   const hasRange = supports && hasRangeFilter(key)
-  filterMode.value = hasRange ? 'range' : 'values'
+  filterMode.value = resolveInitialFilterMode(key, supports, hasRange)
   activeRangeType.value = supports ? fieldRangeType(key) : 'number'
   rangeDraft.value = hasRange
     ? cloneRange(props.rangeStore[key])
     : createEmptyRange()
 }
 function applyFilters(key) {
+  emit('update-filter-mode', {
+    key,
+    mode: filterMode.value,
+  })
   if (filterMode.value === 'range' && supportsRangeKey(key)) {
     emit('update-range-values', {
       key,
@@ -465,6 +499,30 @@ function move(index, delta) {
 function remove(key) {
   const copy = props.modelValue.filter((item) => item !== key)
   emit('update:modelValue', copy)
+}
+
+function setFilterMode(mode) {
+  if (!activeFilterKey.value) return
+  const normalized = mode === 'range' ? 'range' : 'values'
+  if (filterMode.value === normalized) return
+  filterMode.value = normalized
+  emit('update-filter-mode', {
+    key: activeFilterKey.value,
+    mode: normalized,
+  })
+  if (normalized === 'values') {
+    rangeDraft.value = createEmptyRange()
+  } else if (normalized === 'range') {
+    localFilters.value = []
+  }
+}
+
+function resolveInitialFilterMode(key, supports, hasRange) {
+  const store = props.modeStore || {}
+  const stored = store[key]
+  if (stored === 'range' && supports) return 'range'
+  if (stored === 'values') return 'values'
+  return hasRange ? 'range' : 'values'
 }
 </script>
 

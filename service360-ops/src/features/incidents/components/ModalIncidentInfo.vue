@@ -9,7 +9,7 @@
   >
     <div class="form-section">
       <AppInput
-        class="col-span-2"
+        class="full-width-item"
         id="name"
         label="Событие / запрос"
         v-model="form.name"
@@ -22,7 +22,7 @@
         v-model="form.statusName"
         :disabled="true"
       />
-      
+
       <AppInput
         id="criticality"
         label="Критичность"
@@ -32,29 +32,29 @@
       />
 
       <AppInput
-        class="col-span-2"
+        class="full-width-item"
         id="object"
         label="Объект"
         v-model="form.object"
         :disabled="true"
       />
-      
+
       <FullCoordinates
         v-model="form.parsedCoordinates"
         label="Координаты"
-        class="col-span-2"
-        :disabled="true" 
+        class="full-width-item"
+        :disabled="true"
       />
-      
+
       <AppInput
-        class="col-span-2"
+        class="full-width-item"
         id="description"
         label="Описание"
         v-model="form.description"
         :disabled="false"
         type="textarea"
       />
-      
+
       <AppInput
         id="applicantName"
         label="Информация о заявителе"
@@ -262,7 +262,7 @@ const onConfirmDelete = async () => {
 <style scoped>
 .form-section {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1rem; /* 16px */
   padding: 2rem 1rem; /* 32px 16px */
   background-color: #f9fafb;
@@ -272,6 +272,10 @@ const onConfirmDelete = async () => {
   .form-section {
     padding: 2rem; /* 32px */
   }
+}
+
+.full-width-item {
+  grid-column: span 2;
 }
 
 .section-title {
@@ -284,6 +288,22 @@ const onConfirmDelete = async () => {
 
 .col-span-2 {
   grid-column: span 2;
+}
+
+/* Tablet and Mobile styles */
+@media (max-width: 1024px) {
+  .form-section {
+    grid-template-columns: 1fr !important;
+    padding: 1.5rem 1rem; /* 24px 16px */
+  }
+
+  .full-width-item {
+    grid-column: span 1 !important;
+  }
+
+  .col-span-2 {
+    grid-column: span 1 !important;
+  }
 }
 
 /* Стили для анимации вложенного модального окна */

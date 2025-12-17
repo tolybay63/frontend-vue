@@ -182,7 +182,7 @@ const formatGeneralInfo = (row) => {
   }
   
   if (row.StartKm !== null || row.StartPicket !== null || row.FinishKm !== null || row.FinishPicket !== null) {
-    const coords = formatCoordinates(row.StartKm, row.StartPicket, null, row.FinishKm, row.FinishPicket, null);
+    const coords = formatCoordinates(row.StartKm, row.StartPicket, row.StartLink, row.FinishKm, row.FinishPicket, row.FinishLink);
     parts.push(`<span class="label-strong">Координаты:</span> ${coords}`);
   }
   
@@ -226,7 +226,7 @@ const loadWorkLogWrapper = async ({ page, limit, filters: filterValues }) => {
         fullNameObject: r.fullNameObject,
         fullNameWork: r.fullNameWork,
         fullNameTask: r.fullNameTask,
-        coordinates: formatCoordinates(r.StartKm, r.StartPicket, null, r.FinishKm, r.FinishPicket, null),
+        coordinates: formatCoordinates(r.StartKm, r.StartPicket, r.StartLink, r.FinishKm, r.FinishPicket, r.FinishLink),
         status: {
           showCheck: r.FactDateEnd && r.FactDateEnd !== '0000-01-01',
           showMinus: !r.FactDateEnd || r.FactDateEnd === '0000-01-01',

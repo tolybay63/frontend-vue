@@ -2,21 +2,31 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useNotificationStore = defineStore('notification', () => {
-  const message = ref('')
-  const type = ref('success')
-  const visible = ref(false)
-  const duration = ref(3000)
+  const notifications = ref([])
+  let notificationIdCounter = 0
 
   const showNotification = (msg, msgType = 'success', ms = 3000) => {
-    message.value = msg
-    type.value = msgType
-    duration.value = ms
-    visible.value = true
+    const id = notificationIdCounter++
+    const notification = {
+      id,
+      message: msg,
+      type: msgType,
+      duration: ms
+    }
+
+    notifications.value.push(notification)
 
     setTimeout(() => {
-      visible.value = false
+      removeNotification(id)
     }, ms)
   }
 
-  return { message, type, visible, duration, showNotification }
+  const removeNotification = (id) => {
+    const index = notifications.value.findIndex(n => n.id === id)
+    if (index !== -1) {
+      notifications.value.splice(index, 1)
+    }
+  }
+
+  return { notifications, showNotification, removeNotification }
 })

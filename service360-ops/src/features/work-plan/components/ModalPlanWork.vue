@@ -3,7 +3,7 @@
     <div class="form-section">
 
       <AppDropdown
-        class="col-span-2"
+        class="full-width-item"
         id="work"
         label="Работа"
         placeholder="Выберите работу"
@@ -20,9 +20,8 @@
           <span v-if="index > 0" class="remove-object" @click="removeObject(index)">×</span>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="object-grid">
           <AppDropdown
-            class="col-span-1"
             :id="'place-' + object.id"
             label="Место"
             placeholder="Выберите место"
@@ -34,7 +33,6 @@
           />
 
           <AppDropdown
-            class="col-span-1"
             :id="'objectType-' + object.id"
             label="Тип объекта"
             placeholder="Выберите тип объекта"
@@ -46,7 +44,7 @@
           />
 
           <AppDropdown
-            class="col-span-2"
+            class="full-width"
             :id="'object-' + object.id"
             label="Объект"
             placeholder="Выберите объект"
@@ -58,17 +56,14 @@
           />
 
           <FullCoordinates
-            class="col-span-2"
+            class="full-width"
             v-model="object.coordinates"
-            :object-bounds="object.objectBounds"
             @update:modelValue="(coords) => updateCoordinates(index, coords)"
-            @invalid-range="(isInvalid) => handleInvalidRange(index, isInvalid)"
-            @out-of-bounds="() => handleOutOfBounds(index)"
+            :out-of-bounds-error="object.isCoordinatesOutOfBounds"
             :required="true"
           />
 
           <AppDropdown
-            class="col-span-1"
             :id="'section-' + object.id"
             label="Участок"
             placeholder="Выберите участок"
@@ -79,7 +74,6 @@
           />
 
           <AppDatePicker
-            class="col-span-1"
             :id="'plannedDate-' + object.id"
             label="Плановый срок завершения"
             placeholder="Выберите дату"
@@ -90,9 +84,9 @@
         </div>
       </div>
 
-      <div class="divider"></div>
+      <div class="divider full-width-item"></div>
 
-      <div class="col-span-2">
+      <div class="full-width-item">
         <UiButton
           text="Добавить объект"
           icon="Plus"
@@ -141,6 +135,7 @@ const createNewObjectForm = () => ({
     coordEndZv: 0
   },
   objectBounds: null,
+  isCoordinatesOutOfBounds: false,
 
   placeOptions: [],
   objectTypeOptions: [],
@@ -207,32 +202,22 @@ const validateForm = () => {
       return false
     }
 
-    // Проверка координат
+    // Проверка выхода за границы объекта (бизнес-логика)
     const coords = obj.coordinates
-    if (
-      coords.coordStartKm === null || coords.coordStartKm === 0 ||
-      coords.coordStartPk === null || coords.coordStartPk === 0 ||
-      coords.coordStartZv === null || coords.coordStartZv === 0 ||
-      coords.coordEndKm === null || coords.coordEndKm === 0 ||
-      coords.coordEndPk === null || coords.coordEndPk === 0 ||
-      coords.coordEndZv === null || coords.coordEndZv === 0
-    ) {
-      notificationStore.showNotification(`Объект #${objectNum}: не заполнены все Координаты`, 'error')
-      return false
-    }
-
-    const startAbs = (coords.coordStartKm || 0) * 1000 + (coords.coordStartPk || 0) * 100 + (coords.coordStartZv || 0) * 25
-    const endAbs = (coords.coordEndKm || 0) * 1000 + (coords.coordEndPk || 0) * 100 + (coords.coordEndZv || 0) * 25
-
-    if (startAbs > endAbs) {
-      notificationStore.showNotification(`Объект #${objectNum}: Начало не может быть больше конца`, 'error')
-      return false
-    }
+    const newStartCoordinates = (coords.coordStartKm || 0) * 1000 + (coords.coordStartPk || 0) * 100 + (coords.coordStartZv || 0) * 25
+    const newFinishCoordinates = (coords.coordEndKm || 0) * 1000 + (coords.coordEndPk || 0) * 100 + (coords.coordEndZv || 0) * 25
 
     if (obj.objectBounds) {
-      const objStartAbs = obj.objectBounds.startAbs
-      const objEndAbs = obj.objectBounds.endAbs
-      if (startAbs < objStartAbs || endAbs > objEndAbs) {
+      const objectStartCoordinates = obj.objectBounds.startAbs
+      const objectFinishCoordinates = obj.objectBounds.endAbs
+
+      // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+      const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates
+
+      // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+      const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates
+
+      if (!isStartInBounds || !isFinishInBounds) {
         notificationStore.showNotification(`Объект #${objectNum}: Координаты выходят за границы объекта`, 'error')
         return false
       }
@@ -302,7 +287,17 @@ const saveData = async () => {
     closeModal()
   } catch (e) {
     console.error('Ошибка при сохранении:', e)
-    notificationStore.showNotification('Ошибка при сохранении: ' + (e.message || 'неизвестная ошибка'), 'error')
+    let errorMessage = 'Ошибка при сохранении';
+
+    if (e.response?.data?.error?.message) {
+      errorMessage = e.response.data.error.message;
+    } else if (e.response?.status === 500) {
+      errorMessage = 'Ошибка сервера. Попробуйте еще раз.';
+    } else if (e.message) {
+      errorMessage = e.message;
+    }
+
+    notificationStore.showNotification(errorMessage, 'error')
   } finally {
     isSaving.value = false
   }
@@ -531,24 +526,36 @@ const updateCoordinates = async (index, newCoords) => {
   const objectForm = form.value.objects[index]
   objectForm.coordinates = newCoords
 
+  // Проверка выхода за границы объекта (в реальном времени)
+  if (objectForm.objectBounds) {
+    const newStartCoordinates = (newCoords.coordStartKm || 0) * 1000 + (newCoords.coordStartPk || 0) * 100 + (newCoords.coordStartZv || 0) * 25
+    const newFinishCoordinates = (newCoords.coordEndKm || 0) * 1000 + (newCoords.coordEndPk || 0) * 100 + (newCoords.coordEndZv || 0) * 25
+
+    const objectStartCoordinates = objectForm.objectBounds.startAbs
+    const objectFinishCoordinates = objectForm.objectBounds.endAbs
+
+    // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+    const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates
+
+    // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+    const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates
+
+    if (!isStartInBounds || !isFinishInBounds) {
+      objectForm.isCoordinatesOutOfBounds = true
+      notificationStore.showNotification(`Объект #${index + 1}: Координаты выходят за границы объекта`, 'error')
+    } else {
+      objectForm.isCoordinatesOutOfBounds = false
+    }
+  } else {
+    objectForm.isCoordinatesOutOfBounds = false
+  }
+
   objectForm.section = null
   objectForm.sectionOptions = []
 
   if (form.value.work?.value) {
     await loadSectionsForObject(objectForm)
   }
-}
-
-const handleInvalidRange = (index, isInvalid) => {
-  if (isInvalid) {
-    // Нотификация уже выводится, можно оставить для обратной связи в реальном времени
-    // notificationStore.showNotification(`Объект #${index + 1}: Начало не может быть больше конца`, 'error')
-  }
-}
-
-const handleOutOfBounds = (index) => {
-  // Нотификация уже выводится
-  // notificationStore.showNotification(`Объект #${index + 1}: Координаты выходят за границы объекта`, 'error')
 }
 
 onMounted(async () => {
@@ -573,7 +580,7 @@ onMounted(async () => {
 <style scoped>
 .form-section {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   padding: 0 32px 32px;
   background-color: #f9fafb;
@@ -590,8 +597,11 @@ onMounted(async () => {
   grid-column: span 2;
 }
 
-.divider {
+.full-width-item {
   grid-column: span 2;
+}
+
+.divider {
   height: 1px;
   background-color: #e0e0e0;
   margin: 16px 0;
@@ -610,5 +620,42 @@ onMounted(async () => {
   top: 0;
   margin-top: 0;
   margin-right: 8px;
+}
+
+.object-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.full-width {
+  grid-column: span 2;
+}
+
+/* Tablet and Mobile styles */
+@media (max-width: 1024px) {
+  .form-section {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    padding: 0 16px 16px !important;
+  }
+
+  .col-span-2 {
+    grid-column: span 1 !important;
+  }
+
+  .full-width-item {
+    grid-column: span 1 !important;
+  }
+
+  .object-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .full-width {
+    grid-column: span 1 !important;
+  }
 }
 </style>

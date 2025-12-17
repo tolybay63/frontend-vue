@@ -3,6 +3,8 @@
     title="Редактировать раздельный пункт"
     @close="closeModal"
     @save="saveData"
+    @delete="handleDelete"
+    :show-delete="true"
   >
     <div class="form-section">
       <AppInput
@@ -32,6 +34,14 @@
         />
       </div>
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление раздельного пункта"
+      message="Вы действительно хотите удалить этот раздельный пункт?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false"
+    />
   </ModalWrapper>
 </template>
 
@@ -41,8 +51,10 @@ import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { loadSection } from '@/shared/api/sections/sectionService'
+import { loadSection, saveStation, deleteSection } from '@/shared/api/sections/sectionService'
+import { getUserData } from '@/shared/api/common/userCache'
 
 const props = defineProps({
   stationData: {
@@ -54,7 +66,6 @@ const props = defineProps({
 const emit = defineEmits(['close', 'refresh'])
 const notificationStore = useNotificationStore()
 
-// Form data
 const form = ref({
   name: props.stationData.name || '',
   section: null,
@@ -69,13 +80,10 @@ const form = ref({
   rawData: props.stationData.rawData
 })
 
-// Dropdown options
 const sectionOptions = ref([])
-
-// Loading states
 const loadingSections = ref(false)
+const showConfirmModal = ref(false)
 
-// Load sections
 const loadSectionsData = async () => {
   loadingSections.value = true
   try {
@@ -86,7 +94,6 @@ const loadSectionsData = async () => {
       pv: section.rawData?.pv || null
     }))
 
-    // Устанавливаем выбранное значение после загрузки опций
     if (props.stationData.rawData?.parent) {
       const selectedSection = sectionOptions.value.find(
         option => option.value === props.stationData.rawData.parent
@@ -102,34 +109,44 @@ const loadSectionsData = async () => {
   }
 }
 
-// Save data
 const saveData = async () => {
   try {
-    // Validate required fields
     if (!form.value.name || !form.value.section || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordStartPk || !form.value.coordinates.coordStartZv || !form.value.coordinates.coordEndKm || !form.value.coordinates.coordEndPk || !form.value.coordinates.coordEndZv) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
       return
     }
 
-    const payload = {
+    const userData = await getUserData()
+    const currentDate = new Date().toISOString().split('T')[0]
+    const raw = form.value.rawData
+
+    const stationData = {
+      id: props.stationData.id,
+      parent: form.value.section?.value,
+      cls: raw.cls,
       name: form.value.name,
-      section: form.value.section,
-      startKm: form.value.coordinates.coordStartKm,
-      startPk: form.value.coordinates.coordStartPk,
-      startLink: form.value.coordinates.coordStartZv,
-      endKm: form.value.coordinates.coordEndKm,
-      endPk: form.value.coordinates.coordEndPk,
-      endLink: form.value.coordinates.coordEndZv,
-      rawData: form.value.rawData
+      // id полей для координат, User, UpdatedAt
+      idStartKm: raw.idStartKm,
+      StartKm: form.value.coordinates.coordStartKm,
+      idStartPicket: raw.idStartPicket,
+      StartPicket: form.value.coordinates.coordStartPk,
+      idStartLink: raw.idStartLink,
+      StartLink: form.value.coordinates.coordStartZv,
+      idFinishKm: raw.idFinishKm,
+      FinishKm: form.value.coordinates.coordEndKm,
+      idFinishPicket: raw.idFinishPicket,
+      FinishPicket: form.value.coordinates.coordEndPk,
+      idFinishLink: raw.idFinishLink,
+      FinishLink: form.value.coordinates.coordEndZv,
+      idUser: raw.idUser,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null,
+      idUpdatedAt: raw.idUpdatedAt,
+      UpdatedAt: currentDate
     }
 
-    console.log('Обновление раздельного пункта:', payload)
-
-    // TODO: Добавить реальный вызов API для обновления
-    // await updateStation(payload)
-
+    await saveStation('upd', stationData)
     notificationStore.showNotification('Раздельный пункт успешно обновлен', 'success')
-
     emit('refresh')
     closeModal()
   } catch (error) {
@@ -137,12 +154,26 @@ const saveData = async () => {
   }
 }
 
-// Close modal
+const handleDelete = () => {
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    await deleteSection(props.stationData.id)
+    notificationStore.showNotification('Раздельный пункт успешно удален', 'success')
+    emit('refresh')
+    closeModal()
+  } catch (error) {
+    notificationStore.showNotification('Ошибка при удалении раздельного пункта', 'error')
+  }
+}
+
 const closeModal = () => {
   emit('close')
 }
 
-// Initialize
 onMounted(() => {
   loadSectionsData()
 })
@@ -154,7 +185,6 @@ onMounted(() => {
   grid-template-columns: 1fr 1fr;
   padding: 20px;
 }
-
 .col-span-2 {
   grid-column: span 2;
 }

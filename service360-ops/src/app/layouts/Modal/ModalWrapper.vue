@@ -131,14 +131,57 @@ const onDelete = () => emit('delete')
   margin-bottom: 0;
 }
 
-@media (max-width: 640px) {
+/* Tablet styles */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+
   .modal-wrapper {
     max-width: 100%;
-    max-height: 90vh;
+    max-height: 92vh;
   }
 
   .modal-body {
     padding: 20px;
+  }
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-wrapper {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-card {
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  /* Улучшаем читаемость для form elements в модалках */
+  .modal-body :deep(.form-group) {
+    margin-bottom: 20px !important;
+  }
+
+  /* Делаем grid layouts одноколоночными */
+  .modal-body :deep(.form-section) {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+    padding: 16px !important;
+  }
+
+  .modal-body :deep(.col-span-2) {
+    grid-column: span 1 !important;
   }
 }
 </style>

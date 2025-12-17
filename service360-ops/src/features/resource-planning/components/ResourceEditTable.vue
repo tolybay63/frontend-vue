@@ -404,7 +404,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Check, ChevronRight, Plus, Trash2 } from 'lucide-vue-next';
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue';
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
@@ -413,7 +413,6 @@ import AddPerformerModal from '@/features/work-log/components/AddPerformerModal.
 import AddToolModal from '@/features/work-log/components/AddToolModal.vue';
 import AddEquipmentModal from '@/features/work-log/components/AddEquipmentModal.vue';
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue';
-import { loadMaterials, loadUnits } from '@/shared/api/repairs/repairApi';
 import { useNotificationStore } from '@/app/stores/notificationStore';
 
 const props = defineProps({
@@ -435,8 +434,6 @@ const emit = defineEmits(['update:rows', 'save-row', 'add-row', 'save-performer'
 
 const existingRows = ref([]);
 const newRow = ref(null);
-const nameOptionsInternal = ref([]);
-const unitOptionsInternal = ref([]);
 
 const isModalOpen = ref(false);
 const currentRowIndex = ref(null);
@@ -705,7 +702,7 @@ const updateExistingPerformer = (rowIndex, performerIndex, field, value) => {
 const getNameLabel = (value) => {
   if (props.isPerformer) return value;
 
-  const option = nameOptionsInternal.value.find(opt => opt.value === value);
+  const option = props.nameOptions.find(opt => opt.value === value);
   return option ? option.label : value;
 };
 
@@ -962,23 +959,6 @@ const saveNewRow = () => {
   emit('add-row', newRow.value);
   newRow.value = null;
 };
-
-// Загрузка справочников
-onMounted(async () => {
-  if (!props.isPerformer) {
-    try {
-      const [materials, units] = await Promise.all([
-        loadMaterials(),
-        loadUnits()
-      ]);
-      
-      nameOptionsInternal.value = materials;
-      unitOptionsInternal.value = units;
-    } catch (error) {
-      console.error('Ошибка загрузки справочников:', error);
-    }
-  }
-});
 </script>
 
 <style scoped>

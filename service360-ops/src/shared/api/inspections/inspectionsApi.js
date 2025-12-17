@@ -3,6 +3,28 @@ import { getUserData } from '../common/userCache';
 
 const API_BASE_URL = import.meta.env.VITE_INSPECTIONS_URL;
 
+const loadWorkPlanInspectionUnfinished = async () => {
+  try {
+    // Временная заглушка: используем 1071 вместо objLocation
+    const objLocation = 1071;
+
+    const response = await axios.post(
+      API_BASE_URL,
+      {
+        method: "data/loadWorkPlanInspectionUnfinished",
+        params: [objLocation],
+      },
+      {
+        withCredentials: true,
+      }
+    );
+
+    return response.data.result?.records || [];
+  } catch (error) {
+    throw error;
+  }
+};
+
 const loadSections = async () => {
   try {
     const objLocation = localStorage.getItem("objLocation");
@@ -14,7 +36,7 @@ const loadSections = async () => {
     const response = await axios.post(
       API_BASE_URL,
       {
-        method: "data/loadObjLocationSectionForSelect",
+        method: "data/loadWorkPlanInspectionUnfinished",
         params: [parseInt(objLocation)],
       },
       {
@@ -249,6 +271,7 @@ const saveParameterInfo = async (payload) => {
 
 export {
   loadSections,
+  loadWorkPlanInspectionUnfinished,
   loadWorkPlanDates,
   loadWorkPlanUnfinishedByDate,
   loadInspectionEntriesForWorkPlan,

@@ -382,4 +382,75 @@ const confirm = () => {
 .reason-input {
   margin-top: 16px;
 }
+
+/* Tablet styles */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-content {
+    max-width: 100%;
+    max-height: 92vh;
+  }
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-content {
+    width: 100%;
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+  }
+
+  .modal-header h2 {
+    font-size: 18px;
+  }
+
+  .modal-body {
+    padding: 16px 20px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    gap: 10px;
+  }
+
+  .cancel-button,
+  .confirm-button {
+    width: 100%;
+    padding: 12px 16px;
+  }
+
+  .summary-title {
+    font-size: 15px;
+  }
+
+  .section-header {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .table-row {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px 12px;
+    gap: 4px;
+  }
+
+  .table-cell.value {
+    text-align: left;
+    margin-left: 0;
+  }
+}
 </style>

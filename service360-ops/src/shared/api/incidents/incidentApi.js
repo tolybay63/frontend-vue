@@ -232,13 +232,36 @@ export async function saveIncident(payloadData) {
     );
 
     if (response.data && response.data.error) {
-        throw new Error(response.data.error);
+        const errorMessage = typeof response.data.error === 'object' && response.data.error !== null
+          ? response.data.error.message || JSON.stringify(response.data.error)
+          : response.data.error;
+        throw new Error(errorMessage);
     }
-    
+
     return response.data.result;
   } catch (error) {
     console.error("Ошибка при сохранении инцидента:", error);
-    throw new Error(error.response?.data?.error || error.message || 'Не удалось сохранить инцидент');
+
+    // Если это ошибка от сервера в теле ответа (не HTTP ошибка)
+    if (error.message && !error.response) {
+      throw error; // Пробрасываем уже обработанную ошибку с правильным сообщением
+    }
+
+    // Обработка HTTP ошибок
+    let errorMessage = 'Не удалось сохранить инцидент';
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message;
+    } else if (error.response?.data?.error) {
+      errorMessage = typeof error.response.data.error === 'string'
+        ? error.response.data.error
+        : JSON.stringify(error.response.data.error);
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    throw new Error(errorMessage);
   }
 }
 

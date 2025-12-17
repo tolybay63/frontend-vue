@@ -64,6 +64,7 @@ const renderLabel = (option) => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  width: 100%;
 }
 
 label {
@@ -73,16 +74,35 @@ label {
 }
 
 .required-asterisk {
-  color: #e53e3e; 
-  font-size: 14px; 
+  color: #e53e3e;
+  font-size: 14px;
   margin-left: 2px;
-  vertical-align: top; 
-  line-height: 1.2; 
+  vertical-align: top;
+  line-height: 1.2;
 }
 
 .hint {
   font-size: 12px;
   color: #718096;
   margin: 0;
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .form-group {
+    min-width: 0;
+  }
+
+  label {
+    font-size: 13px;
+  }
+
+  .form-group :deep(.n-base-selection) {
+    font-size: 16px; /* Предотвращает zoom на iOS */
+  }
+
+  .hint {
+    font-size: 11px;
+  }
 }
 </style>

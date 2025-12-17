@@ -98,8 +98,12 @@ const router = createRouter({
   routes
 })
 
-// Navigation Guard - защита роутов
+// Navigation Guard - защита роутов (ВРЕМЕННО ОТКЛЮЧЕНО)
 router.beforeEach((to, from, next) => {
+  // ВРЕМЕННО: пропускаем все запросы без проверки авторизации
+  next()
+
+  /* ЗАКОММЕНТИРОВАНО ДЛЯ РАЗРАБОТКИ
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const authenticated = isAuthenticated()
 
@@ -113,6 +117,7 @@ router.beforeEach((to, from, next) => {
     // Всё ок, пропускаем
     next()
   }
+  */
 })
 
 export default router

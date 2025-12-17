@@ -133,3 +133,75 @@ export async function loadClients() {
     throw error;
   }
 }
+
+export async function saveStage(operation, stageData) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveStage',
+      params: [operation, stageData]
+    })
+
+    if (response.data.error) {
+      throw new Error(response.data.error.message || 'Ошибка при сохранении перегона')
+    }
+
+    return response.data.result
+  } catch (error) {
+    console.error('Ошибка при сохранении перегона:', error)
+    throw error
+  }
+}
+
+export async function saveStation(operation, stationData) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveStation',
+      params: [operation, stationData]
+    })
+
+    if (response.data.error) {
+      throw new Error(response.data.error.message || 'Ошибка при сохранении перегона')
+    }
+
+    return response.data.result
+  } catch (error) {
+    console.error('Ошибка при сохранении перегона:', error)
+    throw error
+  }
+}
+
+export async function saveSection(operation, sectionData) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveSection',
+      params: [operation, sectionData]
+    })
+
+    if (response.data.error) {
+      throw new Error(response.data.error.message || 'Ошибка при сохранении перегона')
+    }
+
+    return response.data.result
+  } catch (error) {
+    console.error('Ошибка при сохранении перегона:', error)
+    throw error
+  }
+}
+
+export async function deleteSection(id) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/deleteObjWithProperties',
+      params: [id]
+    })
+
+    if (response.data.error) {
+      throw new Error(response.data.error.message || 'Ошибка при удалении')
+    }
+
+    return response.data.result
+  } catch (error) {
+    console.error('Ошибка при удалении:', error)
+    throw error
+  }
+}

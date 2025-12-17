@@ -75,4 +75,13 @@ defineProps({
 .col-span-2 {
   grid-column: span 2;
 }
+
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+  .col-span-2 {
+    grid-column: span 1;
+  }
+}
 </style>

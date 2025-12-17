@@ -96,7 +96,7 @@ const onRowDoubleClick = (row) => {
       location: rawData.nameSection, // Место
       objectType: 'нет данных', // Тип объекта
       object: rawData.fullNameObject, // Объект
-      coordinates: formatCoordinates(rawData.StartKm, rawData.StartPicket, null, rawData.FinishKm, rawData.FinishPicket, null),
+      coordinates: formatCoordinates(rawData.StartKm, rawData.StartPicket, rawData.StartLink, rawData.FinishKm, rawData.FinishPicket, rawData.FinishLink),
       planDateEnd: rawData.PlanDateEnd,
       rawData: rawData, // Сохраняем исходные данные на всякий случай
     };
@@ -188,7 +188,7 @@ const formatGeneralInfo = (row) => {
   }
   
   if (row.StartKm !== null || row.StartPicket !== null || row.FinishKm !== null || row.FinishPicket !== null) {
-    const coords = formatCoordinates(row.StartKm, row.StartPicket, null, row.FinishKm, row.FinishPicket, null);
+    const coords = formatCoordinates(row.StartKm, row.StartPicket, row.StartLink, row.FinishKm, row.FinishPicket, row.FinishLink);
     parts.push(`<span class="label-strong">Координаты:</span> ${coords}`);
   }
   
@@ -310,7 +310,7 @@ const loadInspectionsWrapper = async ({ page, limit, filters: filterValues }) =>
       fullNameObject: r.fullNameObject,
       fullNameWork: r.fullNameWork,
       fullNameTask: r.fullNameTask,
-      coordinates: formatCoordinates(r.StartKm, r.StartPicket, null, r.FinishKm, r.FinishPicket, null),
+      coordinates: formatCoordinates(r.StartKm, r.StartPicket, r.StartLink, r.FinishKm, r.FinishPicket, r.FinishLink),
     }});
 
     return {

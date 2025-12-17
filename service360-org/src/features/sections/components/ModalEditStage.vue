@@ -3,6 +3,8 @@
     title="Редактировать перегон"
     @close="closeModal"
     @save="saveData"
+    @delete="handleDelete"
+    :show-delete="true"
   >
     <div class="form-section">
       <AppInput
@@ -41,6 +43,14 @@
         :required="true"
       />
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление перегона"
+      message="Вы действительно хотите удалить этот перегон?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false"
+    />
   </ModalWrapper>
 </template>
 
@@ -51,8 +61,10 @@ import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue'
 import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { loadSection } from '@/shared/api/sections/sectionService'
+import { loadSection, saveStage, deleteSection } from '@/shared/api/sections/sectionService'
+import { getUserData } from '@/shared/api/common/userCache'
 
 const props = defineProps({
   stageData: {
@@ -85,6 +97,9 @@ const sectionOptions = ref([])
 
 // Loading states
 const loadingSections = ref(false)
+
+// Confirmation modal
+const showConfirmModal = ref(false)
 
 // Load sections
 const loadSectionsData = async () => {
@@ -122,23 +137,46 @@ const saveData = async () => {
       return
     }
 
-    const payload = {
+    // Получаем текущую дату
+    const currentDate = new Date().toISOString().split('T')[0]
+
+    // Get user data for objUser and pvUser
+    const userData = await getUserData()
+
+    // Используем rawData из props
+    const raw = form.value.rawData
+
+    // Формируем данные для сохранения
+    const stageData = {
+      id: props.stageData.id,
+      parent: form.value.section.value,
+      cls: raw.cls,
       name: form.value.name,
-      section: form.value.section,
-      startKm: form.value.coordinates.coordStartKm,
-      startPk: form.value.coordinates.coordStartPk,
-      startLink: form.value.coordinates.coordStartZv,
-      endKm: form.value.coordinates.coordEndKm,
-      endPk: form.value.coordinates.coordEndPk,
-      endLink: form.value.coordinates.coordEndZv,
-      stageLength: form.value.stageLength,
-      rawData: form.value.rawData
+      idStartKm: raw.idStartKm,
+      StartKm: form.value.coordinates.coordStartKm,
+      idStartPicket: raw.idStartPicket,
+      StartPicket: form.value.coordinates.coordStartPk,
+      idStartLink: raw.idStartLink,
+      StartLink: form.value.coordinates.coordStartZv,
+      idFinishKm: raw.idFinishKm,
+      FinishKm: form.value.coordinates.coordEndKm,
+      idFinishPicket: raw.idFinishPicket,
+      FinishPicket: form.value.coordinates.coordEndPk,
+      idFinishLink: raw.idFinishLink,
+      FinishLink: form.value.coordinates.coordEndZv,
+      idStageLength: raw.idStageLength,
+      StageLength: form.value.stageLength,
+      idUser: raw.idUser,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null,
+      idUpdatedAt: raw.idUpdatedAt,
+      UpdatedAt: currentDate
     }
 
-    console.log('Обновление перегона:', payload)
+    console.log('Обновление перегона:', stageData)
 
-    // TODO: Добавить реальный вызов API для обновления
-    // await updateStage(payload)
+    // Вызываем API для обновления (операция "upd")
+    await saveStage('upd', stageData)
 
     notificationStore.showNotification('Перегон успешно обновлен', 'success')
 
@@ -146,6 +184,28 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при обновлении перегона', 'error')
+  }
+}
+
+// Delete handlers
+const handleDelete = () => {
+  if (!props.stageData?.id) {
+    notificationStore.showNotification('Не удалось получить ID перегона для удаления', 'error')
+    return
+  }
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    await deleteSection(props.stageData.id)
+    notificationStore.showNotification('Перегон успешно удален', 'success')
+    emit('refresh')
+    closeModal()
+  } catch (error) {
+    console.error('Ошибка при удалении перегона:', error)
+    notificationStore.showNotification('Ошибка при удалении перегона', 'error')
   }
 }
 

@@ -7,6 +7,25 @@
         <TableActions :actions="actions" :isMobile="isMobile" />
       </div>
 
+      <div v-if="isMobile && showFilters && hasActiveFilters" class="mobile-filters">
+        <AppDatePicker
+          v-if="datePickerConfig"
+          :modelValue="filters.date"
+          :label="datePickerConfig.label"
+          :placeholder="datePickerConfig.placeholder"
+          @update:modelValue="updateFilter('date', $event)"
+        />
+
+        <AppDropdown
+          v-if="dropdownConfig"
+          :modelValue="filters.periodType"
+          :label="dropdownConfig.label"
+          :options="dropdownConfig.options"
+          :placeholder="dropdownConfig.placeholder"
+          @update:modelValue="updateFilter('periodType', $event)"
+        />
+      </div>
+
       <div v-if="!isMobile" class="controls-header">
         <h2 class="title" v-if="!hasActiveFilters">{{ title }}</h2>
         <div class="filters" v-if="showFilters && hasActiveFilters">
@@ -384,6 +403,14 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+
+.mobile-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
 }
 
 .filters {

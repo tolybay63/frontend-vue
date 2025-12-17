@@ -24,6 +24,8 @@
                   class="coord-start"
                   :isInspection="true"
                   :objectBounds="objectBounds"
+                  :out-of-bounds-error="isCoordinatesOutOfBounds"
+                  @update:modelValue="updateCoordinates"
                   :required="true" />
               </div>
               <div class="form-grid">
@@ -56,6 +58,8 @@
                   label="Координаты начала"
                   class="coord-start"
                   :objectBounds="inspectionBounds"
+                  :out-of-bounds-error="isDefectCoordinatesOutOfBounds"
+                  @update:modelValue="updateDefectCoordinates"
                   :required="true" />
               </div>
               <div class="defect-info-group">
@@ -100,6 +104,8 @@
                   label="Координаты начала"
                   class="coord-start"
                   :objectBounds="inspectionBounds"
+                  :out-of-bounds-error="isParameterCoordinatesOutOfBounds"
+                  @update:modelValue="updateParameterCoordinates"
                   :required="true" />
               </div>
               <div class="parameter-info-group">
@@ -222,6 +228,9 @@ const isSaving = ref(false);
 const activeTab = ref('info');
 const isInfoSaved = ref(false);
 const savedInspectionId = ref(null);
+const isCoordinatesOutOfBounds = ref(false);
+const isDefectCoordinatesOutOfBounds = ref(false);
+const isParameterCoordinatesOutOfBounds = ref(false);
 
 const shouldShowMinMaxError = ref(false);
 const isUserTypingMinMax = ref(false);
@@ -251,6 +260,7 @@ const defectRecord = ref({
   startCoordinates: {
     coordStartKm: 0,
     coordStartPk: 0,
+    coordStartZv: 0,
     coordEndKm: 0,
     coordEndPk: 0,
     coordEndZv: 0,
@@ -264,6 +274,7 @@ const parameterRecord = ref({
   startCoordinates: {
     coordStartKm: 0,
     coordStartPk: 0,
+    coordStartZv: 0,
     coordEndKm: 0,
     coordEndPk: 0,
     coordEndZv: 0,
@@ -290,8 +301,10 @@ const loadingParameters = ref(false);
 const objectBounds = ref({
   StartKm: null,
   StartPicket: null,
+  StartLink: null,
   FinishKm: null,
   FinishPicket: null,
+  FinishLink: null,
 });
 
 const inspectionBounds = ref({
@@ -337,6 +350,84 @@ const closeModal = () => {
   emit('close');
 };
 
+const updateCoordinates = (newCoordinates) => {
+  newRecord.value.coordinates = newCoordinates;
+
+  // Проверка выхода за границы объекта (в реальном времени)
+  if (objectBounds.value && objectBounds.value.StartKm !== null) {
+    const newStartCoordinates = (newCoordinates.coordStartKm || 0) * 1000 + (newCoordinates.coordStartPk || 0) * 100 + (newCoordinates.coordStartZv || 0) * 25;
+    const newFinishCoordinates = (newCoordinates.coordEndKm || 0) * 1000 + (newCoordinates.coordEndPk || 0) * 100 + (newCoordinates.coordEndZv || 0) * 25;
+
+    const objectStartCoordinates = (objectBounds.value.StartKm || 0) * 1000 + (objectBounds.value.StartPicket || 0) * 100 + (objectBounds.value.StartLink || 0) * 25;
+    const objectFinishCoordinates = (objectBounds.value.FinishKm || 0) * 1000 + (objectBounds.value.FinishPicket || 0) * 100 + (objectBounds.value.FinishLink || 0) * 25;
+
+    // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+    const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates;
+
+    // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+    const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates;
+
+    if (!isStartInBounds || !isFinishInBounds) {
+      isCoordinatesOutOfBounds.value = true;
+      notificationStore.showNotification('Координаты не могут выходить за границы выбранного объекта', 'error');
+    } else {
+      isCoordinatesOutOfBounds.value = false;
+    }
+  } else {
+    isCoordinatesOutOfBounds.value = false;
+  }
+};
+
+const updateDefectCoordinates = (newCoordinates) => {
+  defectRecord.value.startCoordinates = newCoordinates;
+
+  // Проверка выхода за границы записи осмотра (в реальном времени)
+  if (inspectionBounds.value && inspectionBounds.value.StartKm !== null) {
+    const newStartCoordinates = (newCoordinates.coordStartKm || 0) * 1000 + (newCoordinates.coordStartPk || 0) * 100 + (newCoordinates.coordStartZv || 0) * 25;
+    const newFinishCoordinates = (newCoordinates.coordEndKm || 0) * 1000 + (newCoordinates.coordEndPk || 0) * 100 + (newCoordinates.coordEndZv || 0) * 25;
+
+    const inspectionStartCoordinates = (inspectionBounds.value.StartKm || 0) * 1000 + (inspectionBounds.value.StartPicket || 0) * 100 + (inspectionBounds.value.StartLink || 0) * 25;
+    const inspectionFinishCoordinates = (inspectionBounds.value.FinishKm || 0) * 1000 + (inspectionBounds.value.FinishPicket || 0) * 100 + (inspectionBounds.value.FinishLink || 0) * 25;
+
+    const isStartInBounds = newStartCoordinates >= inspectionStartCoordinates && newStartCoordinates <= inspectionFinishCoordinates;
+    const isFinishInBounds = newFinishCoordinates >= inspectionStartCoordinates && newFinishCoordinates <= inspectionFinishCoordinates;
+
+    if (!isStartInBounds || !isFinishInBounds) {
+      isDefectCoordinatesOutOfBounds.value = true;
+      notificationStore.showNotification('Координаты не могут выходить за границы записи осмотра', 'error');
+    } else {
+      isDefectCoordinatesOutOfBounds.value = false;
+    }
+  } else {
+    isDefectCoordinatesOutOfBounds.value = false;
+  }
+};
+
+const updateParameterCoordinates = (newCoordinates) => {
+  parameterRecord.value.startCoordinates = newCoordinates;
+
+  // Проверка выхода за границы записи осмотра (в реальном времени)
+  if (inspectionBounds.value && inspectionBounds.value.StartKm !== null) {
+    const newStartCoordinates = (newCoordinates.coordStartKm || 0) * 1000 + (newCoordinates.coordStartPk || 0) * 100 + (newCoordinates.coordStartZv || 0) * 25;
+    const newFinishCoordinates = (newCoordinates.coordEndKm || 0) * 1000 + (newCoordinates.coordEndPk || 0) * 100 + (newCoordinates.coordEndZv || 0) * 25;
+
+    const inspectionStartCoordinates = (inspectionBounds.value.StartKm || 0) * 1000 + (inspectionBounds.value.StartPicket || 0) * 100 + (inspectionBounds.value.StartLink || 0) * 25;
+    const inspectionFinishCoordinates = (inspectionBounds.value.FinishKm || 0) * 1000 + (inspectionBounds.value.FinishPicket || 0) * 100 + (inspectionBounds.value.FinishLink || 0) * 25;
+
+    const isStartInBounds = newStartCoordinates >= inspectionStartCoordinates && newStartCoordinates <= inspectionFinishCoordinates;
+    const isFinishInBounds = newFinishCoordinates >= inspectionStartCoordinates && newFinishCoordinates <= inspectionFinishCoordinates;
+
+    if (!isStartInBounds || !isFinishInBounds) {
+      isParameterCoordinatesOutOfBounds.value = true;
+      notificationStore.showNotification('Координаты не могут выходить за границы записи осмотра', 'error');
+    } else {
+      isParameterCoordinatesOutOfBounds.value = false;
+    }
+  } else {
+    isParameterCoordinatesOutOfBounds.value = false;
+  }
+};
+
 const getButtonLabel = () => {
   switch (activeTab.value) {
     case 'info':
@@ -355,9 +446,9 @@ const handleTabChange = async (newTab) => {
     notificationStore.showNotification('Сначала необходимо сохранить информацию по работе!', 'error');
     return;
   }
-  
+
   activeTab.value = newTab;
-  
+
   if (newTab === 'defects' && savedInspectionId.value) {
     await loadExistingDefects(savedInspectionId.value);
   } else if (newTab === 'parameters' && savedInspectionId.value) {
@@ -369,6 +460,26 @@ const saveWork = async () => {
   if (isSaving.value) return;
 
   if (activeTab.value === 'info') {
+    // Проверка выхода за границы объекта (бизнес-логика)
+    const newStartCoordinates = (newRecord.value.coordinates.coordStartKm || 0) * 1000 + (newRecord.value.coordinates.coordStartPk || 0) * 100 + (newRecord.value.coordinates.coordStartZv || 0) * 25;
+    const newFinishCoordinates = (newRecord.value.coordinates.coordEndKm || 0) * 1000 + (newRecord.value.coordinates.coordEndPk || 0) * 100 + (newRecord.value.coordinates.coordEndZv || 0) * 25;
+
+    if (objectBounds.value && objectBounds.value.StartKm !== null) {
+      const objectStartCoordinates = (objectBounds.value.StartKm || 0) * 1000 + (objectBounds.value.StartPicket || 0) * 100 + (objectBounds.value.StartLink || 0) * 25;
+      const objectFinishCoordinates = (objectBounds.value.FinishKm || 0) * 1000 + (objectBounds.value.FinishPicket || 0) * 100 + (objectBounds.value.FinishLink || 0) * 25;
+
+      // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+      const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates;
+
+      // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+      const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates;
+
+      if (!isStartInBounds || !isFinishInBounds) {
+        notificationStore.showNotification('Координаты не могут выходить за границы выбранного объекта', 'error');
+        return;
+      }
+    }
+
     isSaving.value = true;
     try {
       const user = await getUserData();
@@ -468,6 +579,23 @@ const saveWork = async () => {
       return;
     }
 
+    // Проверка координат на выход за границы записи осмотра
+    if (inspectionBounds.value && inspectionBounds.value.StartKm !== null) {
+      const newStartCoordinates = (defectRecord.value.startCoordinates.coordStartKm || 0) * 1000 + (defectRecord.value.startCoordinates.coordStartPk || 0) * 100 + (defectRecord.value.startCoordinates.coordStartZv || 0) * 25;
+      const newFinishCoordinates = (defectRecord.value.startCoordinates.coordEndKm || 0) * 1000 + (defectRecord.value.startCoordinates.coordEndPk || 0) * 100 + (defectRecord.value.startCoordinates.coordEndZv || 0) * 25;
+
+      const inspectionStartCoordinates = (inspectionBounds.value.StartKm || 0) * 1000 + (inspectionBounds.value.StartPicket || 0) * 100 + (inspectionBounds.value.StartLink || 0) * 25;
+      const inspectionFinishCoordinates = (inspectionBounds.value.FinishKm || 0) * 1000 + (inspectionBounds.value.FinishPicket || 0) * 100 + (inspectionBounds.value.FinishLink || 0) * 25;
+
+      const isStartInBounds = newStartCoordinates >= inspectionStartCoordinates && newStartCoordinates <= inspectionFinishCoordinates;
+      const isFinishInBounds = newFinishCoordinates >= inspectionStartCoordinates && newFinishCoordinates <= inspectionFinishCoordinates;
+
+      if (!isStartInBounds || !isFinishInBounds) {
+        notificationStore.showNotification('Координаты не могут выходить за границы записи осмотра', 'error');
+        return;
+      }
+    }
+
     isSaving.value = true;
     try {
       const user = await getUserData();
@@ -548,7 +676,7 @@ const saveWork = async () => {
       shouldShowMinMaxError.value = true;
       return;
     }
-    
+
     if (parameterRecord.value.value === null || parameterRecord.value.value === '') {
         notificationStore.showNotification('Необходимо ввести значение параметра!', 'error');
         return;
@@ -557,6 +685,23 @@ const saveWork = async () => {
     if (!savedInspectionId.value) {
       notificationStore.showNotification('Сначала необходимо сохранить информацию по работе!', 'error');
       return;
+    }
+
+    // Проверка координат на выход за границы записи осмотра
+    if (inspectionBounds.value && inspectionBounds.value.StartKm !== null) {
+      const newStartCoordinates = (parameterRecord.value.startCoordinates.coordStartKm || 0) * 1000 + (parameterRecord.value.startCoordinates.coordStartPk || 0) * 100 + (parameterRecord.value.startCoordinates.coordStartZv || 0) * 25;
+      const newFinishCoordinates = (parameterRecord.value.startCoordinates.coordEndKm || 0) * 1000 + (parameterRecord.value.startCoordinates.coordEndPk || 0) * 100 + (parameterRecord.value.startCoordinates.coordEndZv || 0) * 25;
+
+      const inspectionStartCoordinates = (inspectionBounds.value.StartKm || 0) * 1000 + (inspectionBounds.value.StartPicket || 0) * 100 + (inspectionBounds.value.StartLink || 0) * 25;
+      const inspectionFinishCoordinates = (inspectionBounds.value.FinishKm || 0) * 1000 + (inspectionBounds.value.FinishPicket || 0) * 100 + (inspectionBounds.value.FinishLink || 0) * 25;
+
+      const isStartInBounds = newStartCoordinates >= inspectionStartCoordinates && newStartCoordinates <= inspectionFinishCoordinates;
+      const isFinishInBounds = newFinishCoordinates >= inspectionStartCoordinates && newFinishCoordinates <= inspectionFinishCoordinates;
+
+      if (!isStartInBounds || !isFinishInBounds) {
+        notificationStore.showNotification('Координаты не могут выходить за границы записи осмотра', 'error');
+        return;
+      }
     }
 
     isSaving.value = true;
@@ -891,7 +1036,7 @@ watch(
         coordStartZv: newRecordData.StartLink || null,
         coordEndKm: newRecordData.FinishKm || null,
         coordEndPk: newRecordData.FinishPicket || null,
-        coordEndZv: newRecord.value.coordinates.coordEndZv,
+        coordEndZv: newRecordData.FinishLink || null,
       });
       
       loadExistingData(newRecordData);

@@ -3,6 +3,8 @@
     title="Редактировать участок"
     @close="closeModal"
     @save="saveData"
+    @delete="handleDelete"
+    :show-delete="true"
   >
     <div class="form-section">
       <AppInput
@@ -42,6 +44,14 @@
         :required="true"
       />
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление участка"
+      message="Вы действительно хотите удалить этот участок?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false"
+    />
   </ModalWrapper>
 </template>
 
@@ -52,8 +62,10 @@ import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue'
 import CoordinateInputs from '@/shared/ui/FormControls/CoordinateInputs.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { loadClients } from '@/shared/api/sections/sectionService'
+import { loadClients, saveSection, deleteSection } from '@/shared/api/sections/sectionService'
+import { getUserData } from '@/shared/api/common/userCache'
 
 const props = defineProps({
   sectionData: {
@@ -65,33 +77,25 @@ const props = defineProps({
 const emit = defineEmits(['close', 'refresh'])
 const notificationStore = useNotificationStore()
 
-// Form data
 const form = ref({
   name: props.sectionData.name || '',
   client: null,
   coordinates: {
     coordStartKm: props.sectionData.rawData?.StartKm ?? null,
-    coordStartPk: null,
-    coordEndKm: props.sectionData.rawData?.FinishKm ?? null,
-    coordEndPk: null
+    coordEndKm: props.sectionData.rawData?.FinishKm ?? null
   },
   stageLength: props.sectionData.StageLength || null,
   rawData: props.sectionData.rawData
 })
 
-// Dropdown options
 const clientOptions = ref([])
-
-// Loading states
 const loadingClients = ref(false)
+const showConfirmModal = ref(false)
 
-// Load clients
 const loadClientsData = async () => {
   loadingClients.value = true
   try {
     clientOptions.value = await loadClients()
-
-    // Устанавливаем выбранное значение после загрузки опций
     if (props.sectionData.rawData?.objClient) {
       const selectedClient = clientOptions.value.find(
         option => option.value === props.sectionData.rawData.objClient
@@ -107,44 +111,68 @@ const loadClientsData = async () => {
   }
 }
 
-// Save data
 const saveData = async () => {
   try {
-    // Validate required fields
     if (!form.value.name || !form.value.client || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordEndKm || !form.value.stageLength) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
       return
     }
 
+    const userData = await getUserData()
+    const currentDate = new Date().toISOString().split('T')[0]
+    const raw = form.value.rawData
+
     const payload = {
+      id: props.sectionData.id,
+      cls: raw.cls,
       name: form.value.name,
-      client: form.value.client,
-      startKm: form.value.coordinates.coordStartKm,
-      endKm: form.value.coordinates.coordEndKm,
-      stageLength: form.value.stageLength,
-      rawData: form.value.rawData
+      // id полей для StartKm, FinishKm, StageLength, Client, User, UpdatedAt
+      idStartKm: raw.idStartKm,
+      StartKm: form.value.coordinates.coordStartKm,
+      idFinishKm: raw.idFinishKm,
+      FinishKm: form.value.coordinates.coordEndKm,
+      idStageLength: raw.idStageLength,
+      StageLength: form.value.stageLength,
+      idClient: raw.idClient,
+      objClient: form.value.client?.value,
+      pvClient: form.value.client?.pv,
+      idUser: raw.idUser,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null,
+      idUpdatedAt: raw.idUpdatedAt,
+      UpdatedAt: currentDate
     }
 
-    console.log('Обновление участка:', payload)
-
-    // TODO: Добавить реальный вызов API для обновления
-    // await updateSection(payload)
-
+    await saveSection('upd', payload)
     notificationStore.showNotification('Участок успешно обновлен', 'success')
-
     emit('refresh')
     closeModal()
   } catch (error) {
-    notificationStore.showNotification(error.message || 'Ошибка при обновлении участка', 'error')
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Ошибка при обновлении участка'
+    notificationStore.showNotification(errorMessage, 'error')
   }
 }
 
-// Close modal
+const handleDelete = () => {
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    await deleteSection(props.sectionData.id)
+    notificationStore.showNotification('Участок успешно удален', 'success')
+    emit('refresh')
+    closeModal()
+  } catch (error) {
+    notificationStore.showNotification('Ошибка при удалении участка', 'error')
+  }
+}
+
 const closeModal = () => {
   emit('close')
 }
 
-// Initialize
 onMounted(() => {
   loadClientsData()
 })
@@ -156,7 +184,6 @@ onMounted(() => {
   grid-template-columns: 1fr 1fr;
   padding: 20px;
 }
-
 .col-span-2 {
   grid-column: span 2;
 }

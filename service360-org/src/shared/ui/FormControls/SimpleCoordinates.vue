@@ -5,7 +5,7 @@
       <span v-if="required" class="required-asterisk">*</span>
     </label>
     <div class="coordinate-group">
-<AppNumberInput
+      <AppNumberInput
         :modelValue="currentStartKm"
         label="Начало (км)"
         placeholder="км"
@@ -16,56 +16,12 @@
         @blur="handleBlur"
       />
       <AppNumberInput
-        :modelValue="currentStartPk"
-        label="Начало (пк)"
-        placeholder="пк"
-        :max="10"
-        :disabled="disabled"
-        :status="getFieldStatus('coordStartPk')"
-        @update:modelValue="handleStartPk"
-        @focus="handleFocus"
-        @blur="handleBlur"
-      />
-      <AppNumberInput
-        :modelValue="currentStartZv"
-        label="Начало (зв)"
-        placeholder="зв"
-        :max="4"
-        :disabled="disabled"
-        :status="getFieldStatus('coordStartZv')"
-        @update:modelValue="handleStartZv"
-        @focus="handleFocus"
-        @blur="handleBlur"
-      />
-      <AppNumberInput
         :modelValue="currentEndKm"
         label="Конец (км)"
         placeholder="км"
         :disabled="disabled"
         :status="getFieldStatus('coordEndKm')"
         @update:modelValue="handleEndKm"
-        @focus="handleFocus"
-        @blur="handleBlur"
-      />
-      <AppNumberInput
-        :modelValue="currentEndPk"
-        label="Конец (пк)"
-        placeholder="пк"
-        :max="10"
-        :disabled="disabled"
-        :status="getFieldStatus('coordEndPk')"
-        @update:modelValue="handleEndPk"
-        @focus="handleFocus"
-        @blur="handleBlur"
-      />
-      <AppNumberInput
-        :modelValue="currentEndZv"
-        label="Конец (зв)"
-        placeholder="зв"
-        :max="4"
-        :disabled="disabled"
-        :status="getFieldStatus('coordEndZv')"
-        @update:modelValue="handleEndZv"
         @focus="handleFocus"
         @blur="handleBlur"
       />
@@ -83,31 +39,24 @@ const props = defineProps({
     type: Object,
     default: () => ({
       coordStartKm: null,
-      coordStartPk: null,
-      coordStartZv: null,
-      coordEndKm: null,
-      coordEndPk: null,
-      coordEndZv: null
+      coordEndKm: null
     })
   },
-  // Добавляем пропс required с default: false
+  objectBounds: {
+    type: Object,
+    default: null
+  },
   required: {
     type: Boolean,
     default: false
   },
-  // Добавляем пропс disabled с default: false
   disabled: {
-    type: Boolean,
-    default: false
-  },
-  // Флаг ошибки выхода за границы объекта
-  outOfBoundsError: {
     type: Boolean,
     default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'invalidRange', 'out-of-bounds'])
 
 const notificationStore = useNotificationStore()
 
@@ -116,42 +65,39 @@ const shouldShowError = ref(false)
 const isInitialMount = ref(true)
 
 const currentStartKm = computed(() => props.modelValue.coordStartKm ?? null)
-const currentStartPk = computed(() => props.modelValue.coordStartPk ?? null)
-const currentStartZv = computed(() => props.modelValue.coordStartZv ?? null)
 const currentEndKm = computed(() => props.modelValue.coordEndKm ?? null)
-const currentEndPk = computed(() => props.modelValue.coordEndPk ?? null)
-const currentEndZv = computed(() => props.modelValue.coordEndZv ?? null)
 
-// Расчет абсолютной координаты
+// Расчет абсолютной координаты (только км)
 const startAbs = computed(() => {
   const km = currentStartKm.value ?? 0
-  const pk = currentStartPk.value ?? 0
-  const zv = currentStartZv.value ?? 0
-  return km * 1000 + pk * 100 + zv * 25
+  return km * 1000
 })
 
 const endAbs = computed(() => {
   const km = currentEndKm.value ?? 0
-  const pk = currentEndPk.value ?? 0
-  const zv = currentEndZv.value ?? 0
-  return km * 1000 + pk * 100 + zv * 25
+  return km * 1000
 })
 
 // Проверка на пустые обязательные поля
 const hasEmptyRequiredFields = computed(() => {
   if (!props.required) return false
   return currentStartKm.value === null || currentStartKm.value === 0 ||
-         currentStartPk.value === null || currentStartPk.value === 0 ||
-         currentStartZv.value === null || currentStartZv.value === 0 ||
-         currentEndKm.value === null || currentEndKm.value === 0 ||
-         currentEndPk.value === null || currentEndPk.value === 0 ||
-         currentEndZv.value === null || currentEndZv.value === 0
+         currentEndKm.value === null || currentEndKm.value === 0
 })
 
 const isInvalid = computed(() => {
   // Не проверяем диапазон если есть пустые поля
   if (hasEmptyRequiredFields.value) return false
   return startAbs.value > endAbs.value
+})
+
+const isOutOfBounds = computed(() => {
+  if (!props.objectBounds) return false
+
+  const objStartAbs = (props.objectBounds.StartKm ?? 0) * 1000
+  const objEndAbs = (props.objectBounds.FinishKm ?? 0) * 1000
+
+  return startAbs.value < objStartAbs || endAbs.value > objEndAbs
 })
 
 // Computed для определения статуса каждого поля
@@ -167,19 +113,14 @@ const getFieldStatus = (field) => {
   }
 
   if (fieldErrors.value[field]) return 'error'
-  if (isInvalid.value) return 'error'
-  if (props.outOfBoundsError) return 'error'
+  if (isInvalid.value || isOutOfBounds.value) return 'error'
   return null
 }
 
 // Валидация отдельных полей
 const fieldErrors = ref({
   coordStartKm: null,
-  coordStartPk: null,
-  coordStartZv: null,
-  coordEndKm: null,
-  coordEndPk: null,
-  coordEndZv: null
+  coordEndKm: null
 })
 
 const validateField = (field, value, min, max) => {
@@ -218,7 +159,6 @@ const updateCoords = (field, value) => {
 }
 
 const handleStartKm = (value) => {
-  // Проверяем сначала исходное значение
   if (value === 0) {
     fieldErrors.value.coordStartKm = 'Значение не может быть меньше 1'
     updateCoords('coordStartKm', value)
@@ -228,30 +168,6 @@ const handleStartKm = (value) => {
   const clamped = clamp(value, 1, 999)
   validateField('coordStartKm', clamped, 1, 999)
   updateCoords('coordStartKm', clamped)
-}
-
-const handleStartPk = (value) => {
-  if (value === 0) {
-    fieldErrors.value.coordStartPk = 'Значение не может быть меньше 1'
-    updateCoords('coordStartPk', value)
-    notificationStore.showNotification('Значение не может быть меньше 1', 'error')
-    return
-  }
-  const clamped = clamp(value, 1, 10)
-  validateField('coordStartPk', clamped, 1, 10)
-  updateCoords('coordStartPk', clamped)
-}
-
-const handleStartZv = (value) => {
-  if (value === 0) {
-    fieldErrors.value.coordStartZv = 'Значение не может быть меньше 1'
-    updateCoords('coordStartZv', value)
-    notificationStore.showNotification('Значение не может быть меньше 1', 'error')
-    return
-  }
-  const clamped = clamp(value, 1, 4)
-  validateField('coordStartZv', clamped, 1, 4)
-  updateCoords('coordStartZv', clamped)
 }
 
 const handleEndKm = (value) => {
@@ -266,31 +182,10 @@ const handleEndKm = (value) => {
   updateCoords('coordEndKm', clamped)
 }
 
-const handleEndPk = (value) => {
-  if (value === 0) {
-    fieldErrors.value.coordEndPk = 'Значение не может быть меньше 1'
-    updateCoords('coordEndPk', value)
-    notificationStore.showNotification('Значение не может быть меньше 1', 'error')
-    return
-  }
-  const clamped = clamp(value, 1, 10)
-  validateField('coordEndPk', clamped, 1, 10)
-  updateCoords('coordEndPk', clamped)
-}
-
-const handleEndZv = (value) => {
-  if (value === 0) {
-    fieldErrors.value.coordEndZv = 'Значение не может быть меньше 1'
-    updateCoords('coordEndZv', value)
-    notificationStore.showNotification('Значение не может быть меньше 1', 'error')
-    return
-  }
-  const clamped = clamp(value, 1, 4)
-  validateField('coordEndZv', clamped, 1, 4)
-  updateCoords('coordEndZv', clamped)
-}
-
 const performValidation = () => {
+  // Всегда эмитим текущее состояние валидности
+  emit('invalidRange', isInvalid.value)
+
   // Не показываем уведомления при начальной загрузке
   if (isInitialMount.value) {
     return
@@ -313,6 +208,14 @@ const performValidation = () => {
   if (isInvalid.value) {
     notificationStore.showNotification('Начальная координата не может быть больше конечной координаты', 'error')
   }
+
+  if (isOutOfBounds.value) {
+    emit('out-of-bounds')
+    notificationStore.showNotification('Координаты выходят за пределы допустимого диапазона!', 'error')
+  } else {
+    // Сбрасываем флаг если координаты в пределах
+    emit('out-of-bounds', false)
+  }
 }
 
 const handleFocus = () => {
@@ -332,6 +235,13 @@ const handleBlur = () => {
 
 watch([startAbs, endAbs], () => {
   if (!isUserTyping.value) {
+    performValidation()
+  }
+})
+
+watch(() => props.objectBounds, () => {
+  if (!isUserTyping.value) {
+    shouldShowError.value = true
     performValidation()
   }
 })
@@ -362,11 +272,11 @@ onMounted(() => {
 
 /* Стили для обязательной звездочки */
 .required-asterisk {
-  color: #e53e3e; 
-  font-size: 14px; 
+  color: #e53e3e;
+  font-size: 14px;
   margin-left: 2px;
-  vertical-align: top; 
-  line-height: 1.2; 
+  vertical-align: top;
+  line-height: 1.2;
 }
 
 /* Стили для группы инпутов */
@@ -378,16 +288,13 @@ onMounted(() => {
 }
 
 .coordinate-group > * {
-  /* Уменьшаем min-width для размещения 6 полей */
   flex: 1;
-  min-width: 90px;
+  min-width: 152px;
 }
 
 @media (max-width: 768px) {
   .coordinate-group {
-    /* На мобильных устройствах делаем сетку 2x3 */
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    flex-direction: column;
     gap: 12px;
   }
 

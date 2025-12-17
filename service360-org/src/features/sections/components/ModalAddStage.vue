@@ -52,7 +52,8 @@ import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppNumberInput from '@/shared/ui/FormControls/AppNumberInput.vue'
 import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { loadSection } from '@/shared/api/sections/sectionService'
+import { loadSection, saveStage } from '@/shared/api/sections/sectionService'
+import { getUserData } from '@/shared/api/common/userCache'
 
 const emit = defineEmits(['close', 'refresh'])
 const notificationStore = useNotificationStore()
@@ -104,22 +105,33 @@ const saveData = async () => {
       return
     }
 
-    const payload = {
+    // Получаем текущую дату
+    const currentDate = new Date().toISOString().split('T')[0]
+
+    // Get user data for objUser and pvUser
+    const userData = await getUserData()
+
+    // Формируем данные для сохранения
+    const stageData = {
+      parent: form.value.section.value, // ID выбранного участка
       name: form.value.name,
-      section: form.value.section,
-      startKm: form.value.coordinates.coordStartKm,
-      startPk: form.value.coordinates.coordStartPk,
-      startLink: form.value.coordinates.coordStartZv,
-      endKm: form.value.coordinates.coordEndKm,
-      endPk: form.value.coordinates.coordEndPk,
-      endLink: form.value.coordinates.coordEndZv,
-      stageLength: form.value.stageLength
+      StartKm: form.value.coordinates.coordStartKm,
+      StartPicket: form.value.coordinates.coordStartPk,
+      StartLink: form.value.coordinates.coordStartZv,
+      FinishKm: form.value.coordinates.coordEndKm,
+      FinishPicket: form.value.coordinates.coordEndPk,
+      FinishLink: form.value.coordinates.coordEndZv,
+      StageLength: form.value.stageLength,
+      CreatedAt: currentDate,
+      UpdatedAt: currentDate,
+      objUser: userData?.id || null,
+      pvUser: userData?.pv || null
     }
 
-    console.log('Сохранение перегона:', payload)
+    console.log('Создание перегона:', stageData)
 
-    // TODO: Добавить реальный вызов API для сохранения
-    // await saveStage(payload)
+    // Вызываем API для создания (операция "ins")
+    await saveStage('ins', stageData)
 
     notificationStore.showNotification('Перегон успешно добавлен', 'success')
 

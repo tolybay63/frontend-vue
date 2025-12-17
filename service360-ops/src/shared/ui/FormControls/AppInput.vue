@@ -47,6 +47,7 @@ const updateValue = (newValue) => {
 .form-group {
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 label {
@@ -56,11 +57,26 @@ label {
 }
 
 .required-asterisk {
-  color: #e53e3e; 
-  font-size: 14px; 
-  font-weight: normal; 
+  color: #e53e3e;
+  font-size: 14px;
+  font-weight: normal;
   margin-left: 0px;
-  vertical-align: top; 
-  line-height: 1.2; 
+  vertical-align: top;
+  line-height: 1.2;
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .form-group {
+    min-width: 0; /* Позволяет сжиматься меньше content size */
+  }
+
+  label {
+    font-size: 13px;
+  }
+
+  .form-group :deep(.n-input) {
+    font-size: 16px; /* Предотвращает zoom на iOS */
+  }
 }
 </style>

@@ -77,6 +77,7 @@ const dateFormat = 'dd.MM.yyyy';
 .form-group {
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 label {
@@ -92,5 +93,20 @@ label {
   margin-left: 0px;
   vertical-align: top;
   line-height: 1.2;
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .form-group {
+    min-width: 0;
+  }
+
+  label {
+    font-size: 13px;
+  }
+
+  .form-group :deep(.n-input) {
+    font-size: 16px; /* Предотвращает zoom на iOS */
+  }
 }
 </style>

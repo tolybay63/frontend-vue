@@ -504,15 +504,26 @@ const formatDate = (dateStr) => {
   return `${day}.${month}.${year}`;
 };
 
-const formatCoordinates = (startKm, startPk, finishKm, finishPk) => {
-  const isPresent = (val) => val !== null && val !== undefined;
-  const start = isPresent(startKm) ? `${startKm}км ${startPk || 0}пк` : '';
-  const finish = isPresent(finishKm) ? `${finishKm}км ${finishPk || 0}пк` : '';
+const formatCoordinates = (startKm, startPk, startZv, finishKm, finishPk, finishZv) => {
+  const isPresent = (val) => val !== null && val !== undefined && val !== '';
 
-  if (start && finish) {
-    return `${start} - ${finish}`;
+  const createCoordPart = (km, pk, zv) => {
+    const parts = [];
+    if (isPresent(km)) parts.push(`${km}км`);
+    if (isPresent(pk)) parts.push(`${pk}пк`);
+    if (isPresent(zv)) parts.push(`${zv}зв`);
+    return parts.join(' ');
+  };
+
+  const startPart = createCoordPart(startKm, startPk, startZv);
+  const finishPart = createCoordPart(finishKm, finishPk, finishZv);
+
+  if (startPart && finishPart) {
+    return `${startPart} - ${finishPart}`;
+  } else if (startPart) {
+    return `${startPart}`;
   }
-  return start || finish || 'Координаты отсутствуют';
+  return 'Координаты отсутствуют';
 };
 
 const onTaskUpdated = () => {
@@ -540,7 +551,7 @@ const loadWorkLogData = async (id) => {
       section: data.nameLocationClsSection || '-',
       place: data.nameSection || '-',
       objectName: data.fullNameObject || '-',
-      coordinates: formatCoordinates(data.StartKm, data.StartPicket, data.FinishKm, data.FinishPicket),
+      coordinates: formatCoordinates(data.StartKm, data.StartPicket, data.StartLink, data.FinishKm, data.FinishPicket, data.FinishLink),
       volumeFact: data.ValueFact !== null ? data.ValueFact : '-',
       startDateFact: formatDate(data.FactDateStart),
       endDateFact: formatDate(data.FactDateEnd),

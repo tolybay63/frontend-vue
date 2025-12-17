@@ -10,7 +10,7 @@
   >
     <div class="form-section">
       <AppDropdown
-        class="col-span-2"
+        class="full-width-item"
         id="work"
         label="Работа"
         placeholder="Выберите работу"
@@ -26,9 +26,8 @@
           <h4 class="section-title">Объект</h4>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="object-grid">
           <AppDropdown
-            class="col-span-1"
             id="place"
             label="Место"
             placeholder="Выберите место"
@@ -39,7 +38,6 @@
             :required="true" />
 
           <AppDropdown
-            class="col-span-1"
             id="objectType"
             label="Тип объекта"
             placeholder="Выберите тип объекта"
@@ -50,7 +48,7 @@
             :required="true" />
 
           <AppDropdown
-            class="col-span-2"
+            class="full-width"
             id="object"
             label="Объект"
             placeholder="Выберите объект"
@@ -61,16 +59,13 @@
             :required="true" />
 
           <FullCoordinates
-            class="col-span-2"
+            class="full-width"
             v-model="coordinates"
-            :object-bounds="objectBounds"
             @update:modelValue="updateCoordinates"
-            @invalid-range="handleInvalidRange"
-            @out-of-bounds="handleOutOfBounds"
+            :out-of-bounds-error="isCoordinatesOutOfBounds"
             :required="true" />
 
           <AppDropdown
-            class="col-span-1"
             id="section"
             label="Участок"
             placeholder="Выберите участок"
@@ -81,7 +76,6 @@
             :required="true" />
 
           <AppDatePicker
-            class="col-span-1"
             id="plannedDate"
             label="Плановый срок завершения"
             placeholder="Выберите дату"
@@ -147,6 +141,7 @@ const coordinates = ref({
 })
 
 const objectBounds = ref(null)
+const isCoordinatesOutOfBounds = ref(false)
 
 const workOptions = ref([])
 const placeOptions = ref([])
@@ -191,31 +186,21 @@ const saveData = async () => {
       return
     }
 
-    // Проверка координат
-    if (
-      coordinates.value.coordStartKm === null || coordinates.value.coordStartKm === 0 ||
-      coordinates.value.coordStartPk === null || coordinates.value.coordStartPk === 0 ||
-      coordinates.value.coordStartZv === null || coordinates.value.coordStartZv === 0 ||
-      coordinates.value.coordEndKm === null || coordinates.value.coordEndKm === 0 ||
-      coordinates.value.coordEndPk === null || coordinates.value.coordEndPk === 0 ||
-      coordinates.value.coordEndZv === null || coordinates.value.coordEndZv === 0
-    ) {
-      notificationStore.showNotification('Необходимо заполнить все координаты', 'error')
-      return
-    }
-
-    const startAbs = coordinates.value.coordStartKm * 1000 + coordinates.value.coordStartPk * 100 + coordinates.value.coordStartZv * 25
-    const endAbs = coordinates.value.coordEndKm * 1000 + coordinates.value.coordEndPk * 100 + coordinates.value.coordEndZv * 25
-
-    if (startAbs > endAbs) {
-      notificationStore.showNotification('Начало не может быть больше конца', 'error')
-      return
-    }
+    // Проверка выхода за границы объекта (бизнес-логика)
+    const newStartCoordinates = coordinates.value.coordStartKm * 1000 + coordinates.value.coordStartPk * 100 + coordinates.value.coordStartZv * 25
+    const newFinishCoordinates = coordinates.value.coordEndKm * 1000 + coordinates.value.coordEndPk * 100 + coordinates.value.coordEndZv * 25
 
     if (objectBounds.value) {
-      const objStartAbs = objectBounds.value.startAbs
-      const objEndAbs = objectBounds.value.endAbs
-      if (startAbs < objStartAbs || endAbs > objEndAbs) {
+      const objectStartCoordinates = objectBounds.value.startAbs
+      const objectFinishCoordinates = objectBounds.value.endAbs
+
+      // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+      const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates
+
+      // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+      const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates
+
+      if (!isStartInBounds || !isFinishInBounds) {
         notificationStore.showNotification('Координаты не могут выходить за границы выбранного объекта', 'error')
         return
       }
@@ -262,10 +247,17 @@ const saveData = async () => {
     emit('save')
   } catch (e) {
     console.error('❌ Ошибка при сохранении:', e)
-    notificationStore.showNotification(
-      'Ошибка при сохранении: ' + (e.message || 'неизвестная ошибка'),
-      'error'
-    )
+    let errorMessage = 'Ошибка при сохранении';
+
+    if (e.response?.data?.error?.message) {
+      errorMessage = e.response.data.error.message;
+    } else if (e.response?.status === 500) {
+      errorMessage = 'Ошибка сервера. Попробуйте еще раз.';
+    } else if (e.message) {
+      errorMessage = e.message;
+    }
+
+    notificationStore.showNotification(errorMessage, 'error')
   }
 }
 
@@ -496,6 +488,30 @@ const onSectionChange = (selectedSectionId) => {
 const updateCoordinates = async (newCoordinates) => {
   coordinates.value = newCoordinates
 
+  // Проверка выхода за границы объекта (в реальном времени)
+  if (objectBounds.value) {
+    const newStartCoordinates = newCoordinates.coordStartKm * 1000 + newCoordinates.coordStartPk * 100 + newCoordinates.coordStartZv * 25
+    const newFinishCoordinates = newCoordinates.coordEndKm * 1000 + newCoordinates.coordEndPk * 100 + newCoordinates.coordEndZv * 25
+
+    const objectStartCoordinates = objectBounds.value.startAbs
+    const objectFinishCoordinates = objectBounds.value.endAbs
+
+    // Проверка: ObjectStartCoordinates <= NewStartCoordinates <= ObjectFinishCoordinates
+    const isStartInBounds = newStartCoordinates >= objectStartCoordinates && newStartCoordinates <= objectFinishCoordinates
+
+    // Проверка: ObjectStartCoordinates <= NewFinishCoordinates <= ObjectFinishCoordinates
+    const isFinishInBounds = newFinishCoordinates >= objectStartCoordinates && newFinishCoordinates <= objectFinishCoordinates
+
+    if (!isStartInBounds || !isFinishInBounds) {
+      isCoordinatesOutOfBounds.value = true
+      notificationStore.showNotification('Координаты не могут выходить за границы выбранного объекта', 'error')
+    } else {
+      isCoordinatesOutOfBounds.value = false
+    }
+  } else {
+    isCoordinatesOutOfBounds.value = false
+  }
+
   form.value.section = null
   selectedSectionData.value = null
   sectionOptions.value = []
@@ -503,16 +519,6 @@ const updateCoordinates = async (newCoordinates) => {
   if (form.value.work?.value) {
     await loadSections()
   }
-}
-
-const handleInvalidRange = (isInvalid) => {
-  if (isInvalid) {
-    notificationStore.showNotification('Начало не может быть больше конца', 'error')
-  }
-}
-
-const handleOutOfBounds = () => {
-  notificationStore.showNotification('Координаты выходят за границы выбранного объекта', 'error')
 }
 
 const populateFormFromRowData = () => {
@@ -633,7 +639,7 @@ onMounted(async () => {
 <style scoped>
 .form-section {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   padding: 0 32px 32px;
   background-color: #f9fafb;
@@ -650,8 +656,49 @@ onMounted(async () => {
   grid-column: span 2;
 }
 
+.full-width-item {
+  grid-column: span 2;
+}
+
 .object-header {
   position: relative;
   margin-bottom: 16px;
+}
+
+.object-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.full-width {
+  grid-column: span 2;
+}
+
+/* Tablet and Mobile styles */
+@media (max-width: 1024px) {
+  .form-section {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    padding: 0 16px 16px !important;
+  }
+
+  .col-span-2 {
+    grid-column: span 1 !important;
+  }
+
+  .full-width-item {
+    grid-column: span 1 !important;
+  }
+
+  .object-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .full-width {
+    grid-column: span 1 !important;
+  }
 }
 </style>

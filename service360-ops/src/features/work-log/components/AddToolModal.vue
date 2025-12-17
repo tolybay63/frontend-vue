@@ -361,27 +361,60 @@ const resetForm = () => {
   transform: none;
 }
 
-@media (max-width: 640px) {
+/* Tablet styles */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+
   .modal-container {
     max-width: 100%;
-    max-height: 90vh;
+    max-height: 92vh;
+  }
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-container {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 16px 16px 0 0;
   }
 
   .modal-header {
-    padding: 20px;
+    padding: 16px 20px;
+  }
+
+  .modal-title {
+    font-size: 18px;
   }
 
   .modal-body {
-    padding: 20px;
+    padding: 16px 20px;
   }
 
   .modal-footer {
     flex-direction: column-reverse;
     padding: 16px 20px;
+    gap: 10px;
   }
 
   .button {
     width: 100%;
+    padding: 12px 20px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    font-size: 13px;
   }
 }
 </style>

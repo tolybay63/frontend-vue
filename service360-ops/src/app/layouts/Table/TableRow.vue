@@ -1,8 +1,9 @@
 <template>
-  <tr 
-    class="data-row" 
+  <tr
+    class="data-row"
     :class="getRowClassFn(row)"
-    @dblclick="$emit('dblclick', row)"
+    @dblclick="handleDoubleClick"
+    @click="handleClick"
   >
     <td
       v-for="(col, i) in columns"
@@ -62,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import UiIcon from '@/shared/ui/UiIcon.vue';
 import TableRow from './TableRow.vue';
 
@@ -87,6 +88,35 @@ const hasChildren = computed(() => children.value.length > 0);
 const isExpanded = computed(() => props.expandedRows.includes(props.row.id));
 
 const emits = defineEmits(['dblclick']);
+
+// Поддержка мобильных устройств: два быстрых клика = double click
+const lastClickTime = ref(0);
+const clickTimeout = ref(null);
+
+const handleClick = (event) => {
+  const currentTime = new Date().getTime();
+  const timeDiff = currentTime - lastClickTime.value;
+
+  // Если клики произошли в течение 300ms, считаем это двойным кликом
+  if (timeDiff < 300 && timeDiff > 0) {
+    clearTimeout(clickTimeout.value);
+    emits('dblclick', props.row);
+    lastClickTime.value = 0; // Сбрасываем
+  } else {
+    lastClickTime.value = currentTime;
+    // Сбрасываем таймер после 300ms
+    clickTimeout.value = setTimeout(() => {
+      lastClickTime.value = 0;
+    }, 300);
+  }
+};
+
+const handleDoubleClick = () => {
+  // Обработка стандартного dblclick для десктопов
+  clearTimeout(clickTimeout.value);
+  lastClickTime.value = 0;
+  emits('dblclick', props.row);
+};
 
 const toggleExpand = () => {
   props.toggleRowExpand(props.row.id);

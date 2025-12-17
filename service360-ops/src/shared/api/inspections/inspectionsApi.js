@@ -5,14 +5,17 @@ const API_BASE_URL = import.meta.env.VITE_INSPECTIONS_URL;
 
 const loadWorkPlanInspectionUnfinished = async () => {
   try {
-    // Временная заглушка: используем 1071 вместо objLocation
-    const objLocation = 1071;
+    const objLocation = localStorage.getItem("objLocation");
+
+    if (!objLocation) {
+      throw new Error("objLocation не найден в localStorage");
+    }
 
     const response = await axios.post(
       API_BASE_URL,
       {
         method: "data/loadWorkPlanInspectionUnfinished",
-        params: [objLocation],
+        params: [parseInt(objLocation)],
       },
       {
         withCredentials: true,

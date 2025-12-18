@@ -9,7 +9,7 @@
     <div class="info-row secondary-info">
       <div class="info-item">
         <span class="label">Участок</span>
-        <span class="value">{{ section || 'Нет данных' }}</span>
+        <span class="value">{{ record?.nameLocationClsSection || section || 'Нет данных' }}</span>
       </div>
       <div class="info-item">
         <span class="label">Место</span>
@@ -17,7 +17,7 @@
       </div>
       <div class="info-item">
         <span class="label">Дата</span>
-        <span class="value">{{ formattedDate(date || record?.factDate) || 'Нет данных' }}</span>
+        <span class="value">{{ formattedDate(date || record?.factDate || record?.planDateEnd) || 'Нет данных' }}</span>
       </div>
     </div>
     <div class="info-row tertiary-info">

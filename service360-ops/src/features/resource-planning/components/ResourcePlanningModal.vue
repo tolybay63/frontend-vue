@@ -508,8 +508,8 @@ const saveData = async () => {
         PlanDateEnd: newRecord.value.dateEndPlan ? formatDateToISO(newRecord.value.dateEndPlan) : null,
         CreatedAt: today,
         UpdatedAt: today,
-        objLocationClsSection: props.sectionId,
-        pvLocationClsSection: parseInt(props.sectionPv),
+        objLocationClsSection: (props.record.objLocationClsSection !== null && props.record.objLocationClsSection !== undefined) ? props.record.objLocationClsSection : props.sectionId,
+        pvLocationClsSection: (props.record.pvLocationClsSection !== null && props.record.pvLocationClsSection !== undefined) ? parseInt(props.record.pvLocationClsSection) : parseInt(props.sectionPv),
       };
 
       const response = await saveTaskLogPlan(dataToSave);

@@ -127,6 +127,14 @@ const props = defineProps({
   getRowClassFn: {
     type: Function,
     default: () => ({}),
+  },
+  initialSortKey: {
+    type: [String, null],
+    default: 'id',
+  },
+  initialSortDirection: {
+    type: String,
+    default: 'asc',
   }
 });
 
@@ -144,8 +152,8 @@ const showEditModal = ref(false);
 const columnFilters = ref({});
 const openFilter = ref(null);
 
-const sortKey = ref('id');
-const sortDirection = ref('asc');
+const sortKey = ref(props.initialSortKey);
+const sortDirection = ref(props.initialSortDirection);
 
 const activeFilters = computed(() => {
   const active = {};
@@ -283,8 +291,8 @@ const handleSort = (key) => {
     if (sortDirection.value === 'asc') {
       sortDirection.value = 'desc';
     } else {
-      sortKey.value = 'id'; 
-      sortDirection.value = 'asc';
+      sortKey.value = props.initialSortKey;
+      sortDirection.value = props.initialSortDirection;
     }
   } else {
     sortKey.value = key;

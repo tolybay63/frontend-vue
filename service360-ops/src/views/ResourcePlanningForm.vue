@@ -35,20 +35,13 @@
           class="filter-item"
           :options="filteredDays"
           :disabled="!selectedMonth"
+          @update:value="onDayChange"
         />
-        <div class="action-buttons">
-          <MainButton
-            label="Показать план работ"
-            :loading="isGenerating"
-            @click="generatePlan"
-            class="generate-btn"
-          />
-        </div>
       </div>
     </div>
     <div class="table-section">
       <div class="table-header">
-        <h2>План работ на {{ formattedDate }}</h2>
+        <h2>План работ{{ formattedDate ? ' на ' + formattedDate : '' }}</h2>
         <div class="table-subheader">
           <p class="subtitle">
             Отображаются только незавершенные работы. Для детального просмотра дважды кликните по строке.
@@ -94,13 +87,11 @@ import { ref, computed, onMounted, h } from 'vue';
 import { useRouter } from 'vue-router';
 import { useNotificationStore } from '@/app/stores/notificationStore';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
-import { loadSections } from '@/shared/api/inspections/inspectionsApi';
-import { loadDateWorkPlanCorrectional, loadObjClsWorkPlanCorrectionalUnfinishedByDate } from '@/shared/api/repairs/repairApi';
+import { loadWorkPlanCorrectionalUnfinished } from '@/shared/api/repairs/repairApi';
 import { completeThePlanWork } from '@/shared/api/plans/planWorkApi';
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
 import BaseTable from '@/app/layouts/Table/BaseTable.vue';
 import BackButton from '@/shared/ui/BackButton.vue';
-import MainButton from '@/shared/ui/MainButton.vue';
 import UiButton from '@/shared/ui/UiButton.vue';
 import ResourcePlanningModal from '@/features/resource-planning/components/ResourcePlanningModal.vue';
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue';
@@ -108,14 +99,11 @@ import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue';
 const selectedSection = ref(null);
 const selectedMonth = ref(null);
 const selectedDay = ref(null);
-const isGenerating = ref(false);
 const isLoading = ref(false);
 const tableData = ref([]);
+const allRecords = ref([]); // Храним все загруженные записи
 const sections = ref([]);
-const sectionsData = ref([]);
 const months = ref([]);
-const days = ref([]);
-const allDatesData = ref([]); // Храним все даты
 const monthDropdownKey = ref(0);
 const dayDropdownKey = ref(0);
 const isWorkCardModalOpen = ref(false);
@@ -126,7 +114,7 @@ const router = useRouter();
 const notificationStore = useNotificationStore();
 
 const { hasPermission } = usePermissions();
-const canFinish = computed(() => hasPermission('plan:finish')); 
+const canFinish = computed(() => hasPermission('plan:finish'));
 
 const selectedDate = computed(() => {
   if (!selectedMonth.value || !selectedDay.value) return null;
@@ -136,38 +124,50 @@ const selectedDate = computed(() => {
 });
 
 const formattedDate = computed(() => {
-  if (!selectedDate.value) return '';
-  const date = new Date(selectedDate.value);
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  // Если выбран месяц и день - показываем полную дату
+  if (selectedDate.value) {
+    const date = new Date(selectedDate.value);
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
+  // Если выбран только месяц - показываем месяц и год
+  if (selectedMonth.value) {
+    const [year, month] = selectedMonth.value.split('-');
+    const date = new Date(year, parseInt(month) - 1, 1);
+    return date.toLocaleDateString('ru-RU', {
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
+  return '';
 });
 
 const selectedSectionName = computed(() => {
-  const section = sections.value.find((s) => s.value === selectedSection.value);
-  return section ? section.label : null;
+  return selectedSection.value || null;
 });
 
 // Вычисляемое свойство для фильтрации дней по выбранному месяцу
 const filteredDays = computed(() => {
-  if (!selectedMonth.value) return [];
-  
-  // Фильтруем даты, которые соответствуют выбранному месяцу
-  const daysForMonth = allDatesData.value
-    .filter(date => {
-      const [year, month] = date.split('-');
-      return `${year}-${month}` === selectedMonth.value;
-    })
-    .map(date => {
-      const [, , day] = date.split('-');
-      return day;
-    });
-  
-  // Убираем дубликаты и сортируем
-  const uniqueDays = [...new Set(daysForMonth)];
-  return uniqueDays
+  if (!selectedMonth.value || !selectedSection.value) return [];
+
+  // Фильтруем записи по участку и месяцу
+  const daysSet = new Set();
+  allRecords.value.forEach(record => {
+    if (record.nameLocationClsSection === selectedSection.value && record.PlanDateEnd) {
+      const [year, month, day] = record.PlanDateEnd.split('-');
+      if (`${year}-${month}` === selectedMonth.value) {
+        daysSet.add(day);
+      }
+    }
+  });
+
+  // Сортируем и форматируем дни
+  return Array.from(daysSet)
     .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
     .map((day) => ({
       value: day,
@@ -175,13 +175,11 @@ const filteredDays = computed(() => {
     }));
 });
 
-const getSelectedSectionData = () => {
-  if (!selectedSection.value) return { id: null, pv: null };
-  const section = sectionsData.value.find((s) => s.id === selectedSection.value);
-  return { id: section.id, pv: section.pv };
-};
-
-const selectedSectionPv = computed(() => getSelectedSectionData().pv);
+const selectedSectionPv = computed(() => {
+  if (!selectedSection.value) return null;
+  const record = allRecords.value.find(r => r.nameLocationClsSection === selectedSection.value);
+  return record ? record.pv : null;
+});
 
 const onRowDoubleClick = (row) => {
   selectedRecord.value = row;
@@ -215,11 +213,23 @@ const handleConfirmComplete = async () => {
 
     notificationStore.showNotification('Работа успешно завершена!', 'success');
 
-    await loadWorkPlanForDate();
+    await loadAllUnfinishedWork();
 
   } catch (error) {
-    const errorMessage = error.response?.data?.message || error.message || 'Не удалось завершить работу';
-    notificationStore.showNotification(`Не удалось завершить работу: ${errorMessage}`, 'error');
+    console.log('Error response:', error.response);
+    console.log('Error response data:', error.response?.data);
+
+    let errorMessage = 'Не удалось завершить работу';
+
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    notificationStore.showNotification(errorMessage, 'error');
   } finally {
     isConfirmModalOpen.value = false;
     recordToComplete.value = null;
@@ -227,6 +237,7 @@ const handleConfirmComplete = async () => {
 };
 
 const columns = [
+  { key: 'planDateEnd', label: 'ДАТА ОКОНЧАНИЯ' },
   { key: 'name', label: 'НАИМЕНОВАНИЕ РАБОТЫ' },
   { key: 'place', label: 'МЕСТО' },
   { key: 'objectType', label: 'ТИП ОБЪЕКТА' },
@@ -261,66 +272,98 @@ const goBack = () => {
   router.push({ name: 'ResourcePlanning' });
 };
 
-const loadWorkPlanForDate = async () => {
-  if (!selectedDate.value || !selectedSection.value) {
-    notificationStore.showNotification('Пожалуйста, выберите участок и дату.', 'error');
+const filterTableData = () => {
+  if (!selectedSection.value && !selectedMonth.value && !selectedDay.value) {
+    // Если ничего не выбрано, показываем все записи
+    tableData.value = allRecords.value.map(mapRecordToTableRow);
     return;
   }
 
+  let filtered = allRecords.value;
+
+  // Фильтруем по участку
+  if (selectedSection.value) {
+    filtered = filtered.filter(record => record.nameLocationClsSection === selectedSection.value);
+  }
+
+  // Фильтруем по дате
+  if (selectedMonth.value || selectedDay.value) {
+    filtered = filtered.filter(record => {
+      if (!record.PlanDateEnd) return false;
+
+      const [year, month, day] = record.PlanDateEnd.split('-');
+
+      if (selectedMonth.value && `${year}-${month}` !== selectedMonth.value) {
+        return false;
+      }
+
+      if (selectedDay.value && day !== selectedDay.value) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  tableData.value = filtered.map(mapRecordToTableRow);
+};
+
+const mapRecordToTableRow = (record) => ({
+  id: record.id,
+  pv: record.pv,
+  cls: record.cls,
+  planDateEnd: record.PlanDateEnd || 'Не указано',
+  name: record.fullNameWork || 'Без названия',
+  place: record.nameSection || 'Не указано',
+  objectType: record.nameClsObject || 'Неизвестно',
+  object: record.fullNameObject || 'Объект не указан',
+  objObject: record.objObject,
+  nameLocationClsSection: record.nameLocationClsSection,
+  objLocationClsSection: record.objLocationClsSection,
+  pvLocationClsSection: record.pvLocationClsSection,
+  coordinates: record.StartKm && record.FinishKm ? `${record.StartKm}км ${record.StartPicket || 0}пк ${record.StartLink || 0}зв – ${record.FinishKm}км ${record.FinishPicket || 0}пк ${record.FinishLink || 0}зв` : 'Координаты отсутствуют',
+  StartKm: record.StartKm,
+  StartPicket: record.StartPicket,
+  StartLink: record.StartLink,
+  FinishKm: record.FinishKm,
+  FinishPicket: record.FinishPicket,
+  FinishLink: record.FinishLink,
+});
+
+const loadAllUnfinishedWork = async () => {
   isLoading.value = true;
   try {
-    const sectionData = getSelectedSectionData();
-    if (!sectionData.pv) {
-      throw new Error('PV участка не найден');
-    }
+    const records = await loadWorkPlanCorrectionalUnfinished();
+    allRecords.value = records;
 
-    const records = await loadObjClsWorkPlanCorrectionalUnfinishedByDate(sectionData.id, sectionData.pv, selectedDate.value);
+    // Извлекаем уникальные участки из загруженных данных
+    const sectionsSet = new Set();
+    records.forEach(record => {
+      if (record.nameLocationClsSection) {
+        sectionsSet.add(record.nameLocationClsSection);
+      }
+    });
 
-    tableData.value = records.map((record) => ({
-      id: record.id,
-      pv: record.pv,
-      cls: record.cls,
-      name: record.fullNameWork || 'Без названия',
-      place: record.nameSection || 'Не указано',
-      objectType: record.nameClsObject || 'Неизвестно',
-      object: record.fullNameObject || 'Объект не указан',
-      objObject: record.objObject,
-      coordinates: record.StartKm && record.FinishKm ? `${record.StartKm}км ${record.StartPicket || 0}пк ${record.StartLink || 0}зв – ${record.FinishKm}км ${record.FinishPicket || 0}пк ${record.FinishLink || 0}зв` : 'Координаты отсутствуют',
-      StartKm: record.StartKm,
-      StartPicket: record.StartPicket,
-      StartLink: record.StartLink,
-      FinishKm: record.FinishKm,
-      FinishPicket: record.FinishPicket,
-      FinishLink: record.FinishLink,
+    sections.value = Array.from(sectionsSet).sort().map(section => ({
+      value: section,
+      label: section,
     }));
+
+    // Отображаем все записи по умолчанию
+    filterTableData();
   } catch (error) {
-    notificationStore.showNotification('Не удалось загрузить план работ', 'error');
+    notificationStore.showNotification('Не удалось загрузить незавершенные работы', 'error');
+    allRecords.value = [];
     tableData.value = [];
   } finally {
     isLoading.value = false;
   }
 };
 
-const loadSectionsData = async () => {
-  try {
-    const data = await loadSections();
-    sectionsData.value = data;
-    sections.value = data.map((section) => ({
-      value: section.id,
-      label: section.name,
-    }));
-  } catch (error) {
-    notificationStore.showNotification('Не удалось загрузить участки', 'error');
-  }
-};
 
-const loadWorkPlanDatesData = async () => {
-  const sectionData = getSelectedSectionData();
-
-  if (!sectionData.pv) {
+const updateMonthsForSection = () => {
+  if (!selectedSection.value) {
     months.value = [];
-    days.value = [];
-    allDatesData.value = [];
     selectedMonth.value = null;
     selectedDay.value = null;
     monthDropdownKey.value++;
@@ -328,86 +371,45 @@ const loadWorkPlanDatesData = async () => {
     return;
   }
 
-  try {
-    const dates = await loadDateWorkPlanCorrectional(sectionData.id, sectionData.pv);
-    
-    // Сохраняем все даты для последующей фильтрации
-    allDatesData.value = dates;
-
-    const monthsSet = new Set();
-
-    dates.forEach((date) => {
-      const [year, month] = date.split('-');
+  // Извлекаем уникальные месяцы для выбранного участка
+  const monthsSet = new Set();
+  allRecords.value.forEach(record => {
+    if (record.nameLocationClsSection === selectedSection.value && record.PlanDateEnd) {
+      const [year, month] = record.PlanDateEnd.split('-');
       monthsSet.add(`${year}-${month}`);
-    });
+    }
+  });
 
-    months.value = Array.from(monthsSet).map((month) => ({
+  months.value = Array.from(monthsSet)
+    .sort()
+    .map((month) => ({
       value: month,
-      label: new Date(`${month}-01`).toLocaleString('ru-RU', { month: 'long' }),
+      label: new Date(`${month}-01`).toLocaleString('ru-RU', { month: 'long', year: 'numeric' }),
     }));
 
-    // Не устанавливаем автоматически месяц и день
-    selectedMonth.value = null;
-    selectedDay.value = null;
-
-    monthDropdownKey.value++;
-    dayDropdownKey.value++;
-  } catch (error) {
-    notificationStore.showNotification('Не удалось загрузить даты для плана', 'error');
-    months.value = [];
-    days.value = [];
-    allDatesData.value = [];
-    selectedMonth.value = null;
-    selectedDay.value = null;
-    monthDropdownKey.value++;
-    dayDropdownKey.value++;
-  }
-};
-
-const onSectionChange = async (newSectionId) => {
-  if (newSectionId) {
-    selectedMonth.value = null;
-    selectedDay.value = null;
-    months.value = [];
-    days.value = [];
-    allDatesData.value = [];
-    monthDropdownKey.value++;
-    dayDropdownKey.value++;
-
-    await loadWorkPlanDatesData();
-  } else {
-    months.value = [];
-    days.value = [];
-    allDatesData.value = [];
-    selectedMonth.value = null;
-    selectedDay.value = null;
-    tableData.value = [];
-    monthDropdownKey.value++;
-    dayDropdownKey.value++;
-  }
-};
-
-const onMonthChange = (newMonth) => {
-  // Сбрасываем выбранный день при изменении месяца
+  selectedMonth.value = null;
   selectedDay.value = null;
+  monthDropdownKey.value++;
   dayDropdownKey.value++;
 };
 
-const generatePlan = () => {
-  if (isGenerating.value) return; 
-  
-  if (!selectedDate.value) {
-    notificationStore.showNotification('Пожалуйста, выберите корректную дату.', 'error');
-    return;
-  }
-  isGenerating.value = true;
-  loadWorkPlanForDate().finally(() => {
-    isGenerating.value = false;
-  });
+const onSectionChange = () => {
+  updateMonthsForSection();
+  filterTableData();
+};
+
+const onMonthChange = () => {
+  selectedDay.value = null;
+  dayDropdownKey.value++;
+  filterTableData();
+};
+
+const onDayChange = () => {
+  filterTableData();
 };
 
 onMounted(async () => {
-  await loadSectionsData();
+  await loadAllUnfinishedWork();
 });
 
 </script>
@@ -489,7 +491,7 @@ onMounted(async () => {
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   /* Added min-height to ensure flex layout respects the child's (BaseTable's) max-height */
-  min-height: 0; 
+  min-height: 0;
   flex-grow: 1; /* Allows the table section to take up remaining vertical space */
   display: flex;
   flex-direction: column;
@@ -529,5 +531,108 @@ onMounted(async () => {
   color: #4a5568;
   font-weight: 500;
   white-space: nowrap;
+}
+
+/* Tablet styles */
+@media (max-width: 1024px) {
+  .plan-form-page {
+    padding: 16px;
+  }
+
+  .header h1 {
+    font-size: 18px;
+  }
+
+  .filters-section {
+    padding: 20px;
+  }
+
+  .filter-row {
+    gap: 16px;
+  }
+
+  .filter-item {
+    min-width: 200px;
+  }
+
+  .table-section {
+    padding: 20px;
+  }
+
+  .table-header h2 {
+    font-size: 16px;
+  }
+
+  .table-subheader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .total-count {
+    font-size: 13px;
+  }
+}
+
+/* Mobile styles */
+@media (max-width: 640px) {
+  .plan-form-page {
+    padding: 12px;
+  }
+
+  .header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .header h1 {
+    font-size: 16px;
+  }
+
+  .filters-section {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .filter-item {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-section {
+    padding: 16px;
+    overflow-x: auto;
+  }
+
+  .table-header {
+    margin-bottom: 16px;
+  }
+
+  .table-header h2 {
+    font-size: 15px;
+  }
+
+  .table-subheader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .subtitle {
+    font-size: 12px;
+  }
+
+  .total-count {
+    font-size: 12px;
+  }
 }
 </style>

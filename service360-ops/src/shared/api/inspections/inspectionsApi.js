@@ -14,8 +14,8 @@ const loadWorkPlanInspectionUnfinished = async () => {
     const response = await axios.post(
       API_BASE_URL,
       {
-        method: "data/loadWorkPlanInspectionUnfinished",
-        params: [parseInt(objLocation)],
+        method: "data/loadWorkPlanUnfinished",
+        params: [parseInt(objLocation), "Cls_WorkPlanInspection"],
       },
       {
         withCredentials: true,

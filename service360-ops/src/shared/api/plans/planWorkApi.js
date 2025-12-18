@@ -113,7 +113,8 @@ const completeThePlanWork = async (id, cls, date) => {
     }
   } catch (error) {
     console.error('Ошибка завершения работы:', error);
-    throw new Error(error.response?.data?.message || error.message || 'Не удалось завершить работу');
+    // Пробрасываем оригинальную ошибку, чтобы сохранить response.data
+    throw error;
   }
 };
 

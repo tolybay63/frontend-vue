@@ -3,6 +3,32 @@ import axios from "axios";
 const API_REPAIR_URL = import.meta.env.VITE_REPAIR_URL;
 const API_OBJECT_URL = import.meta.env.VITE_OBJECT_URL;
 const API_NSI_URL = import.meta.env.VITE_NSI_URL;
+const API_INSPECTION_URL = import.meta.env.VITE_INSPECTIONS_URL;
+
+export async function loadWorkPlanCorrectionalUnfinished() {
+  try {
+    const objLocation = localStorage.getItem("objLocation");
+
+    if (!objLocation) {
+      throw new Error("objLocation не найден в localStorage");
+    }
+
+    const response = await axios.post(
+      API_INSPECTION_URL,
+      {
+        method: "data/loadWorkPlanUnfinished",
+        params: [parseInt(objLocation), "Cls_WorkPlanCorrectional"],
+      },
+      {
+        withCredentials: true,
+      }
+    );
+
+    return response.data.result?.records || [];
+  } catch (error) {
+    throw error;
+  }
+}
 
 export async function loadPlanCorrectional(date = "2025-07-30", periodType = 11) {
   const objLocation = localStorage.getItem("objLocation");

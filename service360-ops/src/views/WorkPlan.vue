@@ -160,8 +160,20 @@ const handleConfirmComplete = async () => {
     handleTableUpdate();
 
   } catch (error) {
-    const errorMessage = error.response?.data?.message || error.message || 'Не удалось завершить работу';
-    notificationStore.showNotification(`Не удалось завершить работу: ${errorMessage}`, 'error');
+    console.log('Error response:', error.response);
+    console.log('Error response data:', error.response?.data);
+
+    let errorMessage = 'Не удалось завершить работу';
+
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    notificationStore.showNotification(errorMessage, 'error');
   } finally {
     isConfirmModalOpen.value = false;
     recordToComplete.value = null;

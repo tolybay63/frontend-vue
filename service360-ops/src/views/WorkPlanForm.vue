@@ -216,8 +216,20 @@ const handleConfirmComplete = async () => {
     await loadAllUnfinishedWork();
 
   } catch (error) {
-    const errorMessage = error.response?.data?.message || error.message || 'Не удалось завершить работу';
-    notificationStore.showNotification(`Не удалось завершить работу: ${errorMessage}`, 'error');
+    console.log('Error response:', error.response);
+    console.log('Error response data:', error.response?.data);
+
+    let errorMessage = 'Не удалось завершить работу';
+
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    notificationStore.showNotification(errorMessage, 'error');
   } finally {
     isConfirmModalOpen.value = false;
     recordToComplete.value = null;
@@ -306,6 +318,9 @@ const mapRecordToTableRow = (record) => ({
   objectType: record.nameClsObject || 'Неизвестно',
   object: record.fullNameObject || 'Объект не указан',
   objObject: record.objObject,
+  nameLocationClsSection: record.nameLocationClsSection,
+  objLocationClsSection: record.objLocationClsSection,
+  pvLocationClsSection: record.pvLocationClsSection,
   coordinates: record.StartKm && record.FinishKm ? `${record.StartKm}км ${record.StartPicket || 0}пк ${record.StartLink || 0}зв – ${record.FinishKm}км ${record.FinishPicket || 0}пк ${record.FinishLink || 0}зв` : 'Координаты отсутствуют',
   StartKm: record.StartKm,
   StartPicket: record.StartPicket,

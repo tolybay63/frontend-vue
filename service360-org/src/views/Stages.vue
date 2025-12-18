@@ -6,6 +6,7 @@
     :actions="tableActions"
     :limit="limit"
     :loadFn="loadStage"
+    :initial-sort-key="null"
     @row-dblclick="onRowDoubleClick"
   >
   </TableWrapper>

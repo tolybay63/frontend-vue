@@ -135,7 +135,7 @@
                       :required="true" />
                       
                     <AppNumberInput
-                      label="Часы"
+                      label="Минуты"
                       :id="`personnel-hours-input-${index}`"
                       v-model.number="personnel.hours"
                       placeholder="Введите часы"
@@ -145,7 +145,7 @@
               </div>
               
               <div class="col-span-2 add-object-btn-wrapper">
-                <UiButton text="Добавить еще Должность" icon="Plus" :loading="isAddingObject" @click="addNewPersonnelRecord" />
+                <UiButton text="Добавить должность" icon="Plus" :loading="isAddingObject" @click="addNewPersonnelRecord" />
               </div>
 
             </div>
@@ -179,7 +179,7 @@
                       :required="true" />
                       
                     <AppNumberInput
-                      label="Часы"
+                      label="Минуты"
                       :id="`equipment-hours-input-${index}`"
                       v-model.number="equipment.hours"
                       placeholder="Введите часы"
@@ -189,7 +189,7 @@
               </div>
               
               <div class="col-span-2 add-object-btn-wrapper">
-                <UiButton text="Добавить еще Технику" icon="Plus" :loading="isAddingObject" @click="addNewEquipmentRecord" />
+                <UiButton text="Добавить технику" icon="Plus" :loading="isAddingObject" @click="addNewEquipmentRecord" />
               </div>
 
             </div>

@@ -14,7 +14,9 @@
         <thead>
           <tr>
             <th v-if="isPerformer || isTool || isEquipment" class="expand-column"></th>
-            <th class="name-column">Наименование</th>
+            <th class="name-column">
+              {{ isPerformer ? 'Должность' : isTool ? 'Тип Инструмента' : isEquipment ? 'Тип Техники' : 'Наименование' }}
+            </th>
             <th v-if="!isPerformer && !isTool && !isEquipment" class="unit-column">Ед. измерения</th>
             <th v-if="isPerformer" class="count-column">Количество человек</th>
             <th v-if="isTool || isEquipment" class="count-column">Количество</th>
@@ -119,15 +121,15 @@
                         <div class="performer-field">
                           <AppInput
                             :id="`performer-name-${index}-${pIndex}`"
-                            label="ФИО исполнителя"
+                            label="Исполнитель"
                             :modelValue="performer.fullName"
                             disabled
-                            placeholder="ФИО исполнителя"
+                            placeholder="Исполнитель"
                           />
                         </div>
                         <div class="performer-field">
-                          <label>Часы работы</label>
                           <AppNumberInput
+                            label="Затраченное время, минуты"
                             :modelValue="performer.time"
                             :min="0"
                             placeholder="0"
@@ -192,15 +194,15 @@
                         <div class="performer-field">
                           <AppInput
                             :id="`resource-name-${index}-${dIndex}`"
-                            label="Инвентарный номер"
+                            label="Инструмент"
                             :modelValue="detail.inventoryNumber || detail.name"
                             disabled
-                            placeholder="Инвентарный номер"
+                            placeholder="Инструмент"
                           />
                         </div>
                         <div class="performer-field">
-                          <label>Количество</label>
                           <AppNumberInput
+                            label="Время использования, минуты"
                             :modelValue="detail.quantity"
                             :min="0"
                             placeholder="0"
@@ -265,15 +267,15 @@
                         <div class="performer-field">
                           <AppInput
                             :id="`resource-name-${index}-${dIndex}`"
-                            label="Гос. номер / ID"
+                            label="Техника"
                             :modelValue="detail.inventoryNumber || detail.name"
                             disabled
-                            placeholder="Гос. номер"
+                            placeholder="Техника"
                           />
                         </div>
                         <div class="performer-field">
-                          <label>Часы работы</label>
                           <AppNumberInput
+                            label="Время использования, минуты"
                             :modelValue="detail.time"
                             :min="0"
                             placeholder="0"
@@ -1319,6 +1321,10 @@ td.actions-column {
 /* Показываем лейблы в формах исполнителей */
 .performer-fields :deep(.form-group) {
   margin: 0;
+}
+
+.performer-fields :deep(label) {
+  display: block;
 }
 
 .performer-fields :deep(input),

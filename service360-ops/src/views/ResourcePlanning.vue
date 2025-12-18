@@ -236,11 +236,11 @@ const formatResources = (taskLogId, resourceRecords) => {
       } else if (resource.fvTypEquipment) {
         const quantity = resource.Quantity || 0;
         const value = resource.Value || 0;
-        equipment.push(`${resource.nameTypEquipment}, ${quantity} ед., ${value} час;`);
+        equipment.push(`${resource.nameTypEquipment}, ${quantity} ед., ${value} мин;`);
       } else if (resource.fvPosition) {
         const quantity = resource.Quantity || 0;
         const value = resource.Value || 0;
-        performers.push(`${resource.namePosition}, ${quantity} чел., ${value} час;`);
+        performers.push(`${resource.namePosition}, ${quantity} чел., ${value} мин;`);
       }
     }
   }

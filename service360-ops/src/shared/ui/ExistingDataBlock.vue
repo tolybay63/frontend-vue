@@ -28,14 +28,14 @@
 
           <template v-else-if="dataType === 'personal' || dataType === 'personnel'">
             <span class="data-cell position-cell">ДОЛЖНОСТЬ</span>
-            <span class="data-cell quantity-cell">КОЛИЧЕСТВО</span>
-            <span class="data-cell hours-cell">ЧАСЫ</span>
+            <span class="data-cell quantity-cell">КОЛИЧЕСТВО ЧЕЛОВЕК</span>
+            <span class="data-cell hours-cell">ВРЕМЯ, МИН</span>
           </template>
 
           <template v-else-if="dataType === 'equipment'">
             <span class="data-cell equipment-type-cell">ТИП ТЕХНИКИ</span>
             <span class="data-cell quantity-cell">КОЛИЧЕСТВО</span>
-            <span class="data-cell hours-cell">ЧАСЫ</span>
+            <span class="data-cell hours-cell">ВРЕМЯ, МИН</span>
           </template>
 
           <template v-else-if="dataType === 'tools'">
@@ -249,7 +249,8 @@ const getHeaderClass = () => {
 
 /* PERSONNEL Header */
 .data-row.personnel-header {
-  grid-template-columns: 60px 220px 140px 100px; /* № | ДОЛЖНОСТЬ | КОЛ-ВО | ЧАСЫ */
+  grid-template-columns: 60px 200px 180px 100px; /* № | ДОЛЖНОСТЬ | КОЛ-ВО | ЧАСЫ */
+  gap: 12px;
 }
 
 /* EQUIPMENT Header */
@@ -319,7 +320,8 @@ const getHeaderClass = () => {
 
 /* PERSONAL Data Row */
 .data-row:not(.header-row):not(.empty-row):has(.position-cell) {
-  grid-template-columns: 60px 220px 140px 100px; /* № | ДОЛЖНОСТЬ | КОЛИЧЕСТВО | ЧАСЫ */
+  grid-template-columns: 60px 200px 180px 100px; /* № | ДОЛЖНОСТЬ | КОЛИЧЕСТВО | ЧАСЫ */
+  gap: 12px;
   .position-cell, .quantity-cell, .hours-cell { display: block; }
 }
 

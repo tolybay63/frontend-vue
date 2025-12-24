@@ -32,8 +32,8 @@
       </div>
     </header>
 
-    <div v-if="activePageFilters.length" class="page-filters">
-      <div class="page-filters__fields">
+    <div v-if="hasResolvedPageFilters" class="page-filters">
+      <div v-if="activePageFilters.length" class="page-filters__fields">
         <div
           v-for="filter in activePageFilters"
           :key="filter.key"
@@ -63,6 +63,7 @@
           />
         </div>
       </div>
+      <p v-else class="muted">Нет доступных фильтров для этой вкладки.</p>
       <div class="page-filters__actions">
         <button
           class="btn-outline btn-sm"
@@ -142,7 +143,7 @@
               <FilterRangeControl
                 :model-value="containerFilterValues[container.id][filter.key]"
                 :range="containerFilterRanges[container.id]?.[filter.key]"
-                :options="fieldOptions(filter)"
+                :options="containerFilterOptions(container.id, filter)"
                 :supports-range="
                   filterSupportsRange(filter) && !isValuesOnlyFilter(filter)
                 "
@@ -323,7 +324,7 @@
                     >
                       <div class="th-content">
                         <span class="column-field-value">{{
-                          column.label
+                          resolveColumnHeaderLabel(column)
                         }}</span>
                         <span
                           class="resize-handle"
@@ -372,7 +373,7 @@
                           }}
                         </button>
                         <div class="row-content">
-                          <span>{{ row.label }}</span>
+                          <span>{{ resolveRowHeaderLabel(row) }}</span>
                         </div>
                       </div>
                       <span
@@ -601,10 +602,14 @@ import {
   resolveCommonContainerFieldKeys,
 } from '@/shared/stores/pageBuilder'
 import { useAuthStore } from '@/shared/stores/auth'
-import { fetchPlanRecords } from '@/shared/api/plan'
-import { fetchParameterRecords } from '@/shared/api/parameter'
-import { sendDataSourceRequest } from '@/shared/api/dataSource'
-import { loadReportSources } from '@/shared/api/report'
+import { fetchRemoteRecords } from '@/shared/services/dataSources'
+import {
+  fetchBackendFilters,
+  fetchBackendDetails,
+  fetchBackendView,
+  isPivotBackendEnabled,
+  normalizeBackendView,
+} from '@/shared/services/reportViewBackend'
 import ReportChart from '@/components/ReportChart.vue'
 import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import {
@@ -624,26 +629,28 @@ import {
 } from '@/shared/lib/conditionalFormatting'
 import FilterRangeControl from '@/components/FilterRangeControl.vue'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
-import {
-  normalizeJoinList,
-  mergeJoinedRecords,
-  fetchJoinPayload,
-  parseJoinConfig,
-} from '@/shared/lib/sourceJoins.js'
 import { defaultLayoutSettings } from '@/shared/lib/layoutMeta'
-import {
-  canUserAccessPage,
-  isPagePrivate,
-  matchUserAccess,
-  readStoredUserMeta,
-  resolveUserMeta,
-} from '@/shared/lib/pageAccess'
+import { canUserAccessPage, readStoredUserMeta, resolveUserMeta } from '@/shared/lib/pageAccess'
 const route = useRoute()
 const router = useRouter()
 const store = usePageBuilderStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
 const authStore = useAuthStore()
-const pageId = computed(() => route.params.pageId)
+const props = defineProps({
+  pageId: {
+    type: [String, Number],
+    default: '',
+  },
+})
+const pageId = computed(() => {
+  const propValue = props.pageId
+  if (propValue !== null && typeof propValue !== 'undefined') {
+    const normalized = String(propValue).trim()
+    if (normalized) return normalized
+  }
+  const routeValue = route.params.pageId
+  return routeValue != null ? String(routeValue) : ''
+})
 const page = computed(() => store.getPageById(pageId.value))
 const pageContainers = computed(
   () => store.pageContainers[pageId.value]?.items || [],
@@ -652,9 +659,9 @@ const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
 const dictionaryLabelsLower = computed(
   () => fieldDictionaryStore.labelMapLower || {},
 )
-const remoteSourceCatalog = reactive(new Map())
-const remoteSourcesLoaded = ref(false)
-const remoteSourcesLoading = ref(false)
+const pivotBackendEnabled = isPivotBackendEnabled()
+const debugLogsEnabled =
+  String(import.meta.env.VITE_DEBUG_LOGS || '').toLowerCase() === 'true'
 
 onMounted(async () => {
   await Promise.all([
@@ -666,18 +673,22 @@ onMounted(async () => {
   if (pageId.value) {
     await store.fetchPageContainers(pageId.value, true)
   }
+  resetTabFilterState()
+  refreshContainers()
 })
 
 watch(
   () => pageId.value,
   async (next) => {
     if (next) {
+      resetTabFilterState()
       await Promise.all([
         store.fetchPages(true),
         store.fetchTemplates(true),
         store.fetchPrivacyOptions(),
       ])
       await store.fetchPageContainers(next, true)
+      refreshContainers()
     }
   },
 )
@@ -728,6 +739,23 @@ watch(
   },
   { immediate: true },
 )
+watch(
+  () => activeTab.value,
+  (next, prev) => {
+    if (prev != null && prev !== next) {
+      persistTabFilterState(prev)
+    }
+    restoreTabFilterState(next)
+    ensurePageFilters(resolvedPageFilterKeys.value)
+    if (pivotBackendEnabled) {
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
+    refreshVisibleContainers()
+  },
+)
 const layoutStyle = computed(() => {
   const template = `repeat(${layoutSettings.value.columns}, minmax(0, 1fr))`
   return {
@@ -738,6 +766,8 @@ const layoutStyle = computed(() => {
 const containerStates = reactive({})
 const containerFilterValues = reactive({})
 const containerFilterRanges = reactive({})
+const availablePageFilterValues = reactive({})
+const availableContainerFilterValues = reactive({})
 const containerRefreshTimers = reactive({})
 const containerTableSizing = reactive({})
 const containerRowCollapse = reactive({})
@@ -754,7 +784,8 @@ const detailDialog = reactive({
   columnLabel: '',
   metricLabel: '',
 })
-const dataCache = reactive({})
+let detailDialogRequestId = 0
+let detailDialogAbortController = null
 const defaultColumnWidth = 150
 const defaultRowHeight = 48
 const defaultRowHeaderWidth = 200
@@ -768,28 +799,65 @@ const chartPalette = [
   '#8b5cf6',
 ]
 const FILTER_META_VALUE_LIMIT = 20
+const BACKEND_FILTERS_DEBOUNCE_MS = 200
 const EMPTY_SET = new Set()
+let backendFiltersTimer = null
+let backendFiltersAbortController = null
+let backendFiltersInFlightSignature = ''
+let backendFiltersInFlightScope = ''
+let lastTabFilterKeysSignature = ''
+const backendFiltersInFlightContainers = new Map()
+let backendFiltersPendingScope = ''
+let backendFiltersPageSignature = ''
+const backendFiltersPendingContainers = new Set()
+const backendFiltersContainerSignatures = new Map()
+const backendFiltersByContainer = {}
+const backendFilterMetaOverrides = reactive({})
 const pageFilterValues = reactive({})
 const pageFilterRanges = reactive({})
+const pageFilterValuesByTab = reactive({})
+const pageFilterRangesByTab = reactive({})
 const commonFilterKeys = computed(() =>
-  resolveCommonContainerFieldKeys(pageContainers.value, store.templates),
+  resolveCommonContainerFieldKeys(visibleContainers.value, store.templates),
+)
+const resolvedPageFilterKeys = computed(() => resolvePageFilterKeys())
+const hasResolvedPageFilters = computed(
+  () => resolvedPageFilterKeys.value.length > 0,
 )
 const globalFieldMetaMap = computed(() => buildGlobalFieldMetaMap())
 const pageFilterOptions = computed(() =>
-  commonFilterKeys.value.map((key) => {
+  resolvedPageFilterKeys.value.map((key) => {
     const descriptor = globalFieldMetaMap.value.get(key) || {}
+    const metaOverride = backendFilterMetaOverrides[key] || {}
+    const backendOptions = availablePageFilterValues[key]
+    const hasOptions =
+      pivotBackendEnabled &&
+      Array.isArray(backendOptions) &&
+      backendOptions.length > 0
     const hasRange = globalFilterRangeDefaults.value.has(key)
-    const modePreference = normalizePreferredMode(
-      globalFilterModeMap.value.get(key),
-    )
-    const preferredMode = modePreference || (hasRange ? 'range' : '')
+    const modePreference = hasOptions
+      ? 'values'
+      : normalizePreferredMode(metaOverride.mode) ||
+        normalizePreferredMode(globalFilterModeMap.value.get(key))
+    const preferredMode = modePreference || (!hasOptions && hasRange ? 'range' : '')
     const dateMeta = parseDatePartKey(key)
+    const metaType =
+      metaOverride.type || descriptor.type || (dateMeta ? 'string' : '')
+    const rangeAllowed = !hasOptions && (modePreference === 'range' || hasRange)
+    if (debugLogsEnabled && pivotBackendEnabled) {
+      console.debug('filter ui mode', key, {
+        metaType,
+        hasOptions,
+        mode: preferredMode || (rangeAllowed ? 'range' : 'values'),
+      })
+    }
     return {
       key,
       label: resolveGlobalFilterLabel(key, descriptor),
-      type: descriptor.type || (dateMeta ? 'string' : ''),
-      rangeOnly: preferredMode === 'range',
+      type: metaType,
+      rangeOnly: !hasOptions && preferredMode === 'range',
       preferredMode,
+      rangeAllowed,
     }
   }),
 )
@@ -829,7 +897,7 @@ const hasActivePageFilters = computed(() =>
   }),
 )
 const activePageFilterKeySet = computed(
-  () => new Set((page.value?.filters || []).filter(Boolean)),
+  () => new Set(activePageFilters.value.map((filter) => filter.key)),
 )
 const globalFilterValueMap = computed(() => buildGlobalFilterValueMap())
 const globalFilterRangeDefaults = computed(() => buildGlobalFilterRangeMap())
@@ -838,29 +906,6 @@ const currentUserMeta = computed(() => {
   const personal = resolveUserMeta(authStore.personalInfo)
   if (personal) return personal
   return readStoredUserMeta()
-})
-const currentObjUser = computed(() => currentUserMeta.value?.objUser ?? null)
-const currentPvUser = computed(() => currentUserMeta.value?.pvUser ?? null)
-const isPrivatePage = computed(() => isPagePrivate(page.value))
-const isPageAuthor = computed(() =>
-  matchUserAccess(
-    currentObjUser.value,
-    currentPvUser.value,
-    page.value?.objUser,
-    page.value?.pvUser,
-  ),
-)
-const isWhitelistedUser = computed(() => {
-  const list = page.value?.privacy?.users
-  if (!Array.isArray(list)) return false
-  return list.some((user) =>
-    matchUserAccess(
-      currentObjUser.value,
-      currentPvUser.value,
-      user?.id,
-      user?.pv,
-    ),
-  )
 })
 const canViewPage = computed(() => canUserAccessPage(page.value, currentUserMeta.value))
 let refreshTimer = null
@@ -887,6 +932,8 @@ if (!containerStates[id]) {
     view: null,
     chart: null,
     signature: '',
+    inFlightSignature: '',
+    viewAbortController: null,
     meta: {
       rowTotalsAllowed: new Set(),
       columnTotalsAllowed: new Set(),
@@ -983,6 +1030,72 @@ function ensurePageFilters(keys = []) {
   })
 }
 
+function normalizeTabKey(tabId) {
+  return String(tabId || 1)
+}
+
+function cloneFilterValuesStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, values]) => {
+    acc[key] = Array.isArray(values) ? [...values] : []
+    return acc
+  }, {})
+}
+
+function cloneFilterRangesStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      acc[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
+    }
+    return acc
+  }, {})
+}
+
+function replaceFilterValuesStore(next = {}) {
+  Object.keys(pageFilterValues).forEach((key) => {
+    delete pageFilterValues[key]
+  })
+  Object.entries(next || {}).forEach(([key, values]) => {
+    pageFilterValues[key] = Array.isArray(values) ? [...values] : []
+  })
+}
+
+function replaceFilterRangesStore(next = {}) {
+  Object.keys(pageFilterRanges).forEach((key) => {
+    delete pageFilterRanges[key]
+  })
+  Object.entries(next || {}).forEach(([key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      pageFilterRanges[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
+    }
+  })
+}
+
+function persistTabFilterState(tabId) {
+  const key = normalizeTabKey(tabId)
+  pageFilterValuesByTab[key] = cloneFilterValuesStore(pageFilterValues)
+  pageFilterRangesByTab[key] = cloneFilterRangesStore(pageFilterRanges)
+}
+
+function restoreTabFilterState(tabId) {
+  const key = normalizeTabKey(tabId)
+  replaceFilterValuesStore(pageFilterValuesByTab[key] || {})
+  replaceFilterRangesStore(pageFilterRangesByTab[key] || {})
+}
+
+function resetTabFilterState() {
+  Object.keys(pageFilterValuesByTab).forEach((key) => {
+    delete pageFilterValuesByTab[key]
+  })
+  Object.keys(pageFilterRangesByTab).forEach((key) => {
+    delete pageFilterRangesByTab[key]
+  })
+  replaceFilterValuesStore({})
+  replaceFilterRangesStore({})
+  lastTabFilterKeysSignature = ''
+}
+
 function templateFilters(container) {
   const tpl = template(container.templateId)
   if (!tpl) return []
@@ -991,13 +1104,34 @@ function templateFilters(container) {
   const rangeStore = tpl.snapshot?.filterRanges || {}
   const filtersMeta = (tpl.snapshot?.filtersMeta || []).map((meta) => {
     const range = sanitizeRange(rangeStore?.[meta.key])
-    const preferredMode =
-      normalizePreferredMode(meta?.mode) || (range ? 'range' : '')
+    const metaOverride = backendFilterMetaOverrides[meta.key] || {}
+    const availableOptions =
+      availableContainerFilterValues[container.id]?.[meta.key]
+    const hasOptions =
+      pivotBackendEnabled &&
+      Array.isArray(availableOptions) &&
+      availableOptions.length > 0
+    const preferredMode = hasOptions
+      ? 'values'
+      : normalizePreferredMode(metaOverride.mode) ||
+        normalizePreferredMode(meta?.mode) ||
+        (range ? 'range' : '')
+    const rangeAllowed =
+      !hasOptions && (preferredMode === 'range' || Boolean(range))
+    const metaType = metaOverride.type || fieldMeta?.[meta.key]?.type || ''
+    if (debugLogsEnabled && pivotBackendEnabled) {
+      console.debug('filter ui mode', meta.key, {
+        metaType,
+        hasOptions,
+        mode: preferredMode || (rangeAllowed ? 'range' : 'values'),
+      })
+    }
     return {
       ...meta,
-      type: fieldMeta?.[meta.key]?.type || '',
-      rangeOnly: preferredMode === 'range',
+      type: metaType,
+      rangeOnly: !hasOptions && preferredMode === 'range',
       preferredMode,
+      rangeAllowed,
     }
   })
   const excluded = activePageFilterKeySet.value
@@ -1033,16 +1167,96 @@ function ensureContainerFilters(containerId, tpl) {
   })
 }
 
-function fieldOptions(filter) {
-  return (filter.values || []).map((value) => ({
+function fieldOptionsFromValues(values = []) {
+  return (values || []).map((value) => ({
     value,
     label: value || 'пусто',
   }))
 }
 
+function normalizeBackendFilterOption(option) {
+  if (option && typeof option === 'object' && 'value' in option) {
+    const value = option.value
+    const label =
+      typeof option.label === 'string' && option.label.trim()
+        ? option.label
+        : value || 'пусто'
+    const normalized = { value, label }
+    if (typeof option.count === 'number') {
+      normalized.count = option.count
+    }
+    return normalized
+  }
+  return {
+    value: option,
+    label: option || 'пусто',
+  }
+}
+
+function extractBackendOptionsMap(payload) {
+  const options = payload?.options
+  if (options && typeof options === 'object') {
+    return Object.entries(options).reduce((acc, [key, list]) => {
+      if (Array.isArray(list)) {
+        acc[key] = list.map((option) => normalizeBackendFilterOption(option))
+      }
+      return acc
+    }, {})
+  }
+  const values = payload?.values
+  if (values && typeof values === 'object') {
+    return Object.entries(values).reduce((acc, [key, list]) => {
+      if (Array.isArray(list)) {
+        acc[key] = fieldOptionsFromValues(list)
+      }
+      return acc
+    }, {})
+  }
+  return {}
+}
+
+function shouldForceStringType(metaType, options = []) {
+  if (metaType !== 'date') return false
+  if (!Array.isArray(options) || !options.length) return false
+  const values = options.map((option) => option?.value ?? option)
+  const hasString = values.some((value) => typeof value === 'string')
+  if (!hasString) return false
+  return values.some(
+    (value) => typeof value === 'string' && parseDateValue(value) === null,
+  )
+}
+
+function applyBackendMetaOverrides(meta = {}, optionsMap = {}) {
+  if (!meta || typeof meta !== 'object') return
+  Object.entries(meta).forEach(([key, descriptor]) => {
+    if (!key) return
+    const metaType = descriptor?.type || ''
+    const metaMode = normalizePreferredMode(descriptor?.mode)
+    const options = optionsMap[key] || []
+    let type = metaType
+    if (type && shouldForceStringType(type, options)) {
+      type = 'string'
+    }
+    const mode =
+      Array.isArray(options) && options.length ? 'values' : metaMode || ''
+    if (type || mode) {
+      backendFilterMetaOverrides[key] = { type, mode }
+    } else if (backendFilterMetaOverrides[key]) {
+      delete backendFilterMetaOverrides[key]
+    }
+  })
+}
+
 function templateOptions(container) {
   const tpl = template(container.templateId)
   return tpl?.snapshot?.options || {}
+}
+
+function containerFilterOptions(containerId, filter) {
+  const available = availableContainerFilterValues[containerId]?.[filter.key]
+  if (pivotBackendEnabled && Array.isArray(available)) return available
+  if (Array.isArray(available) && available.length) return available
+  return fieldOptionsFromValues(filter.values)
 }
 
 function rowTotalsAllowed(container) {
@@ -1288,9 +1502,54 @@ function groupColumnsByLevel(columns, levelIndex) {
 }
 
 function getColumnLevelValue(column, levelIndex) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length && levelIndex < values.length) {
+    const raw = values[levelIndex]
+    if (raw !== null && typeof raw !== 'undefined' && raw !== '') {
+      return formatValue(raw)
+    }
+  }
   const level = column.levels?.[levelIndex]
   if (!level) return 'Итого'
   return level.value || '—'
+}
+
+function resolveRowHeaderLabel(row) {
+  const values = Array.isArray(row?.values) ? row.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug('pivot row header', row?.key, row?.values, row?.label)
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot row header', row?.key, row?.values, row?.label)
+  }
+  return row?.label || row?.key || ''
+}
+
+function resolveColumnHeaderLabel(column) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug('pivot col header', column?.key, column?.values, column?.label)
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot col header', column?.key, column?.values, column?.label)
+  }
+  return column?.label || column?.key || ''
 }
 
 function containerRowData(container) {
@@ -1330,6 +1589,10 @@ function canShowCellDetails(container, columnEntry) {
 }
 
 function closeDetailDialog() {
+  if (detailDialogAbortController) {
+    detailDialogAbortController.abort()
+    detailDialogAbortController = null
+  }
   detailDialog.visible = false
   detailDialog.containerId = ''
   detailDialog.loading = false
@@ -1339,7 +1602,7 @@ function closeDetailDialog() {
   detailDialog.total = 0
 }
 
-function handleCellDetails(container, row, columnEntry) {
+async function handleCellDetails(container, row, columnEntry) {
   if (!columnEntry || !canShowCellDetails(container, columnEntry)) return
   const tpl = template(container.templateId)
   if (!tpl) return
@@ -1355,8 +1618,11 @@ function handleCellDetails(container, row, columnEntry) {
   detailDialog.total = 0
   detailDialog.containerLabel =
     container.title || tpl.name || 'Контейнер'
-  detailDialog.rowLabel = row.label || 'Все записи'
-  detailDialog.columnLabel = columnEntry.label || tpl.snapshot?.pivot?.columns?.join(' • ') || ''
+  detailDialog.rowLabel = resolveRowHeaderLabel(row) || 'Все записи'
+  detailDialog.columnLabel =
+    resolveColumnHeaderLabel(columnEntry) ||
+    tpl.snapshot?.pivot?.columns?.join(' • ') ||
+    ''
   detailDialog.metricLabel =
     metric.label || metric.title || metric.fieldKey || 'Метрика'
   detailDialog.fields = resolveDetailFieldDescriptors(tpl, metric)
@@ -1364,6 +1630,55 @@ function handleCellDetails(container, row, columnEntry) {
   const columnsPivot = tpl.snapshot?.pivot?.columns || []
   const rowKey = row.key || '__all__'
   const columnKey = columnEntry.baseKey || '__all__'
+  if (pivotBackendEnabled) {
+    if (detailDialogAbortController) {
+      detailDialogAbortController.abort()
+    }
+    detailDialogRequestId += 1
+    const requestId = detailDialogRequestId
+    const controller = new AbortController()
+    detailDialogAbortController = controller
+    try {
+      const response = await fetchBackendDetails({
+        templateId: tpl.id,
+        remoteSource: tpl.remoteSource,
+        snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+        filters: buildBackendFilters(container.id),
+        rowKey,
+        columnKey,
+        metric: {
+          id: metric.id,
+          fieldKey: metric.fieldKey,
+          aggregator: metric.aggregator,
+          type: metric.type,
+        },
+        detailFields: detailDialog.fields.map((field) => field.key),
+        limit: 200,
+        offset: 0,
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted || requestId !== detailDialogRequestId) {
+        return
+      }
+      const entries = Array.isArray(response?.entries) ? response.entries : []
+      detailDialog.entries = entries
+      detailDialog.total = Number(response?.total) || entries.length
+      detailDialog.loading = false
+      detailDialog.error = entries.length
+        ? ''
+        : 'Нет подробностей для этой ячейки.'
+    } catch (err) {
+      if (err?.name === 'AbortError') return
+      detailDialog.error =
+        err?.message || 'Не удалось получить детализацию.'
+      detailDialog.loading = false
+    } finally {
+      if (detailDialogAbortController === controller) {
+        detailDialogAbortController = null
+      }
+    }
+    return
+  }
   requestAnimationFrame(() => {
     try {
       const matched = (state.records || []).filter(
@@ -1482,298 +1797,10 @@ async function ensureTemplateData(tpl, options = {}) {
   if (!tpl) {
     throw new Error('Привяжите представление для отображения данных.')
   }
-  if (tpl.remoteSource) {
-    return ensureRemoteSourceData(tpl.remoteSource, options)
+  if (!tpl.remoteSource) {
+    throw new Error('В представлении не выбран источник данных.')
   }
-  return ensureFallbackData(tpl.dataSource, options)
-}
-
-async function ensureFallbackData(source, { force = false } = {}) {
-  if (!source) throw new Error('В представлении не выбран источник данных.')
-  if (!force && dataCache[source]) return dataCache[source]
-  let records = []
-  if (source === 'plans') {
-    records = await fetchPlanRecords()
-  } else if (source === 'parameters') {
-    records = await fetchParameterRecords()
-  } else {
-    throw new Error(`Источник «${source}» не поддерживается.`)
-  }
-  dataCache[source] = records
-  return records
-}
-
-async function ensureRemoteSourceData(source, { force = false } = {}) {
-  const cacheKey =
-    source?.remoteId ||
-    source?.id ||
-    `${source?.method || 'POST'}:${source?.url || source?.remoteMeta?.URL || ''}`
-  if (!force && cacheKey && dataCache[cacheKey]) {
-    return dataCache[cacheKey]
-  }
-  const request = buildRemoteRequest(source)
-  const response = await sendDataSourceRequest(request)
-  let records = extractRecords(response)
-  const joins = resolveSourceJoins(source)
-  if (records?.length && joins.length) {
-    try {
-      const joinResults = await fetchRemoteJoinRecords(joins)
-      const successful = joinResults.filter((item) => !item.error)
-      if (successful.length) {
-        const joinRecordsList = successful.map((item) => item.records || [])
-        const appliedJoins = successful.map((item) => joins[item.index])
-        const { records: enriched } = mergeJoinedRecords(
-          records,
-          appliedJoins,
-          joinRecordsList,
-        )
-        records = enriched
-      }
-    } catch (err) {
-      console.warn('Failed to merge remote joins', err)
-    }
-  }
-  if (cacheKey) {
-    dataCache[cacheKey] = records
-  }
-  return records
-}
-
-function buildRemoteRequest(source = {}) {
-  const url = source?.url || source?.remoteMeta?.URL || ''
-  if (!url) {
-    throw new Error('У источника данных отсутствует URL.')
-  }
-  const method = String(
-    source?.method || source?.remoteMeta?.Method || 'POST',
-  ).toUpperCase()
-  const headers = normalizeRemoteHeaders(
-    source?.headers || source?.remoteMeta?.Headers,
-  )
-  const body = normalizeRemoteBody(
-    source?.body ?? source?.remoteMeta?.MethodBody,
-  )
-  return { url, method, headers, body }
-}
-
-function normalizeRemoteHeaders(raw) {
-  if (!raw) return { 'Content-Type': 'application/json' }
-  if (typeof raw === 'object') return raw
-  try {
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') return parsed
-  } catch {
-    // ignore
-  }
-  return { 'Content-Type': 'application/json' }
-}
-
-function normalizeRemoteBody(raw) {
-  if (raw == null || raw === '') return undefined
-  if (typeof raw === 'object') return raw
-  if (typeof raw !== 'string') return raw
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return raw
-  }
-}
-
-function extractRecords(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return Array.isArray(payload) ? payload : []
-  }
-  if (Array.isArray(payload.result?.records)) return payload.result.records
-  if (Array.isArray(payload.result)) return payload.result
-  if (Array.isArray(payload.records)) return payload.records
-  return []
-}
-
-async function fetchRemoteJoinRecords(joins = []) {
-  if (!joins.length) return []
-  await ensureRemoteSourceCatalog()
-  const tasks = joins.map(async (join, index) => {
-    const target = getRemoteSourceFromCatalog(join.targetSourceId)
-    if (!target) {
-      return {
-        index,
-        join,
-        records: [],
-        error: `Источник связи «${join.targetSourceId}» не найден.`,
-      }
-    }
-    const { payload, error } = buildJoinRequestPayload(target)
-    if (!payload || error) {
-      return {
-        index,
-        join,
-        records: [],
-        error:
-          error ||
-          `Источник связи «${join.targetSourceId}» содержит некорректный запрос.`,
-      }
-    }
-    try {
-      const response = await fetchJoinPayload(payload, { cache: true })
-      return {
-        index,
-        join,
-        records: extractRecords(response),
-      }
-    } catch (err) {
-      return {
-        index,
-        join,
-        records: [],
-        error:
-          err?.response?.data?.message ||
-          err?.message ||
-          `Не удалось выполнить связь «${join.targetSourceId}».`,
-      }
-    }
-  })
-  const results = await Promise.all(tasks)
-  return results.sort((a, b) => a.index - b.index)
-}
-
-async function ensureRemoteSourceCatalog(force = false) {
-  if (remoteSourcesLoaded.value && !force && remoteSourceCatalog.size) {
-    return remoteSourceCatalog
-  }
-  if (remoteSourcesLoading.value && !force) {
-    return remoteSourceCatalog
-  }
-  remoteSourcesLoading.value = true
-  try {
-    remoteSourceCatalog.clear()
-    const records = await loadReportSources()
-    ;(records || []).forEach((entry, index) => {
-      const normalized = normalizeRemoteSourceRecord(entry, index)
-      const key = normalized.remoteId || normalized.id
-      if (key) {
-        remoteSourceCatalog.set(String(key), normalized)
-      }
-      if (normalized.name && !remoteSourceCatalog.has(normalized.name)) {
-        remoteSourceCatalog.set(normalized.name, normalized)
-      }
-    })
-    remoteSourcesLoaded.value = true
-  } catch (err) {
-    console.warn('Failed to load remote sources for joins', err)
-  } finally {
-    remoteSourcesLoading.value = false
-  }
-  return remoteSourceCatalog
-}
-
-function getRemoteSourceFromCatalog(id) {
-  if (id == null) return null
-  const direct = remoteSourceCatalog.get(String(id))
-  if (direct) return direct
-  return remoteSourceCatalog.get(id)
-}
-
-function normalizeRemoteSourceRecord(entry = {}, index = 0) {
-  const remoteId = entry?.id ?? entry?.Id ?? entry?.ID
-  const normalizedId =
-    remoteId !== undefined && remoteId !== null
-      ? String(remoteId)
-      : `remote-${index}`
-  const method =
-    entry?.nameMethodTyp ||
-    entry?.Method ||
-    entry?.method ||
-    entry?.httpMethod ||
-    'POST'
-  const headers = entry?.headers || entry?.Headers || {}
-  const body =
-    entry?.MethodBody ||
-    entry?.body ||
-    entry?.payload ||
-    entry?.requestBody ||
-    entry?.rawBody ||
-    ''
-  return {
-    id: normalizedId,
-    remoteId: normalizedId,
-    name: entry?.name || entry?.Name || '',
-    url: entry?.URL || entry?.url || entry?.requestUrl || '',
-    httpMethod: String(method || 'POST').toUpperCase(),
-    rawBody: formatRawBody(body),
-    headers,
-    joins: parseJoinConfig(entry?.joinConfig || entry?.JoinConfig),
-    remoteMeta: entry || {},
-  }
-}
-
-function formatRawBody(body) {
-  if (!body) return ''
-  if (typeof body === 'string') {
-    try {
-      const parsed = JSON.parse(body)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return body
-    }
-  }
-  try {
-    return JSON.stringify(body, null, 2)
-  } catch {
-    return ''
-  }
-}
-
-function buildJoinRequestPayload(source = {}) {
-  const url = source.url?.trim()
-  if (!url) {
-    return { payload: null, error: 'У источника нет URL.' }
-  }
-  const method = String(source.httpMethod || 'POST').toUpperCase()
-  const headers = normalizeRemoteHeaders(
-    source.headers || source.remoteMeta?.Headers,
-  )
-  const rawBody = source.rawBody?.trim() || ''
-  if (method === 'GET') {
-    if (!rawBody) {
-      return { payload: { url, method, headers }, error: null }
-    }
-    const parsed = safeJsonParse(rawBody)
-    if (!parsed.ok) {
-      return {
-        payload: null,
-        error: 'Параметры GET-запроса должны быть корректным JSON.',
-      }
-    }
-    return { payload: { url, method, headers, body: parsed.value }, error: null }
-  }
-  if (!rawBody) {
-    return { payload: null, error: 'Тело запроса не заполнено.' }
-  }
-  const parsed = safeJsonParse(rawBody)
-  if (!parsed.ok || typeof parsed.value !== 'object') {
-    return {
-      payload: null,
-      error: 'Тело запроса должно быть валидным JSON-объектом.',
-    }
-  }
-  return { payload: { url, method, headers, body: parsed.value }, error: null }
-}
-
-function safeJsonParse(value = '') {
-  try {
-    return { ok: true, value: JSON.parse(value) }
-  } catch {
-    return { ok: false, value: null }
-  }
-}
-
-function resolveSourceJoins(source = {}) {
-  if (!source) return []
-  if (Array.isArray(source.joins) && source.joins.length) {
-    return normalizeJoinList(source.joins)
-  }
-  const parsed = parseJoinConfig(source?.remoteMeta?.joinConfig)
-  return normalizeJoinList(parsed)
+  return fetchRemoteRecords(tpl.remoteSource, options)
 }
 
 function resolveFieldMetaEntry(store, key) {
@@ -1836,6 +1863,18 @@ function sanitizeRange(range) {
 function hasActiveRange(range) {
   if (!range || typeof range !== 'object') return false
   return isDefinedRangeValue(range.start) || isDefinedRangeValue(range.end)
+}
+
+function rangesEqual(a, b) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return a.start === b.start && a.end === b.end
+}
+
+function areValueArraysEqual(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index])
 }
 
 function inferRangeType(range, descriptor = null) {
@@ -1915,29 +1954,33 @@ function valueSatisfiesRange(rawValue, range, descriptor = null) {
   return true
 }
 
-function matchesGlobalFilters(record, skipKey = null) {
+function matchesGlobalFilters(record, excludeKey = null) {
   if (!activePageFilters.value.length) return true
+
   return activePageFilters.value.every((filter) => {
-    if (filter.key === skipKey) return true
-    const values = pageFilterValues[filter.key]
+    const key = filter?.key
+    if (!key) return true
+    if (excludeKey && key === excludeKey) return true
+
+    const values = pageFilterValues[key]
     if (Array.isArray(values) && values.length) {
-      const recordValue = normalizeValue(
-        resolvePivotFieldValue(record, filter.key),
-      )
-      if (!recordValue && recordValue !== '') return false
+      const recordValue = normalizeValue(resolvePivotFieldValue(record, key))
       if (!values.includes(recordValue)) return false
     }
-    const range = pageFilterRanges[filter.key]
+
+    const range = pageFilterRanges[key]
     if (range && hasActiveRange(range)) {
-      const dateMeta = parseDatePartKey(filter.key)
+      const dateMeta = parseDatePartKey(key)
       const descriptor =
-        globalFieldMetaMap.value.get(filter.key) ||
+        globalFieldMetaMap.value.get(key) ||
         (dateMeta ? globalFieldMetaMap.value.get(dateMeta.fieldKey) : null)
-      const resolvedValue = resolvePivotFieldValue(record, filter.key)
+
+      const resolvedValue = resolvePivotFieldValue(record, key)
       if (!valueSatisfiesRange(resolvedValue, range, descriptor)) {
         return false
       }
     }
+
     return true
   })
 }
@@ -2004,6 +2047,129 @@ function filterRecords(records, snapshot, source, containerId) {
   })
 }
 
+function normalizeSelectedValues(values = []) {
+  if (!Array.isArray(values)) return []
+  return values.map((value) => {
+    if (value && typeof value === 'object' && 'value' in value) {
+      return value.value
+    }
+    return value
+  })
+}
+
+function buildBackendFilters(containerId) {
+  const pageKeys = resolvePageFilterKeys()
+  const globalValues = pageKeys.reduce((acc, key) => {
+    const values = normalizeSelectedValues(pageFilterValues[key])
+    if (values.length) {
+      acc[key] = values
+    }
+    return acc
+  }, {})
+  const globalRanges = pageKeys.reduce((acc, key) => {
+    const range = sanitizeRange(pageFilterRanges[key])
+    if (range) {
+      acc[key] = range
+    }
+    return acc
+  }, {})
+  const containerValues = Object.entries(
+    containerFilterValues[containerId] || {},
+  ).reduce((acc, [key, values]) => {
+    const list = normalizeSelectedValues(values)
+    if (list.length) {
+      acc[key] = list
+    }
+    return acc
+  }, {})
+  const containerRanges = Object.entries(
+    containerFilterRanges[containerId] || {},
+  ).reduce((acc, [key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      acc[key] = sanitized
+    }
+    return acc
+  }, {})
+  return {
+    globalFilters: {
+      values: globalValues,
+      ranges: globalRanges,
+    },
+    containerFilters: {
+      values: containerValues,
+      ranges: containerRanges,
+    },
+  }
+}
+
+function resolvePageFilterKeys() {
+  const containers = visibleContainers.value || []
+  let keys = commonFilterKeys.value || []
+  if (!keys.length && containers.length) {
+    const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
+    const fallback = []
+    const seen = new Set()
+    containers.forEach((container) => {
+      const tpl = templateMap.get(container.templateId)
+      if (!tpl) return
+      ;(tpl.snapshot?.filtersMeta || []).forEach((meta) => {
+        const key = meta?.key
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        fallback.push(key)
+      })
+    })
+    keys = fallback
+  }
+  const resolved = [...new Set((keys || []).filter(Boolean))]
+  if (debugLogsEnabled) {
+    const signature = JSON.stringify({
+      tabId: activeTab.value,
+      visible: containers.length,
+      keys: resolved,
+    })
+    if (signature !== lastTabFilterKeysSignature) {
+      lastTabFilterKeysSignature = signature
+      console.debug('tab filter keys', {
+        tabId: activeTab.value,
+        visibleContainers: containers.length,
+        filterKeys: resolved,
+      })
+    }
+  }
+  return resolved
+}
+
+function buildBackendSnapshot(tpl, commonKeys = []) {
+  const snapshot = tpl?.snapshot || {}
+  const pivot = snapshot.pivot || {}
+  const normalizedCommon = Array.isArray(commonKeys)
+    ? commonKeys.filter(Boolean)
+    : []
+  const metaKeys = Array.isArray(snapshot.filtersMeta)
+    ? snapshot.filtersMeta
+        .map((meta) => meta?.key)
+        .filter(Boolean)
+    : []
+  const filterKeys = normalizedCommon.length ? normalizedCommon : metaKeys
+  if (!filterKeys.length && debugLogsEnabled) {
+    console.warn(
+      'Filter keys are empty; sending empty pivot.filters in backend payload.',
+    )
+  }
+  return {
+    ...snapshot,
+    pivot: {
+      ...pivot,
+      filters: [...filterKeys],
+    },
+  }
+}
+
+// Backend is the source of truth for cascading filters and allowed values
+// when backend pivot is enabled; frontend only submits current filters and
+// renders options returned by /api/report/filters.
 function prepareMetrics(list = []) {
   return (list || [])
     .filter((metric) =>
@@ -2257,6 +2423,7 @@ function stripMetricFromLabel(label, metricLabel) {
 async function hydrateContainer(container) {
   const tpl = template(container.templateId)
   const state = containerState(container.id)
+  let viewAbortController = null
   if (!tpl) {
     state.loading = false
     state.error = 'Привяжите представление для отображения данных.'
@@ -2290,13 +2457,18 @@ async function hydrateContainer(container) {
   if (state.signature === signature && state.view) {
     return
   }
+  if (state.loading && state.inFlightSignature === signature) {
+    return
+  }
 
   state.signature = signature
+  state.inFlightSignature = signature
   state.loading = true
   state.error = ''
   state.view = null
   state.chart = null
   state.records = []
+  state.rawRecords = []
   state.meta.rowTotalsAllowed = new Set()
   state.meta.columnTotalsAllowed = new Set()
   state.meta.metricGroups = []
@@ -2304,15 +2476,6 @@ async function hydrateContainer(container) {
   state.meta.rowHeaderTitle = 'Строки'
 
   try {
-    const records = await ensureTemplateData(tpl)
-    state.rawRecords = Array.isArray(records) ? records : []
-    const filtered = filterRecords(
-      records,
-      tpl.snapshot,
-      tpl.dataSource,
-      container.id,
-    )
-    state.records = filtered
     const metrics = prepareMetrics(tpl.snapshot?.metrics)
     const rowTotalsAllowed = new Set(
       metrics
@@ -2341,25 +2504,65 @@ async function hydrateContainer(container) {
     if (!hasBaseMetric) {
       throw new Error('Добавьте хотя бы одну базовую метрику в представлении.')
     }
-    let baseView
-    try {
-      const sortsToApply = tpl.snapshot?.options?.sorts || {}
-      baseView = buildPivotView({
-        records: filtered,
-        rows: tpl.snapshot?.pivot?.rows || [],
-        columns: tpl.snapshot?.pivot?.columns || [],
-        metrics: baseMetrics,
-        fieldMeta: templateFieldMetaMap(tpl),
-        headerOverrides: tpl.snapshot?.options?.headerOverrides || {},
-        sorts: sortsToApply,
-      })
-    } catch (err) {
-      if (err?.code === 'VALUE_AGGREGATION_COLLISION') {
-        throw new Error(
-          `Метрика с типом «Значение» использует несколько записей на одну ячейку. Скорректируйте конфигурацию на вкладке «Данные».`,
-        )
+    if (!tpl.remoteSource) {
+      throw new Error('В представлении не выбран источник данных.')
+    }
+
+    let baseView = null
+    if (pivotBackendEnabled) {
+      // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
+      // Локальный buildPivotView оставлен как fallback до полной миграции.
+      try {
+        if (state.viewAbortController) {
+          state.viewAbortController.abort()
+        }
+        viewAbortController = new AbortController()
+        state.viewAbortController = viewAbortController
+        const { view: backendView } = await fetchBackendView({
+          templateId: tpl.id,
+          remoteSource: tpl.remoteSource,
+          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+          filters: buildBackendFilters(container.id),
+          signal: viewAbortController.signal,
+        })
+        baseView = normalizeBackendView(backendView, baseMetrics)
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        console.warn('Failed to build backend pivot view', err)
       }
-      throw err
+    }
+
+    if (!baseView) {
+      const records = await ensureTemplateData(tpl)
+      state.rawRecords = Array.isArray(records) ? records : []
+      const filtered = filterRecords(
+        records,
+        tpl.snapshot,
+        tpl.dataSource,
+        container.id,
+      )
+      state.records = filtered
+      try {
+        const sortsToApply = tpl.snapshot?.options?.sorts || {}
+        baseView = buildPivotView({
+          records: filtered,
+          rows: tpl.snapshot?.pivot?.rows || [],
+          columns: tpl.snapshot?.pivot?.columns || [],
+          metrics: baseMetrics,
+          fieldMeta: templateFieldMetaMap(tpl),
+          headerOverrides: tpl.snapshot?.options?.headerOverrides || {},
+          sorts: sortsToApply,
+        })
+      } catch (err) {
+        if (err?.code === 'VALUE_AGGREGATION_COLLISION') {
+          throw new Error(
+            `Метрика с типом «Значение» использует несколько записей на одну ячейку. Скорректируйте конфигурацию на вкладке «Данные».`,
+          )
+        }
+        throw err
+      }
     }
     const augmented = augmentPivotViewWithFormulas(baseView, metrics)
     const visibleView = filterPivotViewByVisibility(augmented, metrics)
@@ -2394,6 +2597,14 @@ async function hydrateContainer(container) {
     state.error = err?.message || 'Не удалось построить виджет.'
   } finally {
     state.loading = false
+    if (state.inFlightSignature === signature) {
+      state.inFlightSignature = ''
+    }
+    if (viewAbortController && state.viewAbortController === viewAbortController) {
+      state.viewAbortController = null
+    }
+    recalcContainerFilterOptions(container.id)
+    recalcPageFilterOptions()
   }
 }
 
@@ -2417,6 +2628,21 @@ function refreshContainers() {
   })
   Object.keys(containerRowCollapse).forEach((id) => {
     if (!ids.has(id)) delete containerRowCollapse[id]
+  })
+  Object.keys(backendFiltersByContainer).forEach((id) => {
+    if (!ids.has(id)) {
+      delete backendFiltersByContainer[id]
+      backendFiltersContainerSignatures.delete(id)
+    }
+  })
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+}
+
+function refreshVisibleContainers() {
+  const list = visibleContainers.value || []
+  list.forEach((container) => {
+    hydrateContainer(container)
   })
 }
 
@@ -2739,6 +2965,7 @@ function dictionaryLabelValue(key) {
 }
 
 function filterSupportsRange(filter = {}) {
+  if (filter?.rangeAllowed === false) return false
   const type = filter?.type
   return type === 'number' || type === 'date'
 }
@@ -2769,26 +2996,21 @@ function hasForcedFilterMode(filter) {
 }
 
 function globalFilterValueOptions(key) {
+  const available = availablePageFilterValues[key]
+  if (pivotBackendEnabled) {
+    if (Array.isArray(available)) return available
+    return globalFilterValueMap.value.get(key) || []
+  }
   const dynamic = computeFilteredGlobalOptions(key)
   if (dynamic.length) return dynamic
+  if (Array.isArray(available) && available.length) return available
   return globalFilterValueMap.value.get(key) || []
 }
 
-function hasActiveGlobalSelection(filterKey) {
-  const values = pageFilterValues[filterKey]
-  if (Array.isArray(values) && values.length) return true
-  const range = pageFilterRanges[filterKey]
-  if (range && hasActiveRange(range)) return true
-  return false
-}
-
 function computeFilteredGlobalOptions(targetKey) {
+  if (pivotBackendEnabled) return []
   if (!targetKey) return []
-  const hasOtherActive = activePageFilters.value.some(
-    (filter) => filter.key !== targetKey && hasActiveGlobalSelection(filter.key),
-  )
-  if (!hasOtherActive) return []
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   if (!containers.length) return []
   const values = new Map()
   containers.forEach((container) => {
@@ -2797,6 +3019,7 @@ function computeFilteredGlobalOptions(targetKey) {
     if (!records.length) return
     records.forEach((record) => {
       if (!matchesGlobalFilters(record, targetKey)) return
+      if (!matchesContainerFilters(record, container)) return
       const resolvedValue = resolvePivotFieldValue(record, targetKey)
       const normalized = normalizeValue(resolvedValue)
       if (!values.has(normalized)) {
@@ -2815,8 +3038,660 @@ function computeFilteredGlobalOptions(targetKey) {
   }))
 }
 
-function buildGlobalFilterValueMap() {
+function matchesContainerFilters(record, container, excludeKey = null) {
+  const tpl = template(container.templateId)
+  // Если шаблон или snapshot ещё не загружены, контейнер не должен отбрасывать записи
+  if (!tpl || !tpl.snapshot) return true
+  const snapshot = tpl.snapshot
+  const fieldMetaMap = new Map(Object.entries(snapshot.fieldMeta || {}))
+  const filterValues = { ...(snapshot.filterValues || {}) }
+  const filterRanges = { ...(snapshot.filterRanges || {}) }
+  if (excludeKey) {
+    delete filterValues[excludeKey]
+    delete filterRanges[excludeKey]
+  }
+  const overrides = containerFilterValues[container.id] || {}
+  Object.entries(overrides).forEach(([key, values]) => {
+    if (key === excludeKey) return
+    filterValues[key] = [...values]
+  })
+  const rangeOverrides = containerFilterRanges[container.id] || {}
+  Object.entries(rangeOverrides).forEach(([key, range]) => {
+    if (key === excludeKey) return
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      filterRanges[key] = sanitized
+    } else {
+      delete filterRanges[key]
+    }
+  })
+  const dimensionValues = snapshot.dimensionValues || {}
+  const dimensionRanges = snapshot.dimensionRanges || {}
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.filters,
+      filterValues,
+      filterRanges,
+      fieldMetaMap,
+    )
+  )
+    return false
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.rows,
+      dimensionValues.rows || {},
+      dimensionRanges.rows || {},
+      fieldMetaMap,
+    )
+  )
+    return false
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.columns,
+      dimensionValues.columns || {},
+      dimensionRanges.columns || {},
+      fieldMetaMap,
+    )
+  )
+    return false
+  return true
+}
+
+function collectAvailableValues(records = [], key) {
+  if (!Array.isArray(records) || !records.length) return new Map()
+  const values = new Map()
+  records.forEach((record) => {
+    const resolvedValue = resolvePivotFieldValue(record, key)
+    const normalized = normalizeValue(resolvedValue)
+    if (!values.has(normalized)) {
+      const display = formatValue(resolvedValue)
+      values.set(
+        normalized,
+        display && display !== '—' ? display : normalized || 'пусто',
+      )
+    }
+  })
+  return values
+}
+
+function normalizeFilterValueList(values = []) {
+  const list = Array.isArray(values) ? values : []
+  return list.map((value) => normalizeValue(value)).sort()
+}
+
+function normalizeFilterStore(store = {}, keys = null) {
+  const list = Array.isArray(keys) ? keys : Object.keys(store || {})
+  return list
+    .filter(Boolean)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = normalizeFilterValueList(store?.[key] || [])
+      return acc
+    }, {})
+}
+
+function normalizeRangeStore(store = {}, keys = null) {
+  const list = Array.isArray(keys) ? keys : Object.keys(store || {})
+  return list
+    .filter(Boolean)
+    .sort()
+    .reduce((acc, key) => {
+      const range = sanitizeRange(store?.[key])
+      if (range) {
+        acc[key] = { start: range.start ?? null, end: range.end ?? null }
+      }
+      return acc
+    }, {})
+}
+
+function buildPageFilterSignature() {
+  const keys = resolvePageFilterKeys().sort()
+  return JSON.stringify({
+    keys,
+    values: normalizeFilterStore(pageFilterValues, keys),
+    ranges: normalizeRangeStore(pageFilterRanges, keys),
+  })
+}
+
+function buildContainerFilterSignature(containerId, pageSignature) {
+  return JSON.stringify({
+    page: pageSignature,
+    values: normalizeFilterStore(containerFilterValues[containerId] || {}),
+    ranges: normalizeRangeStore(containerFilterRanges[containerId] || {}),
+  })
+}
+
+function queueBackendFilterRefresh(scope = 'page', containerId = '') {
+  if (!pivotBackendEnabled) return
+  const pageSignature = buildPageFilterSignature()
+  if (backendFiltersInFlightSignature === pageSignature) {
+    const isTabChange = scope === 'tab-change'
+    if (
+      !isTabChange &&
+      (backendFiltersInFlightScope === 'page' ||
+        backendFiltersInFlightScope === 'tab-change')
+    )
+      return
+    if (scope === 'container' && containerId) {
+      const containerSignature = buildContainerFilterSignature(
+        containerId,
+        pageSignature,
+      )
+      if (backendFiltersInFlightContainers.get(containerId) === containerSignature) {
+        return
+      }
+    }
+  }
+  if (scope === 'page' || scope === 'tab-change') {
+    if (scope === 'page' && pageSignature === backendFiltersPageSignature) return
+    backendFiltersPendingScope = scope
+    backendFiltersPendingContainers.clear()
+  } else if (containerId) {
+    if (
+      backendFiltersPendingScope === 'page' ||
+      backendFiltersPendingScope === 'tab-change'
+    )
+      return
+    const containerSignature = buildContainerFilterSignature(
+      containerId,
+      pageSignature,
+    )
+    if (containerSignature === backendFiltersContainerSignatures.get(containerId)) {
+      return
+    }
+    backendFiltersPendingScope = 'container'
+    backendFiltersPendingContainers.add(containerId)
+  } else {
+    return
+  }
+  if (backendFiltersTimer) {
+    clearTimeout(backendFiltersTimer)
+  }
+  backendFiltersTimer = setTimeout(
+    runBackendFilterRefresh,
+    BACKEND_FILTERS_DEBOUNCE_MS,
+  )
+}
+
+async function runBackendFilterRefresh() {
+  const scope = backendFiltersPendingScope || 'page'
+  const baseContainers =
+    scope === 'tab-change' ? visibleContainers.value : pageContainers.value || []
+  const containerIds =
+    scope === 'page' || scope === 'tab-change'
+      ? baseContainers.map((container) => container.id)
+      : Array.from(backendFiltersPendingContainers)
+  backendFiltersPendingScope = ''
+  backendFiltersPendingContainers.clear()
+  if (!containerIds.length) return
+  const pageSignature = buildPageFilterSignature()
+  if (scope === 'page' && pageSignature === backendFiltersPageSignature) {
+    return
+  }
+  if (backendFiltersAbortController) {
+    backendFiltersAbortController.abort()
+  }
+  const controller = new AbortController()
+  backendFiltersAbortController = controller
+  backendFiltersInFlightSignature = pageSignature
+  backendFiltersInFlightScope = scope
+  backendFiltersInFlightContainers.clear()
+  containerIds.forEach((id) => {
+    backendFiltersInFlightContainers.set(
+      id,
+      buildContainerFilterSignature(id, pageSignature),
+    )
+  })
+  const containerMap = new Map(
+    (pageContainers.value || []).map((container) => [container.id, container]),
+  )
+  try {
+    const tasks = containerIds.map(async (id) => {
+      const container = containerMap.get(id)
+      if (!container) return null
+      const tpl = template(container.templateId)
+      if (!tpl || !tpl.remoteSource) return null
+      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys())
+      const signature = buildContainerFilterSignature(id, pageSignature)
+      if (
+        scope === 'container' &&
+        signature === backendFiltersContainerSignatures.get(id)
+      ) {
+        return null
+      }
+      const filters = buildBackendFilters(id)
+      const filterKeys = snapshot?.pivot?.filters || []
+      const selectedKeys = [
+        ...new Set([
+          ...Object.keys(filters?.globalFilters?.values || {}),
+          ...Object.keys(filters?.globalFilters?.ranges || {}),
+        ]),
+      ]
+      const selectedValuesKeys = {
+        global: Object.keys(filters?.globalFilters?.values || {}),
+        container: Object.keys(filters?.containerFilters?.values || {}),
+      }
+      const selectedRangesKeys = {
+        global: Object.keys(filters?.globalFilters?.ranges || {}),
+        container: Object.keys(filters?.containerFilters?.ranges || {}),
+      }
+      if (debugLogsEnabled) {
+        console.debug('filters request summary', {
+          tabId: activeTab.value,
+          filterKeys,
+          selectedKeys,
+        })
+        console.debug('backend filters request', {
+          templateId: tpl.id,
+          filterKeys,
+          selectedValuesKeys,
+          selectedRangesKeys,
+        })
+      }
+      try {
+        const data = await fetchBackendFilters({
+          templateId: tpl.id,
+          remoteSource: tpl.remoteSource,
+          snapshot,
+          filters,
+          signal: controller.signal,
+        })
+        const optionsMap = extractBackendOptionsMap(data)
+        const optionCounts = Object.entries(optionsMap).reduce(
+          (acc, [key, values]) => {
+            acc[key] = Array.isArray(values) ? values.length : 0
+            return acc
+          },
+          {},
+        )
+        if (debugLogsEnabled) {
+          const rawKeys = Object.keys(data?.options || data?.values || {})
+          console.debug('filters resp keys', rawKeys)
+          console.debug('selectedPruned', data?.selectedPruned)
+          console.debug('optionCounts', optionCounts)
+        }
+        return {
+          containerId: id,
+          container,
+          data,
+          signature,
+          optionCounts,
+          optionsMap,
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') return null
+        console.warn('Failed to fetch backend filters', err)
+        return { containerId: id, error: err }
+      }
+    })
+    const results = await Promise.all(tasks)
+    if (controller.signal.aborted) return
+  const successful = results.filter((item) => item && !item.error)
+  successful.forEach((result) => {
+    backendFiltersContainerSignatures.set(result.containerId, result.signature)
+    backendFiltersByContainer[result.containerId] = result.data || {}
+    applyBackendFilterOptions(result.containerId, result.data, result.container)
+  })
+  rebuildGlobalFilterOptions()
+  let pagePruned = false
+  let containerPruned = false
+  const prunedContainers = new Set()
+  successful.forEach((result) => {
+    const pruned = applySelectedPrunedSelections(
+      result.data?.selectedPruned,
+      result.containerId,
+    )
+    if (pruned.pageChanged) {
+      pagePruned = true
+    }
+    if (pruned.containerChanged) {
+      containerPruned = true
+      prunedContainers.add(result.containerId)
+    }
+  })
+  if (prunePageFilterSelections()) {
+    pagePruned = true
+  }
+  successful.forEach((result) => {
+    if (pruneContainerFilterSelections(result.containerId)) {
+      containerPruned = true
+      prunedContainers.add(result.containerId)
+    }
+  })
+    if (debugLogsEnabled) {
+      successful.forEach((result) => {
+        console.debug('backend filters response', {
+          templateId:
+            template(result.container?.templateId)?.id ||
+            result.container?.templateId,
+          optionCounts: result.optionCounts || {},
+          selectedPruned: {
+            page: pagePruned,
+            container: prunedContainers.has(result.containerId),
+          },
+        })
+      })
+    }
+    backendFiltersPageSignature = buildPageFilterSignature()
+    successful.forEach((result) => {
+      backendFiltersContainerSignatures.set(
+        result.containerId,
+        buildContainerFilterSignature(
+          result.containerId,
+          backendFiltersPageSignature,
+        ),
+      )
+    })
+    if (scope === 'page') {
+      refreshContainers()
+      return
+    }
+    if (scope === 'tab-change') {
+      refreshVisibleContainers()
+      return
+    }
+    if (pagePruned) {
+      refreshContainers()
+      return
+    }
+    if (containerIds.length === 1) {
+      requestContainerRefresh(containerIds[0])
+      return
+    }
+    if (containerPruned) {
+      refreshContainers()
+    }
+  } finally {
+    if (backendFiltersAbortController === controller) {
+      backendFiltersAbortController = null
+    }
+    backendFiltersInFlightSignature = ''
+    backendFiltersInFlightScope = ''
+    backendFiltersInFlightContainers.clear()
+  }
+}
+
+function applyBackendFilterOptions(containerId, data, container) {
+  if (!container) return
+  const filters = templateFilters(container)
+  if (!filters.length) return
+  const optionsMap = extractBackendOptionsMap(data)
+  applyBackendMetaOverrides(data?.meta, optionsMap)
+  const existing = availableContainerFilterValues[containerId] || {}
+  const next = {}
+  filters.forEach((filter) => {
+    const options = optionsMap[filter.key]
+    if (Array.isArray(options)) {
+      next[filter.key] = options
+    } else if (Array.isArray(existing[filter.key])) {
+      next[filter.key] = existing[filter.key]
+    } else {
+      next[filter.key] = fieldOptionsFromValues(filter.values)
+    }
+  })
+  availableContainerFilterValues[containerId] = next
+}
+
+function rebuildGlobalFilterOptions() {
+  const keys = activePageFilters.value.map((filter) => filter.key)
+  const result = {}
+  keys.forEach((key) => {
+    result[key] = new Map()
+  })
+  const containerIds = (visibleContainers.value || []).map(
+    (container) => container.id,
+  )
+  containerIds.forEach((id) => {
+    const payload = backendFiltersByContainer[id]
+    if (!payload) return
+    const optionsMap = extractBackendOptionsMap(payload)
+    keys.forEach((key) => {
+      const options = optionsMap[key] || []
+      options.forEach((option) => {
+        const value = option?.value
+        if (!result[key].has(value)) {
+          result[key].set(value, option?.label || value || 'пусто')
+        }
+      })
+    })
+  })
+  Object.keys(availablePageFilterValues).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete availablePageFilterValues[key]
+    }
+  })
+  keys.forEach((key) => {
+    availablePageFilterValues[key] = Array.from(result[key].entries()).map(
+      ([value, label]) => ({
+        value,
+        label,
+      }),
+    )
+  })
+}
+
+function prunePageFilterSelections() {
+  let changed = false
+  activePageFilters.value.forEach((filter) => {
+    const key = filter.key
+    const options = availablePageFilterValues[key]
+    if (!Array.isArray(options)) return
+    const allowed = new Set(
+      options.map((option) => normalizeValue(option.value)),
+    )
+    const current = Array.isArray(pageFilterValues[key])
+      ? pageFilterValues[key]
+      : []
+    const next = current.filter((value) =>
+      allowed.has(normalizeValue(value)),
+    )
+    if (!areValueArraysEqual(current, next)) {
+      pageFilterValues[key] = next
+      changed = true
+    }
+  })
+  return changed
+}
+
+function pruneContainerFilterSelections(containerId) {
+  const store = containerFilterValues[containerId]
+  if (!store) return false
+  const optionsMap = availableContainerFilterValues[containerId] || {}
+  let changed = false
+  Object.keys(store).forEach((key) => {
+    const options = optionsMap[key]
+    if (!Array.isArray(options)) return
+    const allowed = new Set(
+      options.map((option) => normalizeValue(option.value)),
+    )
+    const current = Array.isArray(store[key]) ? store[key] : []
+    const next = current.filter((value) =>
+      allowed.has(normalizeValue(value)),
+    )
+    if (!areValueArraysEqual(current, next)) {
+      store[key] = next
+      changed = true
+    }
+  })
+  return changed
+}
+
+function normalizeSelectedPrunedPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { global: {}, container: {} }
+  }
+  if (payload.global || payload.container) {
+    return {
+      global: payload.global || {},
+      container: payload.container || {},
+    }
+  }
+  if (payload.globalFilters || payload.containerFilters) {
+    return {
+      global: payload.globalFilters || {},
+      container: payload.containerFilters || {},
+    }
+  }
+  return { global: payload, container: {} }
+}
+
+function pruneStoreBySelected(store, prunedMap, rangeStore = null) {
+  if (!store || !prunedMap || typeof prunedMap !== 'object') return false
+  let changed = false
+  Object.entries(prunedMap).forEach(([key, values]) => {
+    if (Array.isArray(values)) {
+      const remove = new Set(normalizeSelectedValues(values))
+      const current = Array.isArray(store[key]) ? store[key] : []
+      const next = current.filter((value) => !remove.has(value))
+      if (!areValueArraysEqual(current, next)) {
+        store[key] = next
+        changed = true
+      }
+      return
+    }
+    if (
+      rangeStore &&
+      values &&
+      typeof values === 'object' &&
+      (Object.prototype.hasOwnProperty.call(values, 'start') ||
+        Object.prototype.hasOwnProperty.call(values, 'end'))
+    ) {
+      if (rangeStore[key]) {
+        delete rangeStore[key]
+        changed = true
+      }
+    }
+  })
+  return changed
+}
+
+function applySelectedPrunedSelections(selectedPruned, containerId) {
+  const { global, container } = normalizeSelectedPrunedPayload(selectedPruned)
+  const pageChanged = pruneStoreBySelected(
+    pageFilterValues,
+    global,
+    pageFilterRanges,
+  )
+  let containerChanged = false
+  if (containerId) {
+    const store = containerFilterValues[containerId]
+    if (store) {
+      containerChanged = pruneStoreBySelected(
+        store,
+        container,
+        containerFilterRanges[containerId],
+      )
+    }
+  }
+  return { pageChanged, containerChanged }
+}
+
+function recalcPageFilterOptions() {
+  if (pivotBackendEnabled) {
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
+  const keys = activePageFilters.value.map((filter) => filter.key)
+  const containers = visibleContainers.value || []
+  const result = {}
+  keys.forEach((key) => {
+    const values = new Map()
+    containers.forEach((container) => {
+      const state = containerState(container.id)
+      const records = state.rawRecords || []
+      if (!records.length) return
+      const filtered = records.filter(
+        (record) =>
+          matchesGlobalFilters(record, key) &&
+          matchesContainerFilters(record, container),
+      )
+      const collected = collectAvailableValues(filtered, key)
+      collected.forEach((label, value) => {
+        if (!values.has(value)) values.set(value, label)
+      })
+    })
+    result[key] = Array.from(values.entries()).map(([value, label]) => ({
+      value,
+      label,
+    }))
+  })
+  Object.keys(availablePageFilterValues).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete availablePageFilterValues[key]
+    }
+  })
+  Object.entries(result).forEach(([key, options]) => {
+    availablePageFilterValues[key] = options
+  })
+}
+
+function recalcContainerFilterOptions(containerId) {
+  if (pivotBackendEnabled) {
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
+  const container = (pageContainers.value || []).find(
+    (item) => item.id === containerId,
+  )
+  if (!container) {
+    delete availableContainerFilterValues[containerId]
+    return
+  }
+  const filters = templateFilters(container)
+  if (!filters.length) {
+    delete availableContainerFilterValues[containerId]
+    return
+  }
+  const state = containerState(container.id)
+  const records = state.rawRecords || []
+  const bucket = availableContainerFilterValues[containerId] || {}
+  const next = {}
+  filters.forEach((filter) => {
+    const filtered = records.filter(
+      (record) =>
+        matchesGlobalFilters(record) &&
+        matchesContainerFilters(record, container, filter.key),
+    )
+    const collected = collectAvailableValues(filtered, filter.key)
+    next[filter.key] = Array.from(collected.entries()).map(
+      ([value, label]) => ({
+        value,
+        label,
+      }),
+    )
+  })
+  Object.keys(bucket).forEach((key) => {
+    if (!next[key]) {
+      delete bucket[key]
+    }
+  })
+  Object.entries(next).forEach(([key, options]) => {
+    if (!availableContainerFilterValues[containerId]) {
+      availableContainerFilterValues[containerId] = {}
+    }
+    availableContainerFilterValues[containerId][key] = options
+  })
+}
+
+function recalcAllContainerFilterOptions() {
   const containers = pageContainers.value || []
+  containers.forEach((container) => {
+    recalcContainerFilterOptions(container.id)
+  })
+}
+
+function recalcVisibleContainerFilterOptions() {
+  const containers = visibleContainers.value || []
+  containers.forEach((container) => {
+    recalcContainerFilterOptions(container.id)
+  })
+}
+
+function buildGlobalFilterValueMap() {
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const aggregate = new Map()
   containers.forEach((container) => {
@@ -2836,7 +3711,7 @@ function buildGlobalFilterValueMap() {
 }
 
 function buildGlobalFieldMetaMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const result = new Map()
   containers.forEach((container) => {
@@ -2852,7 +3727,7 @@ function buildGlobalFieldMetaMap() {
 }
 
 function buildGlobalFilterRangeMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const ranges = new Map()
   containers.forEach((container) => {
@@ -2866,7 +3741,7 @@ function buildGlobalFilterRangeMap() {
 }
 
 function buildGlobalFilterModeMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const modeBuckets = new Map()
   containers.forEach((container) => {
@@ -3042,7 +3917,7 @@ function buildHeaderMeta(tpl, metrics = [], view = null) {
 function scheduleRefresh() {
   clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => {
-    refreshContainers()
+    refreshVisibleContainers()
   }, 200)
 }
 
@@ -3060,26 +3935,28 @@ function requestContainerRefresh(containerId) {
   }, 200)
 }
 
-watch(
-  () => pageContainers.value,
-  () => {
-    refreshContainers()
-  },
-  { immediate: true, deep: true },
-)
+function abortContainerViewRequests(containerIds = []) {
+  containerIds.forEach((id) => {
+    const state = containerStates[id]
+    if (state?.viewAbortController) {
+      state.viewAbortController.abort()
+      if (state.viewAbortController) {
+        state.viewAbortController = null
+      }
+    }
+  })
+}
 
 watch(
-  () => store.templates,
-  () => {
-    refreshContainers()
-  },
-  { deep: true },
-)
-
-watch(
-  () => page.value?.filters,
+  resolvedPageFilterKeys,
   (keys = []) => {
     ensurePageFilters(keys)
+    if (pivotBackendEnabled) {
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
   },
   { immediate: true },
 )
@@ -3087,6 +3964,7 @@ watch(
 watch(
   pageFilterValues,
   () => {
+    if (pivotBackendEnabled) return
     scheduleRefresh()
   },
   { deep: true },
@@ -3095,6 +3973,7 @@ watch(
 watch(
   pageFilterRanges,
   () => {
+    if (pivotBackendEnabled) return
     scheduleRefresh()
   },
   { deep: true },
@@ -3105,39 +3984,115 @@ function resetPageFilters() {
     pageFilterValues[filter.key] = []
     delete pageFilterRanges[filter.key]
   })
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
 }
 
 function resetContainerFilter(containerId, key) {
   const store = containerFilterStore(containerId)
   store[key] = []
   delete containerRangeStore(containerId)[key]
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
   requestContainerRefresh(containerId)
 }
 
 function handlePageFilterValuesChange(key, values, forcedMode = '') {
-  pageFilterValues[key] = Array.isArray(values) ? [...values] : []
+  const next = Array.isArray(values) ? [...values] : []
+  if (areValueArraysEqual(pageFilterValues[key], next)) {
+    if (forcedMode !== 'range' && pageFilterRanges[key]) {
+      delete pageFilterRanges[key]
+    }
+    return
+  }
+  pageFilterValues[key] = next
   if (forcedMode !== 'range') {
     delete pageFilterRanges[key]
   }
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+  if (forcedMode === 'range') {
+    return
+  }
+  scheduleRefresh()
 }
 
 function handlePageFilterRangeChange(key, range) {
   const sanitized = sanitizeRange(range)
+  const current = pageFilterRanges[key]
   if (sanitized) {
-    pageFilterRanges[key] = sanitized
-    pageFilterValues[key] = []
-  } else {
+    const changed = !rangesEqual(current, sanitized)
+    if (changed) {
+      pageFilterRanges[key] = sanitized
+    }
+    if (pageFilterValues[key]?.length) {
+      pageFilterValues[key] = []
+    }
+    if (pivotBackendEnabled) {
+      abortContainerViewRequests(
+        (visibleContainers.value || []).map((container) => container.id),
+      )
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
+    scheduleRefresh()
+    return
+  }
+  if (current) {
     delete pageFilterRanges[key]
   }
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+  scheduleRefresh()
 }
 
 function handleContainerFilterValuesChange(containerId, filter, values) {
   const key = filter.key
   const store = containerFilterStore(containerId)
-  store[key] = Array.isArray(values) ? [...values] : []
+  const next = Array.isArray(values) ? [...values] : []
+  const current = store[key] || []
+  if (areValueArraysEqual(current, next)) {
+    if (!isContainerRangeFilter(filter)) {
+      delete containerRangeStore(containerId)[key]
+      requestContainerRefresh(containerId)
+    }
+    return
+  }
+  store[key] = next
   if (!isContainerRangeFilter(filter)) {
     delete containerRangeStore(containerId)[key]
   }
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
+  recalcContainerFilterOptions(containerId)
+  recalcPageFilterOptions()
   requestContainerRefresh(containerId)
 }
 
@@ -3145,18 +4100,64 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
   const key = filter.key
   const rangeStore = containerRangeStore(containerId)
   const sanitized = sanitizeRange(range)
+  const currentRange = rangeStore[key]
+  const filterStore = containerFilterStore(containerId)
   if (sanitized) {
-    rangeStore[key] = sanitized
-    containerFilterStore(containerId)[key] = []
-  } else {
-    delete rangeStore[key]
+    const changedRange = !rangesEqual(currentRange, sanitized)
+    if (changedRange) {
+      rangeStore[key] = sanitized
+    }
+    if (filterStore[key]?.length) {
+      filterStore[key] = []
+    }
+    if (changedRange || filterStore[key]?.length === 0) {
+      if (pivotBackendEnabled) {
+        abortContainerViewRequests([containerId])
+        queueBackendFilterRefresh('container', containerId)
+        return
+      }
+      recalcContainerFilterOptions(containerId)
+      recalcPageFilterOptions()
+      requestContainerRefresh(containerId)
+    }
+    return
   }
-  requestContainerRefresh(containerId)
+  if (currentRange) {
+    delete rangeStore[key]
+    if (pivotBackendEnabled) {
+      abortContainerViewRequests([containerId])
+      queueBackendFilterRefresh('container', containerId)
+      return
+    }
+    requestContainerRefresh(containerId)
+  }
+  if (pivotBackendEnabled) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
+  recalcContainerFilterOptions(containerId)
+  recalcPageFilterOptions()
 }
 
 onBeforeUnmount(() => {
   clearTimeout(refreshTimer)
   Object.values(containerRefreshTimers).forEach((timer) => clearTimeout(timer))
+  if (backendFiltersTimer) {
+    clearTimeout(backendFiltersTimer)
+  }
+  if (backendFiltersAbortController) {
+    backendFiltersAbortController.abort()
+  }
+  if (detailDialogAbortController) {
+    detailDialogAbortController.abort()
+    detailDialogAbortController = null
+  }
+  Object.values(containerStates).forEach((state) => {
+    if (state?.viewAbortController) {
+      state.viewAbortController.abort()
+    }
+  })
 })
 
 function goBack() {

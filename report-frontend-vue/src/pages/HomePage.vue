@@ -672,7 +672,7 @@
                     :key="column.key"
                     :style="columnStyle(column.key)"
                   >
-                    {{ column.label }}
+                    {{ resolveColumnHeaderLabel(column) }}
                   </th>
                   <template v-if="hasRowTotals">
                     <th
@@ -704,7 +704,7 @@
                         {{ isRowCollapsed(row.key) ? '+' : '−' }}
                       </button>
                       <div class="row-content">
-                        <span>{{ row.label }}</span>
+                        <span>{{ resolveRowHeaderLabel(row) }}</span>
                       </div>
                     </div>
                     <span
@@ -1034,6 +1034,11 @@ import PivotLayout from '@/components/PivotLayout.vue'
 import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import {
+  fetchBackendView,
+  isPivotBackendEnabled,
+  normalizeBackendView,
+} from '@/shared/services/reportViewBackend'
+import {
   loadReportConfigurations,
   loadReportPresentations,
   saveReportConfiguration,
@@ -1225,6 +1230,9 @@ const isPivotSource = computed(() => {
   if (isCreatingSource.value) return true
   return pivotSourceIds.value.includes(dataSource.value)
 })
+const pivotBackendEnabled = isPivotBackendEnabled()
+const debugLogsEnabled =
+  String(import.meta.env.VITE_DEBUG_LOGS || '').toLowerCase() === 'true'
 const hasResultData = computed(() => {
   const value = result.value
   if (Array.isArray(value)) return value.length > 0
@@ -2326,7 +2334,7 @@ const filteredPlanRecords = computed(() => {
 
 const pivotWarnings = computed(() => {
   const messages = []
-  if (!records.value.length) {
+  if (!records.value.length && !pivotBackendEnabled) {
     messages.push('Загрузите данные плана, чтобы построить сводную таблицу.')
   }
   if (!pivotConfig.rows.length && !pivotConfig.columns.length) {
@@ -2390,8 +2398,186 @@ function sanitizeFormulaExpression(value = '') {
     .replace(FORMULA_STRING_LITERAL_PATTERN, '')
 }
 
+const backendPivotState = reactive({
+  view: null,
+  chart: null,
+  error: '',
+  loading: false,
+  signature: '',
+  inFlightSignature: '',
+})
+
+function resolveBackendTemplateId() {
+  const raw =
+    currentPresentationMeta.value?.id ??
+    currentPresentationMeta.value?.Id ??
+    currentPresentationMeta.value?.ID ??
+    selectedPresentationId.value ??
+    currentConfigRemoteId.value ??
+    selectedConfigId.value ??
+    sourceDraft.id ??
+    ''
+  return raw ? String(raw) : ''
+}
+
+function buildBackendRemoteSource() {
+  if (!sourceDraft?.url) return null
+  const method = String(
+    sourceDraft.httpMethod || sourceDraft.method || 'POST',
+  ).toUpperCase()
+  const parsed = sourceDraft.rawBody ? safeJsonParse(sourceDraft.rawBody) : null
+  const body = parsed?.ok ? parsed.value : sourceDraft.rawBody || ''
+  const remoteId =
+    sourceDraft.remoteId ||
+    sourceDraft.remoteMeta?.id ||
+    sourceDraft.remoteMeta?.Id ||
+    sourceDraft.remoteMeta?.ID ||
+    ''
+  return {
+    id: sourceDraft.id || '',
+    remoteId,
+    name: sourceDraft.name || '',
+    description: sourceDraft.description || '',
+    method,
+    url: sourceDraft.url || '',
+    body,
+    headers: sourceDraft.headers || {},
+    joins: normalizeJoinList(sourceDraft.joins || []),
+    rawBody: sourceDraft.rawBody || '',
+    remoteMeta: sourceDraft.remoteMeta || {},
+  }
+}
+
+function buildBackendSnapshot() {
+  return {
+    pivot: {
+      filters: [...pivotConfig.filters],
+      rows: [...pivotConfig.rows],
+      columns: [...pivotConfig.columns],
+    },
+    metrics: pivotMetrics.map((metric) => ({
+      ...metric,
+      conditionalFormatting: normalizeConditionalFormatting(
+        metric.conditionalFormatting,
+      ),
+    })),
+    filterValues: copyFilterStore(filterValues),
+    filterRanges: copyRangeStore(filterRangeValues),
+    dimensionValues: {
+      rows: copyFilterStore(dimensionValueFilters.rows),
+      columns: copyFilterStore(dimensionValueFilters.columns),
+    },
+    dimensionRanges: {
+      rows: copyRangeStore(dimensionRangeFilters.rows),
+      columns: copyRangeStore(dimensionRangeFilters.columns),
+    },
+    options: {
+      headerOverrides: { ...headerOverrides },
+      sorts: {
+        filters: cloneSortState(pivotSortState.filters),
+        rows: cloneSortState(pivotSortState.rows),
+        columns: cloneSortState(pivotSortState.columns),
+      },
+    },
+    filtersMeta: buildFiltersMetaSnapshot(),
+    fieldMeta: buildFieldMetaSnapshot(),
+    filterModes: copyModeStore(filterModeSelections),
+    chartSettings: {},
+    conditionalFormatting: [],
+  }
+}
+
+function buildBackendFilters() {
+  return {
+    globalFilters: {
+      values: copyFilterStore(filterValues),
+      ranges: copyRangeStore(filterRangeValues),
+    },
+    containerFilters: {
+      values: {},
+      ranges: {},
+    },
+  }
+}
+
+const backendPayload = computed(() => {
+  if (!pivotBackendEnabled) return null
+  if (pivotWarnings.value.length) return null
+  if (!computationBaseMetrics.value.length) return null
+  const remoteSource = buildBackendRemoteSource()
+  if (!remoteSource) return null
+  return {
+    templateId: resolveBackendTemplateId(),
+    remoteSource,
+    snapshot: buildBackendSnapshot(),
+    filters: buildBackendFilters(),
+  }
+})
+
+const backendSignature = computed(() =>
+  backendPayload.value ? JSON.stringify(backendPayload.value) : '',
+)
+
+watch(
+  () => backendSignature.value,
+  async (signature) => {
+    if (!signature) {
+      backendPivotState.view = null
+      backendPivotState.chart = null
+      backendPivotState.error = ''
+      backendPivotState.loading = false
+      backendPivotState.signature = ''
+      backendPivotState.inFlightSignature = ''
+      return
+    }
+    if (backendPivotState.signature === signature) return
+    if (
+      backendPivotState.loading &&
+      backendPivotState.inFlightSignature === signature
+    ) {
+      return
+    }
+    backendPivotState.signature = signature
+    backendPivotState.inFlightSignature = signature
+    backendPivotState.loading = true
+    backendPivotState.error = ''
+    backendPivotState.view = null
+    backendPivotState.chart = null
+    // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
+    // Локальный buildPivotView оставлен как fallback до полной миграции.
+    try {
+      const { view, chart } = await fetchBackendView(backendPayload.value)
+      backendPivotState.view = normalizeBackendView(
+        view,
+        computationBaseMetrics.value,
+      )
+      backendPivotState.chart = chart || null
+    } catch (err) {
+      console.warn('Failed to build backend pivot view', err)
+      backendPivotState.error =
+        err?.message || 'Не удалось построить сводную таблицу.'
+      backendPivotState.view = null
+      backendPivotState.chart = null
+    } finally {
+      backendPivotState.loading = false
+      if (backendPivotState.inFlightSignature === signature) {
+        backendPivotState.inFlightSignature = ''
+      }
+    }
+  },
+  { immediate: true },
+)
+
 const basePivotResult = computed(() => {
   if (pivotWarnings.value.length) return { view: null, errorMetricId: null }
+  if (pivotBackendEnabled) {
+    if (backendPivotState.view) {
+      return { view: backendPivotState.view, errorMetricId: null }
+    }
+    if (!backendPivotState.error) {
+      return { view: null, errorMetricId: null }
+    }
+  }
   if (!filteredPlanRecords.value.length)
     return { view: null, errorMetricId: null }
   if (!computationBaseMetrics.value.length)
@@ -5085,9 +5271,54 @@ function groupColumnsByLevel(columns, levelIndex) {
 }
 
 function getColumnLevelValue(column, levelIndex) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length && levelIndex < values.length) {
+    const raw = values[levelIndex]
+    if (raw !== null && typeof raw !== 'undefined' && raw !== '') {
+      return formatValue(raw)
+    }
+  }
   const level = column.levels?.[levelIndex]
   if (!level) return 'Итого'
   return level.value || '—'
+}
+
+function resolveRowHeaderLabel(row) {
+  const values = Array.isArray(row?.values) ? row.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug('pivot row header', row?.key, row?.values, row?.label)
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot row header', row?.key, row?.values, row?.label)
+  }
+  return row?.label || row?.key || ''
+}
+
+function resolveColumnHeaderLabel(column) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug('pivot col header', column?.key, column?.values, column?.label)
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot col header', column?.key, column?.values, column?.label)
+  }
+  return column?.label || column?.key || ''
 }
 
 function getRawFieldLabel(key) {

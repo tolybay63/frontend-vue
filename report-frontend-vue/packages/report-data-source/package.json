@@ -1,0 +1,15 @@
+{
+  "name": "@company/report-data-source",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "description": "Shared client for fetching remote report data sources with join support.",
+  "license": "UNLICENSED"
+}

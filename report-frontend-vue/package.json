@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .js,.vue"
   },
   "dependencies": {
+    "@company/report-data-source": "file:packages/report-data-source",
     "axios": "^1.6.8",
     "chart.js": "^4.5.1",
     "naive-ui": "^2.43.2",

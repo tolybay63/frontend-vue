@@ -1,8 +1,10 @@
+.git
 .venv/
 venv/
 __pycache__/
 **/__pycache__/
 *.pyc
+.env*
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -12,5 +14,3 @@ node_modules/
 dist/
 build/
 .DS_Store
-report-back-fast-api_*.tar
-*.tar

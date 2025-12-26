@@ -149,3 +149,14 @@ docker compose logs -f
 Swagger:
 
 http://localhost:8001/docs
+===================================
+Деплой без Докера:
+1. Выполнить команды:
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
+python -m PyInstaller --onefile --name report-fast --clean --paths . run_server.py
+
+2. Запустить файл
+.\dist\report-fast.exe
+

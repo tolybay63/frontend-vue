@@ -1,5 +1,5 @@
 /** Файл: src/shared/api/reportClient.ts
- *  Назначение: JSON-RPC клиент сервиса «Report» (http://45.8.116.32/dtj/api/report).
+ *  Назначение: JSON-RPC клиент сервиса «Report» (эндпоинт `/dtj/api/report`).
  *  Использование: импортируйте reportRpc и вызывайте методы, например reportRpc('report/generateReport', [payload]).
  */
 import axios from 'axios'

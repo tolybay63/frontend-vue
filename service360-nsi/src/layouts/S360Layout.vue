@@ -226,11 +226,9 @@ const menuRouteByKey: Record<string, string> = {
 // расширение маршрутов для ресурcов (единая таблица с типом через query)
 Object.assign(menuRouteByKey, {
   resources: '/nsi/resources',
-  'resources:materials': '/nsi/resources?type=materials',
   'resources:equipment': '/nsi/resources?type=equipment',
   'resources:tools': '/nsi/resources?type=tools',
   'resources:professions': '/nsi/resources?type=professions',
-  'resources:third-party': '/nsi/resources?type=third-party',
 })
 
 interface MenuItem {
@@ -323,15 +321,9 @@ const menuOptions: MenuOption[] = MENU_ITEMS.map((item) => ({
 }))
 
 const RESOURCES_CHILDREN = [
-  { key: 'resources:materials', menuLabel: 'Материалы', tooltip: 'Материалы' },
-  { key: 'resources:equipment', menuLabel: 'Техника', tooltip: 'Техника' },
-  { key: 'resources:tools', menuLabel: 'Инструменты', tooltip: 'Инструменты' },
+  { key: 'resources:equipment', menuLabel: 'Вид техники', tooltip: 'Вид техники' },
+  { key: 'resources:tools', menuLabel: 'Вид инструмента', tooltip: 'Вид инструмента' },
   { key: 'resources:professions', menuLabel: 'Профессии', tooltip: 'Профессии' },
-  {
-    key: 'resources:third-party',
-    menuLabel: 'Услуги сторонних',
-    tooltip: 'Услуги сторонних',
-  },
 ] satisfies Array<{ key: string; menuLabel: string; tooltip: string }>
 
 // Вставляем группу «Ресурсы» сразу после «Задачи» (если найдена), иначе в конец
@@ -443,7 +435,7 @@ const syncMenuValue = () => {
   const currentPath = route.path
   if (currentPath === '/nsi/resources') {
     const t = String(route.query?.type || '')
-    if (t && ['materials', 'equipment', 'tools', 'professions', 'third-party'].includes(t)) {
+    if (t && ['equipment', 'tools', 'professions'].includes(t)) {
       menuValue.value = `resources:${t}`
       return
     }

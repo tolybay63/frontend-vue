@@ -1,6 +1,6 @@
 <!-- Страница: src/pages/nsi/ResourcesPage.vue
-     Назначение: Справочник «Ресурсы» с единым списком и типом ресурса. Материалы/услуги берутся из resource API, техника/инструменты/профессии — из Factor_*.
-     Использование: роут /nsi/resources (с фильтром по типу через query ?type=materials|equipment|tools|professions|third-party). -->
+     Назначение: Справочник «Ресурсы» с единым списком и типом ресурса. Виды техники/инструмента и профессии берутся из Factor_*.
+     Использование: роут /nsi/resources (с фильтром по типу через query ?type=equipment|tools|professions). -->
 <template>
   <section class="resources-page">
     <NCard size="small" class="toolbar" content-style="padding: 10px 14px">
@@ -116,8 +116,8 @@
     <!-- Инфо -->
     <NModal v-model:show="infoOpen" preset="card" title="О справочнике" style="max-width: 640px">
       <p>
-        Справочник «Ресурсы» объединяет материалы, технику, инструменты, профессии и услуги сторонних в единую таблицу с полем «Вид ресурса». Для
-        техники, инструментов и профессий сохраняется только название (без единиц и описаний). В меню доступны быстрые фильтры по видам.
+        Справочник «Ресурсы» объединяет технику, инструменты и профессии в единую таблицу с полем «Вид ресурса». Для этих видов сохраняется только
+        название. В меню доступны быстрые фильтры по видам.
       </p>
       <template #footer>
         <NButton type="primary" @click="infoOpen = false">Понятно</NButton>
@@ -136,30 +136,7 @@
           />
         </NFormItem>
         <NFormItem label="Название" :feedback="errors.name ?? undefined" :validation-status="errors.name ? 'error' : undefined">
-          <NInput v-model:value="form.name" placeholder="Например: Щебень фр. 5-20" />
-        </NFormItem>
-        <NFormItem
-          v-if="requiresMeasure"
-          label="Единица измерения"
-          :feedback="errors.measureKey ?? undefined"
-          :validation-status="errors.measureKey ? 'error' : undefined"
-        >
-          <NSelect
-            v-model:value="form.measureKey"
-            :options="measureOptions"
-            placeholder="Выберите единицу измерения"
-            filterable
-            :loading="measureLoading"
-          />
-        </NFormItem>
-        <NFormItem v-else label="Единица измерения">
-          <span class="form-hint">Не требуется для выбранного вида ресурса</span>
-        </NFormItem>
-        <NFormItem v-if="supportsDescription" label="Описание">
-          <NInput v-model:value="form.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="Краткое описание" />
-        </NFormItem>
-        <NFormItem v-else label="Описание">
-          <span class="form-hint">Не требуется для выбранного вида ресурса</span>
+          <NInput v-model:value="form.name" placeholder="Например: Экскаватор" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -193,11 +170,10 @@ import {
   useMessage,
 } from 'naive-ui'
 import { InformationCircleOutline } from '@vicons/ionicons5'
-import { metaRpc, resourceRpc, rpc as nsiRpc } from '@shared/api'
+import { metaRpc, rpc as nsiRpc } from '@shared/api'
 
-type ResourceType = 'materials' | 'equipment' | 'tools' | 'professions' | 'third-party'
-type NameOnlyResourceType = Extract<ResourceType, 'equipment' | 'tools' | 'professions'>
-type MeasuredResourceType = Extract<ResourceType, 'materials' | 'third-party'>
+type ResourceType = 'equipment' | 'tools' | 'professions'
+type NameOnlyResourceType = ResourceType
 
 interface PaginationState {
   page: number
@@ -214,7 +190,6 @@ const search = ref('')
 const typeFilter = ref<ResourceType | null>(null)
 const pagination = reactive<PaginationState>({ page: 1, pageSize: 10 })
 const tableLoading = ref(false)
-const measureLoading = ref(false)
 const sortOrder = ref<'name-asc' | 'name-desc'>('name-asc')
 const sortOptions = [
   { label: 'По названию (А→Я)', value: 'name-asc' },
@@ -222,11 +197,9 @@ const sortOptions = [
 ]
 
 const typeLabels: Record<ResourceType, string> = {
-  materials: 'Материал',
-  equipment: 'Техника',
-  tools: 'Инструменты',
+  equipment: 'Вид техники',
+  tools: 'Вид инструмента',
   professions: 'Профессия',
-  'third-party': 'Услуги сторонних',
 }
 
 const typeOptions = Object.entries(typeLabels).map(([value, label]) => ({ label, value })) as SelectOption[]
@@ -238,10 +211,6 @@ function isNameOnlyType(type: ResourceType): type is NameOnlyResourceType {
   return NAME_ONLY_TYPE_SET.has(type)
 }
 
-function isMeasuredResource(type: ResourceType): type is MeasuredResourceType {
-  return type === 'materials' || type === 'third-party'
-}
-
 const message = useMessage()
 
 interface ResourceRow {
@@ -251,14 +220,11 @@ interface ResourceRow {
   unit: string
   description?: string
   raw: ResourcePayloadBase
-  measureKey?: string | null
 }
 
 interface ResourceFormState {
   type: ResourceType
   name: string
-  measureKey: string | null
-  description: string
 }
 
 interface ResourcePayloadBase {
@@ -266,16 +232,6 @@ interface ResourcePayloadBase {
   name?: string | null
   fullName?: string | null
   Description?: string | null
-}
-
-interface MaterialResponse extends ResourcePayloadBase {
-  meaMeasure?: string | number | null
-  pvMeasure?: string | number | null
-}
-
-interface ServiceResponse extends ResourcePayloadBase {
-  meaMeasure?: string | number | null
-  pvMeasure?: string | number | null
 }
 
 interface FactorResponse extends ResourcePayloadBase {
@@ -289,22 +245,6 @@ type EquipmentResponse = FactorResponse
 type ToolResponse = FactorResponse
 
 type ProfessionResponse = FactorResponse
-
-interface MeasureResponse {
-  id?: string | number | null
-  pv?: string | number | null
-  name?: string | null
-}
-
-interface MeasureSelectOption extends SelectOption {
-  value: string
-  label: string
-  id: string | number | null
-  pv: string | number | null
-  name: string
-}
-
-type MeasureLookup = Map<string, string>
 
 const ARRAY_WRAPPER_KEYS = [
   'result',
@@ -362,16 +302,12 @@ const FACTOR_KEY_BY_TYPE: Record<NameOnlyResourceType, string> = {
 }
 
 const remoteItems = ref<ResourceRow[]>([])
-const measureOptions = ref<MeasureSelectOption[]>([])
-let measureOptionMap: Map<string, MeasureSelectOption> = new Map()
 
-const form = reactive<ResourceFormState>({ type: 'materials', name: '', measureKey: null, description: '' })
+const form = reactive<ResourceFormState>({ type: 'equipment', name: '' })
 const errors = reactive<{ [K in keyof ResourceFormState]?: string | null }>({})
 
 const dialogTitle = computed(() => (editingRow.value ? 'Редактировать ресурс' : 'Добавить ресурс'))
 const isEditing = computed(() => editingRow.value !== null)
-const requiresMeasure = computed(() => isMeasuredResource(form.type))
-const supportsDescription = computed(() => !isNameOnlyType(form.type))
 const saveLoading = ref(false)
 
 const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('ru-RU'))
@@ -422,27 +358,11 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => form.type,
-  (next) => {
-    if (isNameOnlyType(next)) {
-      form.measureKey = null
-      errors.measureKey = null
-      form.description = ''
-      errors.description = null
-    }
-  },
-)
-
 function resetForm(partial?: Partial<ResourceFormState>) {
-  form.type = partial?.type ?? (typeFilter.value ?? 'materials')
+  form.type = partial?.type ?? (typeFilter.value ?? 'equipment')
   form.name = partial?.name ?? ''
-  form.measureKey = partial?.measureKey ?? null
-  form.description = partial?.description ?? ''
   errors.type = null
   errors.name = null
-  errors.measureKey = null
-  errors.description = null
 }
 
 function openCreate() {
@@ -458,18 +378,7 @@ function validate(): boolean {
   errors.name = trimmedName ? null : 'Заполните название'
   if (!trimmedName) ok = false
   if (!form.type) ok = false
-  if (requiresMeasure.value) {
-    errors.measureKey = form.measureKey ? null : 'Выберите единицу измерения'
-    if (!form.measureKey) ok = false
-  } else {
-    errors.measureKey = null
-  }
   return ok
-}
-
-const RESOURCE_METHOD_BY_TYPE: Record<MeasuredResourceType, string> = {
-  materials: 'data/saveMaterial',
-  'third-party': 'data/saveTpService',
 }
 
 interface MetaFactorInsertRecord {
@@ -485,34 +394,14 @@ async function save() {
   if (!validate()) return
 
   const normalizedName = formatText(form.name)
-  const normalizedDescription = resolveDescription(form.description)
   form.name = normalizedName
-  form.description = normalizedDescription
 
   const currentRow = editingRow.value
   const currentType = form.type
 
   saveLoading.value = true
   try {
-    if (isNameOnlyType(currentType)) {
-      await saveNameOnlyResource(currentType, normalizedName, currentRow)
-    } else {
-      if (!isMeasuredResource(currentType)) {
-        throw new Error('Неподдерживаемый вид ресурса')
-      }
-      const method = RESOURCE_METHOD_BY_TYPE[currentType]
-      const mode = currentRow ? 'upd' : 'ins'
-      const payload = buildPayload(
-        {
-          type: currentType,
-          name: normalizedName,
-          description: normalizedDescription,
-          measureKey: form.measureKey,
-        },
-        currentRow,
-      )
-      await resourceRpc(method, [mode, payload])
-    }
+    await saveNameOnlyResource(currentType, normalizedName, currentRow)
     message.success(currentRow ? 'Ресурс обновлён' : 'Ресурс добавлен')
     dialogOpen.value = false
     editingRow.value = null
@@ -560,52 +449,6 @@ async function saveNameOnlyResource(type: NameOnlyResourceType, name: string, ro
   if (!records.length) {
     throw new Error('Meta API: не удалось сохранить запись')
   }
-}
-
-interface BuildPayloadState {
-  type: MeasuredResourceType
-  name: string
-  description: string
-  measureKey: string | null
-}
-
-function buildPayload(state: BuildPayloadState, row: ResourceRow | null): Record<string, unknown> {
-  const base: Record<string, unknown> = row ? { ...row.raw } : {}
-
-  base.name = state.name
-  base.Description = state.description
-
-  if (state.type === 'materials' || state.type === 'third-party') {
-    const option = state.measureKey ? measureOptionMap.get(state.measureKey) : undefined
-    if (option) {
-      base.meaMeasure = normalizeMeasurePart(option.id)
-      base.pvMeasure = normalizeMeasurePart(option.pv)
-      const measureName = option.name
-      base.fullName = measureName ? `${state.name}, ${measureName}` : state.name
-    } else if (!row) {
-      base.meaMeasure = null
-      base.pvMeasure = null
-    }
-  }
-
-  if (
-    (state.type === 'materials' || state.type === 'third-party') &&
-    (!('fullName' in base) || !base.fullName)
-  ) {
-    base.fullName = state.name
-  }
-
-  return base
-}
-
-function normalizeMeasurePart(value: unknown): number | string | null {
-  if (value == null) return null
-  const numeric = Number(value)
-  if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
-    return numeric
-  }
-  if (typeof value === 'string') return value
-  return String(value)
 }
 
 const rowKey = (row: ResourceRow) => row.id
@@ -662,25 +505,14 @@ function showMore() {
 
 async function fetchResources() {
   tableLoading.value = true
-  measureLoading.value = true
   try {
-    const [materialsRaw, servicesRaw, equipmentRaw, toolsRaw, professionsRaw, measuresRaw] = await Promise.all([
-      resourceRpc<unknown>('data/loadMaterial', [0]),
-      resourceRpc<unknown>('data/loadTpService', [0]),
+    const [equipmentRaw, toolsRaw, professionsRaw] = await Promise.all([
       nsiRpc<unknown>('data/loadFvForSelect', [FACTOR_KEY_BY_TYPE.equipment]),
       nsiRpc<unknown>('data/loadFvForSelect', [FACTOR_KEY_BY_TYPE.tools]),
       nsiRpc<unknown>('data/loadFvForSelect', [FACTOR_KEY_BY_TYPE.professions]),
-      nsiRpc<unknown>('data/loadMeasure', ['Prop_Measure']),
     ])
 
-    const measureRecords = unwrapArrayPayload<MeasureResponse>(measuresRaw)
-    const dictionaries = buildMeasureDictionaries(measureRecords)
-    measureOptions.value = dictionaries.options
-    measureOptionMap = dictionaries.map
-
     remoteItems.value = [
-      ...createMaterialRows(unwrapArrayPayload<MaterialResponse>(materialsRaw), dictionaries.lookup),
-      ...createServiceRows(unwrapArrayPayload<ServiceResponse>(servicesRaw), dictionaries.lookup),
       ...createEquipmentRows(unwrapArrayPayload<EquipmentResponse>(equipmentRaw)),
       ...createToolRows(unwrapArrayPayload<ToolResponse>(toolsRaw)),
       ...createProfessionRows(unwrapArrayPayload<ProfessionResponse>(professionsRaw)),
@@ -692,13 +524,12 @@ async function fetchResources() {
     remoteItems.value = []
   } finally {
     tableLoading.value = false
-    measureLoading.value = false
   }
 }
 
 function setTypeFromQuery() {
   const q = String(route.query.type || '')
-  if (q && ['materials', 'equipment', 'tools', 'professions', 'third-party'].includes(q)) {
+  if (q && ['equipment', 'tools', 'professions'].includes(q)) {
     typeFilter.value = q as ResourceType
   } else {
     typeFilter.value = null
@@ -725,42 +556,6 @@ function handleTypeFilterUpdate(next: ResourceType | null) {
   void router.replace({ path: route.path, query })
 }
 
-type MeasureDictionaries = {
-  lookup: MeasureLookup
-  options: MeasureSelectOption[]
-  map: Map<string, MeasureSelectOption>
-}
-
-function buildMeasureDictionaries(records: MeasureResponse[]): MeasureDictionaries {
-  const lookup: MeasureLookup = new Map()
-  const options: MeasureSelectOption[] = []
-  const map = new Map<string, MeasureSelectOption>()
-
-  for (const record of records) {
-    const key = createMeasureKey(record.id, record.pv)
-    if (!key) continue
-    const name = formatText(record.name)
-    if (!name) continue
-
-    lookup.set(key, name)
-
-    const option: MeasureSelectOption = {
-      label: name,
-      value: key,
-      id: record.id ?? null,
-      pv: record.pv ?? null,
-      name,
-    }
-
-    options.push(option)
-    map.set(key, option)
-  }
-
-  options.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
-
-  return { lookup, options, map }
-}
-
 function formatText(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (value == null) return ''
@@ -770,17 +565,6 @@ function formatText(value: unknown): string {
 function resolveName(value: unknown): string {
   const text = formatText(value)
   return text || 'Без названия'
-}
-
-function resolveDescription(value: unknown): string {
-  return formatText(value)
-}
-
-function createMeasureKey(id?: unknown, pv?: unknown): string {
-  const idPart = formatText(id)
-  const pvPart = formatText(pv)
-  if (!idPart && !pvPart) return ''
-  return `${idPart}__${pvPart}`
 }
 
 function unwrapArrayPayload<T>(payload: unknown): T[] {
@@ -818,12 +602,6 @@ function unwrapArrayPayload<T>(payload: unknown): T[] {
   return fallback ?? []
 }
 
-function resolveMeasureName(lookup: MeasureLookup, id?: unknown, pv?: unknown): string {
-  const key = createMeasureKey(id, pv)
-  if (!key) return ''
-  return lookup.get(key) ?? ''
-}
-
 function resolveRowId(prefix: string, record: ResourcePayloadBase, fallbackIndex: number): string {
   for (const key of ID_CANDIDATES) {
     const value = record[key]
@@ -834,40 +612,6 @@ function resolveRowId(prefix: string, record: ResourcePayloadBase, fallbackIndex
   }
 
   return `${prefix}-${fallbackIndex}`
-}
-
-function createMaterialRows(materials: MaterialResponse[], measures: MeasureLookup): ResourceRow[] {
-  return materials.map((material, index) => {
-    const id = resolveRowId('material', material, index)
-    const unit = resolveMeasureName(measures, material.meaMeasure, material.pvMeasure) || '—'
-    const measureKey = createMeasureKey(material.meaMeasure, material.pvMeasure) || null
-    return {
-      id,
-      type: 'materials',
-      name: resolveName(material.name),
-      unit,
-      description: resolveDescription(material.Description),
-      raw: material,
-      measureKey,
-    }
-  })
-}
-
-function createServiceRows(services: ServiceResponse[], measures: MeasureLookup): ResourceRow[] {
-  return services.map((service, index) => {
-    const id = resolveRowId('service', service, index)
-    const unit = resolveMeasureName(measures, service.meaMeasure, service.pvMeasure) || '—'
-    const measureKey = createMeasureKey(service.meaMeasure, service.pvMeasure) || null
-    return {
-      id,
-      type: 'third-party',
-      name: resolveName(service.name),
-      unit,
-      description: resolveDescription(service.Description),
-      raw: service,
-      measureKey,
-    }
-  })
 }
 
 function createEquipmentRows(equipment: EquipmentResponse[]): ResourceRow[] {
@@ -892,7 +636,6 @@ function createNameOnlyRows(records: FactorResponse[], type: NameOnlyResourceTyp
       unit: '',
       description: '',
       raw: item,
-      measureKey: null,
     }
   })
 }
@@ -974,7 +717,6 @@ const isMobile = computed(() => (typeof window !== 'undefined' ? window.innerWid
 .card__actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .card__actions .table-actions { justify-content: flex-start; opacity: 1; }
 .show-more-bar { display: flex; justify-content: center; margin-top: 10px; }
-.form-hint { color: var(--n-text-color-3); font-size: 13px; }
 
 @media (max-width: 768px) {
   .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }

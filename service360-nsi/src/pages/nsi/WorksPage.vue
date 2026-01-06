@@ -6,7 +6,9 @@
     <NCard size="small" class="toolbar" content-style="padding: 10px 14px">
       <div class="toolbar__left">
         <h2 class="page-title">
-          {{ t('nsi.objectTypes.works.title', {}, { default: 'Справочник «Технологические работы»' }) }}
+          {{
+            t('nsi.objectTypes.works.title', {}, { default: 'Справочник «Технологические работы»' })
+          }}
           <NButton
             quaternary
             circle
@@ -21,7 +23,16 @@
           </NButton>
         </h2>
         <div class="subtext">
-          {{ t('nsi.objectTypes.works.subtitle', {}, { default: 'Ведите перечень технологических работ обслуживаемых объектов: указывайте вид, тип объекта, источник и периодичность' }) }}
+          {{
+            t(
+              'nsi.objectTypes.works.subtitle',
+              {},
+              {
+                default:
+                  'Ведите перечень технологических работ обслуживаемых объектов: указывайте вид, тип объекта, источник и периодичность',
+              },
+            )
+          }}
         </div>
       </div>
 
@@ -49,7 +60,9 @@
             :options="objectTypeOptions"
             multiple
             filterable
-            :placeholder="t('nsi.objectTypes.works.filter.objectType', {}, { default: 'Тип объекта' })"
+            :placeholder="
+              t('nsi.objectTypes.works.filter.objectType', {}, { default: 'Тип объекта' })
+            "
             clearable
             size="small"
             class="toolbar__select"
@@ -69,7 +82,9 @@
             :options="periodTypeOptions"
             multiple
             filterable
-            :placeholder="t('nsi.objectTypes.works.filter.period', {}, { default: 'Периодичность' })"
+            :placeholder="
+              t('nsi.objectTypes.works.filter.period', {}, { default: 'Периодичность' })
+            "
             clearable
             size="small"
             class="toolbar__select"
@@ -83,14 +98,16 @@
           class="toolbar__select"
           :aria-label="t('nsi.objectTypes.works.sortAria', {}, { default: 'Порядок сортировки' })"
         />
-        <NButton type="primary" @click="openCreate">+ {{ t('nsi.objectTypes.works.add', {}, { default: 'Добавить работу' }) }}</NButton>
+        <NButton type="primary" @click="openCreate"
+          >+ {{ t('nsi.objectTypes.works.add', {}, { default: 'Добавить работу' }) }}</NButton
+        >
       </div>
     </NCard>
 
     <div class="table-area">
       <NDataTable
         v-if="!isMobile"
-        class="s360-cards table-full table-stretch"
+        class="s360-cards table-full table-stretch works-table"
         :columns="columns"
         :data="rows"
         :loading="tableLoading"
@@ -100,7 +117,13 @@
 
       <div v-else class="cards" role="list">
         <div class="list-info">
-          {{ t('nsi.objectTypes.works.listInfo', { shown: visibleCount, total }, { default: 'Показано: ' + visibleCount + ' из ' + total }) }}
+          {{
+            t(
+              'nsi.objectTypes.works.listInfo',
+              { shown: visibleCount, total },
+              { default: 'Показано: ' + visibleCount + ' из ' + total },
+            )
+          }}
         </div>
         <article
           v-for="item in rows"
@@ -135,7 +158,9 @@
       </div>
 
       <div v-if="isMobile && pagination.page < maxPage" class="show-more-bar">
-        <NButton tertiary @click="showMore" :loading="tableLoading">{{ t('nsi.objectTypes.works.showMore', {}, { default: 'Показать ещё' }) }}</NButton>
+        <NButton tertiary @click="showMore" :loading="tableLoading">{{
+          t('nsi.objectTypes.works.showMore', {}, { default: 'Показать ещё' })
+        }}</NButton>
       </div>
 
       <div class="pagination-bar" v-if="!isMobile">
@@ -146,10 +171,18 @@
           :item-count="total"
           show-size-picker
           show-quick-jumper
-          :aria-label="t('nsi.objectTypes.works.paginationAria', {}, { default: 'Постраничная навигация по технологическим работам' })"
+          :aria-label="
+            t(
+              'nsi.objectTypes.works.paginationAria',
+              {},
+              { default: 'Постраничная навигация по технологическим работам' },
+            )
+          "
         >
           <template #prefix>
-            <span class="pagination-total">{{ t('nsi.objectTypes.works.total', { total }, { default: 'Всего: ' + total }) }}</span>
+            <span class="pagination-total">{{
+              t('nsi.objectTypes.works.total', { total }, { default: 'Всего: ' + total })
+            }}</span>
           </template>
         </NPagination>
       </div>
@@ -167,7 +200,16 @@
           :feedback="workFormErrors.name ?? undefined"
           :validation-status="workFormErrors.name ? 'error' : undefined"
         >
-          <NInput v-model:value="workForm.name" :placeholder="t('nsi.objectTypes.works.form.name.placeholder', {}, { default: 'Введите наименование' })" />
+          <NInput
+            v-model:value="workForm.name"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.name.placeholder',
+                {},
+                { default: 'Введите наименование' },
+              )
+            "
+          />
         </NFormItem>
 
         <NFormItem
@@ -179,17 +221,29 @@
             v-model:value="selectedObjectTypeIds"
             multiple
             :options="relationSelectOptions"
-            :placeholder="t('nsi.objectTypes.works.form.objectType.placeholder', {}, { default: 'Выберите тип объекта' })"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.objectType.placeholder',
+                {},
+                { default: 'Выберите тип объекта' },
+              )
+            "
             :disabled="objectTypeSelectLoading"
             filterable
             clearable
             :loading="objectTypeSelectLoading"
             :max-tag-count="3"
             style="width: 100%"
-            @focus="() => loadWorkObjectTypesForForm(isEditMode ? editingRow?.id ?? null : null)"
+            @focus="() => loadWorkObjectTypesForForm(isEditMode ? (editingRow?.id ?? null) : null)"
           />
           <p v-if="!objectTypeSelectLoading && !relationSelectOptions.length" class="text-small">
-            {{ t('nsi.objectTypes.works.form.objectType.empty', {}, { default: 'Для работы пока нет доступных типов объектов.' }) }}
+            {{
+              t(
+                'nsi.objectTypes.works.form.objectType.empty',
+                {},
+                { default: 'Для работы пока нет доступных типов объектов.' },
+              )
+            }}
           </p>
         </NFormItem>
 
@@ -201,9 +255,57 @@
           <NSelect
             v-model:value="workForm.workTypeId"
             :options="workTypeOptions"
-            :placeholder="t('nsi.objectTypes.works.form.workType.placeholder', {}, { default: 'Выберите вид работы' })"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.workType.placeholder',
+                {},
+                { default: 'Выберите вид работы' },
+              )
+            "
             filterable
           />
+        </NFormItem>
+        <p v-if="workForm.workTypeId && !isTasksAllowed" class="text-small text-muted">
+          {{
+            t(
+              'nsi.objectTypes.works.form.tasks.hint',
+              {},
+              { default: 'Задачи доступны только для исправительных работ' },
+            )
+          }}
+        </p>
+
+        <NFormItem
+          v-if="isTasksAllowed"
+          :label="t('nsi.objectTypes.works.form.tasks.label', {}, { default: 'Задачи' })"
+        >
+          <NSelect
+            v-model:value="selectedTaskIds"
+            multiple
+            :options="taskOptions"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.tasks.placeholder',
+                {},
+                { default: 'Выберите задачи (необязательно)' },
+              )
+            "
+            filterable
+            clearable
+            :loading="taskSelectLoading"
+            :max-tag-count="3"
+            style="width: 100%"
+            @focus="() => loadWorkTasksForForm(isEditMode ? (editingRow?.id ?? null) : null)"
+          />
+          <p v-if="!taskSelectLoading && !taskOptions.length" class="text-small">
+            {{
+              t(
+                'nsi.objectTypes.works.form.tasks.empty',
+                {},
+                { default: 'Нет доступных задач для выбора.' },
+              )
+            }}
+          </p>
         </NFormItem>
 
         <NFormItem
@@ -216,17 +318,34 @@
             :options="sourceFormOptions"
             :loading="sourceOptionsLoading"
             :multiple="false"
-            :placeholder="t('nsi.objectTypes.works.form.source.placeholder', {}, { default: 'Выберите источник данных' })"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.source.placeholder',
+                {},
+                { default: 'Выберите источник данных' },
+              )
+            "
             @update:value="(v) => (workForm.sourceId = typeof v === 'string' ? v : null)"
           />
         </NFormItem>
 
         <NFormItem
-          :label="t('nsi.objectTypes.works.form.sourceNumber.label', {}, { default: 'Номер в источнике' })"
+          :label="
+            t('nsi.objectTypes.works.form.sourceNumber.label', {}, { default: 'Номер в источнике' })
+          "
           :feedback="workFormErrors.sourceNumber ?? undefined"
           :validation-status="workFormErrors.sourceNumber ? 'error' : undefined"
         >
-          <NInput v-model:value="workForm.sourceNumber" :placeholder="t('nsi.objectTypes.works.form.sourceNumber.placeholder', {}, { default: 'Например, 99' })" />
+          <NInput
+            v-model:value="workForm.sourceNumber"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.sourceNumber.placeholder',
+                {},
+                { default: 'Например, 99' },
+              )
+            "
+          />
         </NFormItem>
 
         <NFormItem
@@ -237,38 +356,83 @@
           <NSelect
             v-model:value="workForm.periodTypeId"
             :options="periodTypeFormOptions"
-            :placeholder="t('nsi.objectTypes.works.form.periodType.placeholder', {}, { default: 'Выберите тип периода' })"
+            :placeholder="
+              t(
+                'nsi.objectTypes.works.form.periodType.placeholder',
+                {},
+                { default: 'Выберите тип периода' },
+              )
+            "
             filterable
           />
         </NFormItem>
 
         <NFormItem
-          :label="t('nsi.objectTypes.works.form.periodicity.label', {}, { default: 'Число повторений' })"
+          :label="
+            t('nsi.objectTypes.works.form.periodicity.label', {}, { default: 'Число повторений' })
+          "
           :feedback="workFormErrors.periodicity ?? undefined"
           :validation-status="workFormErrors.periodicity ? 'error' : undefined"
         >
-          <NInputNumber v-model:value="workForm.periodicity" :min="1" :placeholder="t('nsi.objectTypes.works.form.periodicity.placeholder', {}, { default: '1' })" />
+          <NInputNumber
+            v-model:value="workForm.periodicity"
+            :min="1"
+            :placeholder="
+              t('nsi.objectTypes.works.form.periodicity.placeholder', {}, { default: '1' })
+            "
+          />
         </NFormItem>
       </NForm>
 
       <template #footer>
         <div class="modal-footer">
-          <NButton @click="dialogOpen = false" :disabled="savingWork">{{ t('nsi.objectTypes.works.actions.cancel', {}, { default: 'Отмена' }) }}</NButton>
+          <NButton @click="dialogOpen = false" :disabled="savingWork">{{
+            t('nsi.objectTypes.works.actions.cancel', {}, { default: 'Отмена' })
+          }}</NButton>
           <NButton type="primary" class="btn-primary" :loading="savingWork" @click="saveWork">
-            {{ isEditMode ? t('nsi.objectTypes.works.actions.save', {}, { default: 'Сохранить' }) : t('nsi.objectTypes.works.actions.create', {}, { default: 'Создать' }) }}
+            {{
+              isEditMode
+                ? t('nsi.objectTypes.works.actions.save', {}, { default: 'Сохранить' })
+                : t('nsi.objectTypes.works.actions.create', {}, { default: 'Создать' })
+            }}
           </NButton>
         </div>
       </template>
     </NModal>
 
-    <NModal v-model:show="infoOpen" preset="card" :title="t('nsi.objectTypes.works.info.title', {}, { default: 'О справочнике работ' })" style="max-width: 520px">
+    <NModal
+      v-model:show="infoOpen"
+      preset="card"
+      :title="t('nsi.objectTypes.works.info.title', {}, { default: 'О справочнике работ' })"
+      style="max-width: 520px"
+    >
       <p class="text-body">
-        {{ t('nsi.objectTypes.works.info.p1', {}, { default: 'Справочник содержит технологические работы по содержанию и восстановлению обслуживаемых объектов.' }) }}
-        {{ t('nsi.objectTypes.works.info.p2', {}, { default: 'В таблице указаны вид работы, тип объекта, источник регламента и периодичность выполнения.' }) }}
+        {{
+          t(
+            'nsi.objectTypes.works.info.p1',
+            {},
+            {
+              default:
+                'Справочник содержит технологические работы по содержанию и восстановлению обслуживаемых объектов.',
+            },
+          )
+        }}
+        {{
+          t(
+            'nsi.objectTypes.works.info.p2',
+            {},
+            {
+              default:
+                'В таблице указаны вид работы, тип объекта, источник регламента и периодичность выполнения.',
+            },
+          )
+        }}
       </p>
       <template #footer>
         <div class="modal-footer">
-          <NButton type="primary" @click="infoOpen = false">{{ t('nsi.objectTypes.works.info.ok', {}, { default: 'Понятно' }) }}</NButton>
+          <NButton type="primary" @click="infoOpen = false">{{
+            t('nsi.objectTypes.works.info.ok', {}, { default: 'Понятно' })
+          }}</NButton>
         </div>
       </template>
     </NModal>
@@ -319,7 +483,6 @@ import type { ParameterSourceOption } from '@entities/object-parameter'
 import { CreatableSelect } from '@features/creatable-select'
 import { fetchObjectTypesSnapshot } from '@entities/object-type'
 
-
 const { t } = useI18n()
 interface RawWorkTypeRecord {
   id?: number | string
@@ -350,6 +513,27 @@ interface RawObjectTypeRelationRecord {
   ID?: number | string
   idr?: number | string
   IDR?: number | string
+}
+
+type RawTaskRelationRecord = RawObjectTypeRelationRecord
+
+interface RawTaskSelectRecord {
+  id?: number | string
+  ID?: number | string
+  obj?: number | string
+  OBJ?: number | string
+  cls?: number | string
+  CLS?: number | string
+  name?: string
+  NAME?: string
+  fullName?: string
+  FULLNAME?: string
+}
+
+interface TaskRelationEntry {
+  id: string
+  name: string
+  relId: string | null
 }
 
 interface RawWorkRecord {
@@ -395,6 +579,8 @@ interface RawWorkObjectTypeRecord {
 interface RawWorkRelationRecord {
   idro?: number | string
   IDRO?: number | string
+  idr?: number | string
+  IDR?: number | string
   idrom1?: number | string
   IDROM1?: number | string
   idrom?: number | string
@@ -413,6 +599,8 @@ interface WorkTableRow {
   workTypeName: string | null
   objectTypeName: string | null
   objectTypeNames: string[]
+  taskName: string | null
+  taskNames: string[]
   sourceId: string | null
   sourceName: string | null
   sourceNumber: string | null
@@ -467,6 +655,12 @@ interface WorkObjectTypeOption {
   cls: string
   label: string
   relationId?: string | null
+}
+
+interface TaskDirectoryEntry {
+  id: string
+  cls: string
+  fullName: string
 }
 
 interface WorkFormState {
@@ -599,6 +793,7 @@ const confirmDialog = (options: ConfirmDialogOptions): Promise<boolean> => {
 const directories = {
   workTypes: new Map<string, string>(),
   objectTypes: new Map<string, string[]>(),
+  tasks: new Map<string, TaskRelationEntry[]>(),
   sources: new Map<string, string>(),
   periodTypes: new Map<string, string>(),
 }
@@ -718,6 +913,7 @@ const dialogOpen = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const savingWork = ref(false)
 const objectTypeSelectLoading = ref(false)
+const taskSelectLoading = ref(false)
 
 const workForm = reactive<WorkFormState>({
   name: '',
@@ -745,12 +941,26 @@ const selectedObjectTypeIds = ref<string[]>([])
 // Snapshot at dialog open
 const initialSelectedObjectTypeIds = ref<string[]>([])
 const initialRelationIdByValue = ref<Map<string, string>>(new Map())
+const taskOptions = ref<Array<{ label: string; value: string }>>([])
+const taskDirectory = new Map<string, TaskDirectoryEntry>()
+const taskOptionsOwnerKey = ref<string | null>(null)
+const selectedTaskIds = ref<string[]>([])
+const initialSelectedTaskIds = ref<string[]>([])
+const initialTaskRelationIdByValue = ref<Map<string, string>>(new Map())
 const editingRow = ref<WorkTableRow | null>(null)
 
 const isEditMode = computed(() => dialogMode.value === 'edit')
 const dialogTitle = computed(() => {
   return isEditMode.value ? 'Изменить работу' : 'Создать работу'
 })
+
+const selectedWorkTypeLabel = computed(() =>
+  workForm.workTypeId ? (workTypeDirectory.get(workForm.workTypeId)?.label ?? null) : null,
+)
+
+const isTasksAllowed = computed(
+  () => selectedWorkTypeLabel.value === 'Исправительные и предупредительные работы',
+)
 
 const sourceFormOptions = computed(() =>
   Array.from(sourceDirectory.values())
@@ -794,10 +1004,7 @@ const filteredRows = computed(() => {
     if (sourceFilter.value.length && !sourceFilter.value.includes(item.sourceId)) {
       return false
     }
-    if (
-      periodTypeFilter.value.length &&
-      !periodTypeFilter.value.includes(item.periodTypeId)
-    ) {
+    if (periodTypeFilter.value.length && !periodTypeFilter.value.includes(item.periodTypeId)) {
       return false
     }
 
@@ -862,6 +1069,26 @@ watch(
   },
 )
 
+watch(
+  () => workForm.workTypeId,
+  () => {
+    if (!isTasksAllowed.value) {
+      selectedTaskIds.value = []
+      initialSelectedTaskIds.value = []
+    }
+  },
+)
+
+watch(
+  isTasksAllowed,
+  async (allowed) => {
+    if (allowed) {
+      await loadTasksForSelect()
+    }
+  },
+  { immediate: false },
+)
+
 function showMore() {
   if (pagination.page < maxPage.value) pagination.page += 1
 }
@@ -911,6 +1138,7 @@ const renderSource = (row: WorkTableRow): VNodeChild => {
 const renderPeriodicity = (row: WorkTableRow): VNodeChild => row.periodicityText || '—'
 
 const MAX_OBJECT_TYPE_CHIPS = 4
+const MAX_TASK_CHIPS = 4
 
 const renderObjectTypes = (row: WorkTableRow): VNodeChild => {
   const names = row.objectTypeNames ?? []
@@ -920,21 +1148,80 @@ const renderObjectTypes = (row: WorkTableRow): VNodeChild => {
   const rest = names.slice(MAX_OBJECT_TYPE_CHIPS)
 
   const chipNodes = chips.map((name, idx) =>
-    h(
-      NTag,
-      { size: 'small', round: true, bordered: true, class: 'chip', key: `${row.id}-ot-${idx}` },
-      { default: () => name },
-    ),
+    h('span', { class: 'chip-tooltip', title: name, key: `${row.id}-ot-${idx}` }, [
+      h(
+        NTag,
+        { size: 'small', round: true, bordered: true, class: 'chip' },
+        { default: () => name },
+      ),
+    ]),
   )
 
-  if (!rest.length) return h('div', { class: 'cell-clamp' }, [h('div', { class: 'chips-row' }, chipNodes)])
+  if (!rest.length)
+    return h('div', { class: 'cell-clamp' }, [h('div', { class: 'chips-row' }, chipNodes)])
 
   const more = h(
     NPopover,
     { trigger: 'hover' },
     {
-      trigger: () => h(NTag, { size: 'small', round: true, class: 'chip chip--more' }, { default: () => `+${rest.length}` }),
-      default: () => h('div', { class: 'popover-list' }, rest.map((name, i) => h('div', { class: 'popover-item', key: `${row.id}-ot-rest-${i}` }, name))),
+      trigger: () =>
+        h(
+          NTag,
+          { size: 'small', round: true, class: 'chip chip--more' },
+          { default: () => `+${rest.length}` },
+        ),
+      default: () =>
+        h(
+          'div',
+          { class: 'popover-list' },
+          rest.map((name, i) =>
+            h('div', { class: 'popover-item', key: `${row.id}-ot-rest-${i}` }, name),
+          ),
+        ),
+    },
+  )
+
+  return h('div', { class: 'cell-clamp' }, [h('div', { class: 'chips-row' }, [...chipNodes, more])])
+}
+
+const renderTasks = (row: WorkTableRow): VNodeChild => {
+  const names = row.taskNames ?? []
+  if (!names.length) return '—'
+
+  const chips = names.slice(0, MAX_TASK_CHIPS)
+  const rest = names.slice(MAX_TASK_CHIPS)
+
+  const chipNodes = chips.map((name, idx) =>
+    h('span', { class: 'chip-tooltip', title: name, key: `${row.id}-task-${idx}` }, [
+      h(
+        NTag,
+        { size: 'small', round: true, bordered: true, class: 'chip' },
+        { default: () => name },
+      ),
+    ]),
+  )
+
+  if (!rest.length)
+    return h('div', { class: 'cell-clamp' }, [h('div', { class: 'chips-row' }, chipNodes)])
+
+  const more = h(
+    NPopover,
+    { trigger: 'hover' },
+    {
+      trigger: () =>
+        h(
+          NTag,
+          { size: 'small', round: true, class: 'chip chip--more' },
+          { default: () => `+${rest.length}` },
+        ),
+      default: () =>
+        h(
+          'div',
+          { class: 'popover-list' },
+          rest.map((name, i) =>
+            h('div', { class: 'popover-item', key: `${row.id}-task-rest-${i}` }, name),
+          ),
+        ),
     },
   )
 
@@ -983,21 +1270,40 @@ const columns: DataTableColumns<WorkTableRow> = [
   {
     title: 'Вид работы',
     key: 'workTypeName',
+    className: 'col-work-type',
+    width: 200,
+    minWidth: 180,
     render: (row) => row.workTypeName ?? '—',
   },
   {
     title: 'Тип объекта',
     key: 'objectTypeName',
+    className: 'col-object-type',
+    width: 280,
+    minWidth: 240,
     render: renderObjectTypes,
+  },
+  {
+    title: 'Задачи',
+    key: 'taskName',
+    className: 'col-task',
+    width: 280,
+    minWidth: 240,
+    render: renderTasks,
   },
   {
     title: 'Источник и номер',
     key: 'sourceName',
+    className: 'col-source',
+    width: 240,
+    minWidth: 200,
     render: renderSource,
   },
   {
     title: 'Периодичность',
     key: 'periodicityText',
+    width: 140,
+    minWidth: 120,
     render: renderPeriodicity,
   },
   {
@@ -1026,6 +1332,11 @@ const cardFields = computed<CardField[]>(() => [
     key: 'objectTypeName',
     label: 'Тип объекта',
     render: renderObjectTypes,
+  },
+  {
+    key: 'taskName',
+    label: 'Задачи',
+    render: renderTasks,
   },
   {
     key: 'sourceName',
@@ -1115,6 +1426,12 @@ function resetDialogState() {
   selectedObjectTypeIds.value = []
   initialSelectedObjectTypeIds.value = []
   initialRelationIdByValue.value = new Map()
+  taskOptions.value = []
+  taskDirectory.clear()
+  taskOptionsOwnerKey.value = null
+  selectedTaskIds.value = []
+  initialSelectedTaskIds.value = []
+  initialTaskRelationIdByValue.value = new Map()
   editingRow.value = null
 }
 
@@ -1128,7 +1445,11 @@ function getPeriodTypeDetails(id: string | null): PeriodTypeOptionDetails | null
   return periodTypeDirectory.get(id) ?? null
 }
 
-function composeWorkFullName(name: string, numberSource: string, sourceName: string | null): string {
+function composeWorkFullName(
+  name: string,
+  numberSource: string,
+  sourceName: string | null,
+): string {
   const base = name.trim()
   const number = numberSource.trim()
   const source = sourceName?.trim() ?? ''
@@ -1194,11 +1515,18 @@ function applyRowToForm(row: WorkTableRow) {
   workForm.periodicity = row.periodicityValue ?? null
 }
 
-async function loadWorkObjectTypesForForm(workId: string | null, options: { force?: boolean } = {}) {
+async function loadWorkObjectTypesForForm(
+  workId: string | null,
+  options: { force?: boolean } = {},
+) {
   const { force = false } = options
   const ownerKey = workId ?? '__new__'
 
-  if (!force && objectTypeOptionsOwnerKey.value === ownerKey && objectTypeSelectOptions.value.length > 0) {
+  if (
+    !force &&
+    objectTypeOptionsOwnerKey.value === ownerKey &&
+    objectTypeSelectOptions.value.length > 0
+  ) {
     return
   }
 
@@ -1236,7 +1564,9 @@ async function loadWorkObjectTypesForForm(workId: string | null, options: { forc
 
     for (const record of records) {
       const value =
-        toOptionalString(record.uch2 ?? record.obj ?? record.ID ?? record.id ?? record.OBJ ?? record.IDR) ?? null
+        toOptionalString(
+          record.uch2 ?? record.obj ?? record.ID ?? record.id ?? record.OBJ ?? record.IDR,
+        ) ?? null
       const cls = toOptionalString(record.cls2 ?? record.cls ?? record.CLS)
       let label = relNameByTypeId.get(value) ?? toOptionalString(record.name ?? record.NAME)
       if (!value || !cls || !label) continue
@@ -1246,11 +1576,14 @@ async function loadWorkObjectTypesForForm(workId: string | null, options: { forc
         if (cached) label = cached
       }
       const relationId =
-        toOptionalString(record.idro ?? record.IDRO ?? record.idr ?? record.IDR ?? record.id) ?? null
+        toOptionalString(record.idro ?? record.IDRO ?? record.idr ?? record.IDR ?? record.id) ??
+        null
       const option: WorkObjectTypeOption = { value, cls, label, relationId }
       options.push(option)
 
-      const isSelected = isTruthyFlag(record.checked ?? record.selected ?? record.actual ?? record.fact ?? record.exists)
+      const isSelected = isTruthyFlag(
+        record.checked ?? record.selected ?? record.actual ?? record.fact ?? record.exists,
+      )
       if (isSelected) {
         defaults.push(option.value)
         if (relationId) initialRelationIdByValue.value.set(option.value, relationId)
@@ -1308,6 +1641,133 @@ async function loadWorkObjectTypesForForm(workId: string | null, options: { forc
   }
 }
 
+let taskOptionsPromise: Promise<void> | null = null
+
+async function loadTasksForSelect(options: { force?: boolean } = {}) {
+  const { force = false } = options
+  if (!force && taskOptions.value.length) return
+  if (taskOptionsPromise) return taskOptionsPromise
+
+  taskSelectLoading.value = true
+  taskOptionsPromise = (async () => {
+    try {
+      const payload = await rpc('data/loadTask', [0])
+      const records = extractRecords<RawTaskSelectRecord>(payload)
+      const seen = new Set<string>()
+      const options: Array<{ label: string; value: string }> = []
+
+      taskDirectory.clear()
+
+      for (const record of records) {
+        const id = toOptionalString(record.id ?? record.ID ?? record.obj ?? record.OBJ)
+        const cls = toOptionalString(record.cls ?? record.CLS) ?? 'Typ_Task'
+        const fullName = toOptionalString(record.fullName ?? record.FULLNAME)
+        if (!id || !fullName || seen.has(id)) continue
+        seen.add(id)
+        taskDirectory.set(id, { id, cls, fullName })
+        options.push({ label: fullName, value: id })
+      }
+
+      options.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+      taskOptions.value = options
+    } catch (error) {
+      console.error(error)
+      taskOptions.value = []
+      taskDirectory.clear()
+      message.error('Не удалось загрузить задачи для работы')
+    } finally {
+      taskSelectLoading.value = false
+      taskOptionsPromise = null
+    }
+  })()
+
+  return taskOptionsPromise
+}
+
+async function loadWorkTasksForForm(workId: string | null, options: { force?: boolean } = {}) {
+  const { force = false } = options
+  const ownerKey = workId ?? '__new__'
+
+  if (!force && taskOptionsOwnerKey.value === ownerKey && taskOptions.value.length > 0) {
+    return
+  }
+  if (taskSelectLoading.value) return
+
+  selectedTaskIds.value = []
+  initialSelectedTaskIds.value = []
+  initialTaskRelationIdByValue.value = new Map()
+
+  await loadTasksForSelect({ force })
+
+  if (workId == null) {
+    taskOptionsOwnerKey.value = ownerKey
+    return
+  }
+
+  taskSelectLoading.value = true
+  try {
+    const relationsPayload = await rpc('data/loadComponentsObject2', [
+      'RT_TaskWork',
+      'Typ_Work',
+      'Typ_Task',
+    ])
+    const relationRecords = extractRecords<RawTaskRelationRecord>(relationsPayload)
+    const ownerStr = toOptionalString(workId)
+    const defaults: string[] = []
+    const optionsById = new Map(taskOptions.value.map((option) => [option.value, option]))
+
+    for (const record of relationRecords) {
+      const ownerId = toOptionalString(record.idrom1)
+      if (!ownerStr || ownerId !== ownerStr) continue
+      const taskId = toOptionalString(record.idrom2)
+      if (!taskId) continue
+
+      if (!defaults.includes(taskId)) defaults.push(taskId)
+
+      const relationId =
+        toOptionalString(
+          record.idro ?? record.IDRO ?? record.id ?? record.ID ?? record.idr ?? record.IDR,
+        ) ?? null
+      if (relationId) {
+        initialTaskRelationIdByValue.value.set(taskId, relationId)
+      }
+
+      if (!taskDirectory.has(taskId)) {
+        const fullName = toOptionalString(record.namerom2 ?? record.NAMEROM2) ?? taskId
+        taskDirectory.set(taskId, { id: taskId, cls: 'Typ_Task', fullName })
+      }
+
+      if (!optionsById.has(taskId)) {
+        const label = taskDirectory.get(taskId)?.fullName ?? taskId
+        optionsById.set(taskId, { value: taskId, label })
+      }
+    }
+
+    if (optionsById.size !== taskOptions.value.length) {
+      taskOptions.value = Array.from(optionsById.values()).sort((a, b) =>
+        a.label.localeCompare(b.label, 'ru'),
+      )
+    }
+
+    if (defaults.length) {
+      initialSelectedTaskIds.value = [...defaults]
+      selectedTaskIds.value = isTasksAllowed.value ? [...defaults] : []
+    }
+    taskOptionsOwnerKey.value = ownerKey
+  } catch (error) {
+    console.error(error)
+    taskOptions.value = []
+    taskDirectory.clear()
+    taskOptionsOwnerKey.value = null
+    selectedTaskIds.value = []
+    initialSelectedTaskIds.value = []
+    initialTaskRelationIdByValue.value = new Map()
+    message.error('Не удалось загрузить задачи для работы')
+  } finally {
+    taskSelectLoading.value = false
+  }
+}
+
 function openCreate() {
   resetDialogState()
   dialogMode.value = 'create'
@@ -1324,6 +1784,9 @@ function editWork(row: WorkTableRow) {
   dialogOpen.value = true
   void loadSourceDirectory(true)
   void loadWorkObjectTypesForForm(row.id)
+  if (isTasksAllowed.value) {
+    void loadWorkTasksForForm(row.id)
+  }
 }
 
 async function removeWork(row: WorkTableRow) {
@@ -1337,7 +1800,7 @@ async function removeWork(row: WorkTableRow) {
 
   const confirmed = await confirmDialog({
     title: 'Подтверждение',
-    content: 'Удалить работу и все её связи с типами объектов?',
+    content: 'Удалить работу и все её связи с типами объектов и задачами?',
     positiveText: 'Удалить',
     negativeText: 'Отмена',
   })
@@ -1353,22 +1816,31 @@ async function removeWork(row: WorkTableRow) {
     ])
     const relationRecords = extractRecords<RawWorkRelationRecord>(relationsResponse)
 
-    const relationIds: number[] = []
+    const taskRelations = directories.tasks.get(row.id) ?? []
+    const taskDeleteRequests = taskRelations
+      .map((relation) => {
+        if (!relation.relId) return null
+        const deleteId = toFiniteNumber(relation.relId) ?? relation.relId
+        return rpc('data/deleteOwnerWithProperties', [deleteId, 0])
+      })
+      .filter((request): request is Promise<unknown> => Boolean(request))
+
+    const objectTypeDeleteRequests: Promise<unknown>[] = []
     for (const record of relationRecords) {
-      const ownerRaw = record.idrom1 ?? record.IDROM1 ?? record.idrom ?? record.IDROM ?? record.obj ?? record.OBJ
+      const ownerRaw =
+        record.idrom1 ?? record.IDROM1 ?? record.idrom ?? record.IDROM ?? record.obj ?? record.OBJ
       const ownerId = toFiniteNumber(toOptionalString(ownerRaw))
       if (ownerId !== obj) continue
 
-      const relationRaw = record.idro ?? record.IDRO ?? record.id ?? record.ID
-      const relationId = toFiniteNumber(toOptionalString(relationRaw))
-      if (relationId != null) {
-        relationIds.push(relationId)
-      }
+      const relationRaw =
+        record.idro ?? record.IDRO ?? record.id ?? record.ID ?? record.idr ?? record.IDR
+      const relationId = toOptionalString(relationRaw)
+      if (!relationId) continue
+      const deleteId = toFiniteNumber(relationId) ?? relationId
+      objectTypeDeleteRequests.push(rpc('data/deleteOwnerWithProperties', [deleteId, 0]))
     }
 
-    for (const relationId of relationIds) {
-      await rpc('data/deleteOwnerWithProperties', [relationId, 0])
-    }
+    await Promise.all([...taskDeleteRequests, ...objectTypeDeleteRequests])
 
     await rpc('data/deleteOwnerWithProperties', [obj, 1])
 
@@ -1432,7 +1904,15 @@ async function createWork() {
     const clsId = toOptionalString(created.cls ?? workTypeId)
     if (!objId || !clsId) throw new Error('Не удалось определить идентификаторы работы')
 
-    await saveSelectedObjectTypes({ workId: objId, workCls: clsId, workName: name, createAll: true })
+    await saveSelectedObjectTypes({
+      workId: objId,
+      workCls: clsId,
+      workName: name,
+      createAll: true,
+    })
+    if (isTasksAllowed.value && selectedTaskIds.value.length) {
+      await saveSelectedTasks({ workId: objId, workCls: clsId, workName: name, createAll: true })
+    }
     await loadWorks()
     message.success('Работа создана')
     dialogOpen.value = false
@@ -1482,7 +1962,9 @@ async function updateWork() {
 
   if (row.periodTypePvId) {
     payload.pvPeriodType =
-      toFiniteNumber(periodTypeDetails.pvId ?? row.periodTypePvId) ?? periodTypeDetails.pvId ?? row.periodTypePvId
+      toFiniteNumber(periodTypeDetails.pvId ?? row.periodTypePvId) ??
+      periodTypeDetails.pvId ??
+      row.periodTypePvId
   } else if (periodTypeDetails.pvId) {
     payload.pvPeriodType = toFiniteNumber(periodTypeDetails.pvId) ?? periodTypeDetails.pvId
   }
@@ -1501,12 +1983,33 @@ async function updateWork() {
       changed = true
     } else {
       for (const v of currentSet) {
-        if (!initialSet.has(v)) { changed = true; break }
+        if (!initialSet.has(v)) {
+          changed = true
+          break
+        }
       }
     }
 
     if (changed) {
       await saveSelectedObjectTypes({ workId: row.id, workCls: workTypeId, workName: name })
+    }
+
+    const initialTaskSet = new Set(initialSelectedTaskIds.value)
+    const currentTaskSet = new Set(selectedTaskIds.value)
+    let tasksChanged = false
+    if (initialTaskSet.size !== currentTaskSet.size) {
+      tasksChanged = true
+    } else {
+      for (const v of currentTaskSet) {
+        if (!initialTaskSet.has(v)) {
+          tasksChanged = true
+          break
+        }
+      }
+    }
+
+    if (tasksChanged && isTasksAllowed.value) {
+      await saveSelectedTasks({ workId: row.id, workCls: workTypeId, workName: name })
     }
 
     await loadWorks()
@@ -1519,7 +2022,12 @@ async function updateWork() {
   }
 }
 
-async function saveSelectedObjectTypes(options: { workId: string; workCls: string | null; workName: string; createAll?: boolean }) {
+async function saveSelectedObjectTypes(options: {
+  workId: string
+  workCls: string | null
+  workName: string
+  createAll?: boolean
+}) {
   const { workId, workCls, workName, createAll = false } = options
   if (!workId || !workCls) {
     throw new Error('Не удалось определить работу для привязки типа объекта')
@@ -1572,6 +2080,63 @@ async function saveSelectedObjectTypes(options: { workId: string; workCls: strin
   }
 }
 
+async function saveSelectedTasks(options: {
+  workId: string
+  workCls: string | null
+  workName: string
+  createAll?: boolean
+}) {
+  const { workId, workCls, workName, createAll = false } = options
+  if (!workId || !workCls) {
+    throw new Error('Не удалось определить работу для привязки задач')
+  }
+
+  const current = new Set(selectedTaskIds.value)
+  const initial = createAll ? new Set<string>() : new Set(initialSelectedTaskIds.value)
+
+  const toCreate: string[] = []
+  const toDelete: string[] = []
+
+  for (const v of current) if (!initial.has(v)) toCreate.push(v)
+  for (const v of initial) if (!current.has(v)) toDelete.push(v)
+
+  for (const value of toDelete) {
+    const relationId = initialTaskRelationIdByValue.value.get(value)
+    if (!relationId) continue
+    const relationIdNumber = toFiniteNumber(relationId)
+    const deleteId = relationIdNumber ?? relationId
+    try {
+      await rpc('data/deleteOwnerWithProperties', [deleteId, 0])
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  if (toCreate.length === 0) return
+
+  const uch1 = toFiniteNumber(workId) ?? workId
+  const cls1 = toFiniteNumber(workCls) ?? workCls
+
+  for (const value of toCreate) {
+    const task = taskDirectory.get(value)
+    if (!task) continue
+    const uch2 = toFiniteNumber(task.id) ?? task.id
+    const cls2 = toFiniteNumber(task.cls) ?? task.cls
+    const relationName = `${workName} <=> ${task.fullName}`
+
+    await rpc('data/saveRelObj', [
+      {
+        uch1,
+        cls1,
+        uch2,
+        cls2,
+        codRelTyp: 'RT_TaskWork',
+        name: relationName,
+      },
+    ])
+  }
+}
+
 function formatPeriodicityText(value: number | null, periodTypeName: string | null): string {
   if (value == null && !periodTypeName) return ''
 
@@ -1605,23 +2170,27 @@ async function loadWorks() {
   tableLoading.value = true
   try {
     const sourcePromise = loadSourceDirectory(true)
-    const [workTypePayload, periodTypePayload, objectTypePayload, worksPayload] = await Promise.all([
-      rpc('data/loadClsForSelect', ['Typ_Work']),
-      rpc('data/loadFvForSelect', ['Factor_PeriodType']),
-      rpc('data/loadComponentsObject2', ['RT_Works', 'Typ_Work', 'Typ_ObjectTyp']),
-      rpc('data/loadProcessCharts', [0]),
-    ])
+    const [workTypePayload, periodTypePayload, objectTypePayload, taskPayload, worksPayload] =
+      await Promise.all([
+        rpc('data/loadClsForSelect', ['Typ_Work']),
+        rpc('data/loadFvForSelect', ['Factor_PeriodType']),
+        rpc('data/loadComponentsObject2', ['RT_Works', 'Typ_Work', 'Typ_ObjectTyp']),
+        rpc('data/loadComponentsObject2', ['RT_TaskWork', 'Typ_Work', 'Typ_Task']),
+        rpc('data/loadProcessCharts', [0]),
+      ])
 
     await sourcePromise
 
     const workTypeRecords = extractRecords<RawWorkTypeRecord>(workTypePayload)
     const periodTypeRecords = extractRecords<RawPeriodTypeRecord>(periodTypePayload)
     const objectTypeRecords = extractRecords<RawObjectTypeRelationRecord>(objectTypePayload)
+    const taskRecords = extractRecords<RawTaskRelationRecord>(taskPayload)
     const workRecords = extractRecords<RawWorkRecord>(worksPayload)
 
     directories.workTypes.clear()
     directories.objectTypes.clear()
     directories.periodTypes.clear()
+    directories.tasks.clear()
     workTypeDirectory.clear()
     periodTypeDirectory.clear()
     rawPeriodTypeRecords.clear()
@@ -1665,6 +2234,21 @@ async function loadWorks() {
       }
     }
 
+    for (const record of taskRecords) {
+      const workId = toOptionalString(record.idrom1)
+      const taskId = toOptionalString(record.idrom2)
+      const name = toOptionalString(record.namerom2 ?? record.NAMEROM2) ?? taskId
+      const relId =
+        toOptionalString(
+          record.idro ?? record.IDRO ?? record.id ?? record.ID ?? record.idr ?? record.IDR,
+        ) ?? null
+      if (workId && name) {
+        const arr = directories.tasks.get(workId) ?? []
+        arr.push({ id: taskId ?? name, name, relId })
+        directories.tasks.set(workId, arr)
+      }
+    }
+
     objectTypeOptions.value = Array.from(uniqueObjectTypes.values())
       .map((name) => ({ label: name, value: name }))
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
@@ -1680,6 +2264,9 @@ async function loadWorks() {
       const workTypeId = toOptionalString(record.cls)
       const objectTypeNames = directories.objectTypes.get(id) ?? []
       const objectTypeName = objectTypeNames.length ? objectTypeNames.join(', ') : null
+      const taskRelations = directories.tasks.get(id) ?? []
+      const taskNames = taskRelations.map((item) => item.name)
+      const taskName = taskNames.length ? taskNames.join(', ') : null
 
       const sourceObjId = toOptionalString(record.objCollections)
       const sourcePvId = toOptionalString(record.pvCollections)
@@ -1687,7 +2274,10 @@ async function loadWorks() {
       const numberSourceRecordId = toOptionalString(record.idNumberSource)
 
       let sourceId =
-        sourceObjId ?? toOptionalString(record.idCollections ?? record.pvCollections) ?? sourcePvId ?? null
+        sourceObjId ??
+        toOptionalString(record.idCollections ?? record.pvCollections) ??
+        sourcePvId ??
+        null
       const fallbackSourceName = toOptionalString(record.nameCollections)
       const directorySourceName =
         (sourceId && directories.sources.get(sourceId)) ||
@@ -1727,6 +2317,8 @@ async function loadWorks() {
         workTypeName: (workTypeId && directories.workTypes.get(workTypeId)) || null,
         objectTypeName,
         objectTypeNames,
+        taskName,
+        taskNames,
         sourceId,
         sourceName,
         sourceNumber,
@@ -1838,6 +2430,29 @@ onBeforeUnmount(() => {
 .table-full {
   flex: 1;
   min-width: 0;
+}
+
+:deep(.works-table .n-data-table-table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+:deep(.works-table .n-data-table-td) {
+  overflow: hidden;
+}
+
+:deep(.works-table .n-data-table-td),
+:deep(.works-table .n-data-table-th) {
+  min-width: 0;
+}
+
+:deep(.works-table .n-data-table-th[data-col-key='objectTypeName']),
+:deep(.works-table .n-data-table-td.col-object-type),
+:deep(.works-table .n-data-table-th[data-col-key='taskName']),
+:deep(.works-table .n-data-table-td.col-task) {
+  width: 280px;
+  max-width: 280px;
+  min-width: 240px;
 }
 
 :deep(.n-data-table .n-data-table-table) {
@@ -1988,27 +2603,35 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   gap: 6px;
   max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chip-tooltip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chip {
-  background: var(--s360-surface);
-  max-width: 100%;
+  display: inline-flex;
   min-width: 0;
-  white-space: normal;
-  line-height: 1.3;
+  max-width: 100%;
+  background: var(--s360-surface);
 }
 
 .chip :deep(.n-tag__content) {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  display: block;
 }
 
-.chip--more { cursor: pointer; }
+.chip--more {
+  cursor: pointer;
+}
 
 .popover-list {
   display: flex;
@@ -2023,12 +2646,10 @@ onBeforeUnmount(() => {
 }
 
 .cell-clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
-  white-space: normal;
-  word-break: break-word;
 }
 
 .modal-footer {

@@ -48,6 +48,7 @@
           <NSelect
             v-model:value="workTypeFilter"
             :options="workTypeOptions"
+            :render-label="renderFilterLabel"
             multiple
             filterable
             :placeholder="t('nsi.objectTypes.works.filter.workType', {}, { default: 'Вид работы' })"
@@ -58,6 +59,7 @@
           <NSelect
             v-model:value="objectTypeFilter"
             :options="objectTypeOptions"
+            :render-label="renderFilterLabel"
             multiple
             filterable
             :placeholder="
@@ -68,8 +70,20 @@
             class="toolbar__select"
           />
           <NSelect
+            v-model:value="taskFilter"
+            :options="taskFilterOptions"
+            :render-label="renderFilterLabel"
+            multiple
+            filterable
+            :placeholder="t('nsi.objectTypes.works.filter.task', {}, { default: 'Задача' })"
+            clearable
+            size="small"
+            class="toolbar__select"
+          />
+          <NSelect
             v-model:value="sourceFilter"
             :options="sourceOptions"
+            :render-label="renderFilterLabel"
             multiple
             filterable
             :placeholder="t('nsi.objectTypes.works.filter.source', {}, { default: 'Источник' })"
@@ -80,6 +94,7 @@
           <NSelect
             v-model:value="periodTypeFilter"
             :options="periodTypeOptions"
+            :render-label="renderFilterLabel"
             multiple
             filterable
             :placeholder="
@@ -454,7 +469,7 @@ import {
   type VNodeChild,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { DataTableColumns } from 'naive-ui'
+import type { DataTableColumns, SelectOption } from 'naive-ui'
 import {
   NButton,
   NCard,
@@ -695,11 +710,13 @@ const q = ref('')
 const infoOpen = ref(false)
 const workTypeFilter = ref<string[]>([])
 const objectTypeFilter = ref<string[]>([])
+const taskFilter = ref<string[]>([])
 const sourceFilter = ref<string[]>([])
 const periodTypeFilter = ref<string[]>([])
 
 const workTypeOptions = ref<Array<{ label: string; value: string }>>([])
 const objectTypeOptions = ref<Array<{ label: string; value: string }>>([])
+const taskFilterOptions = ref<Array<{ label: string; value: string }>>([])
 const sourceOptions = ref<Array<{ label: string; value: string }>>([])
 const sourceOptionsLoading = ref(false)
 const sourceOptionsLoaded = ref(false)
@@ -962,6 +979,11 @@ const isTasksAllowed = computed(
   () => selectedWorkTypeLabel.value === 'Исправительные и предупредительные работы',
 )
 
+const renderFilterLabel = (option: SelectOption): VNodeChild => {
+  const label = String(option.label ?? '')
+  return h('span', { title: label }, label)
+}
+
 const sourceFormOptions = computed(() =>
   Array.from(sourceDirectory.values())
     .map((item) => ({ label: item.label, value: item.id }))
@@ -1001,6 +1023,9 @@ const filteredRows = computed(() => {
     ) {
       return false
     }
+    if (taskFilter.value.length && !taskFilter.value.some((name) => item.taskNames?.includes(name))) {
+      return false
+    }
     if (sourceFilter.value.length && !sourceFilter.value.includes(item.sourceId)) {
       return false
     }
@@ -1009,9 +1034,19 @@ const filteredRows = computed(() => {
     }
 
     if (search) {
-      const inName = normalizeText(item.name).includes(search)
-      const inFullName = normalizeText(item.fullName ?? '').includes(search)
-      if (!inName && !inFullName) return false
+      const matches = [
+        item.name,
+        item.fullName,
+        item.workTypeName,
+        item.objectTypeName,
+        item.sourceName,
+        item.sourceNumber,
+        item.periodicityText,
+        item.periodTypeName,
+        ...item.objectTypeNames,
+        ...item.taskNames,
+      ].some((value) => normalizeText(value ?? '').includes(search))
+      if (!matches) return false
     }
 
     return true
@@ -1034,7 +1069,7 @@ const visibleCount = computed(() => rows.value.length)
 
 const maxPage = computed(() => Math.max(1, Math.ceil(total.value / pagination.pageSize) || 1))
 
-watch([q, workTypeFilter, objectTypeFilter, sourceFilter, periodTypeFilter], () => {
+watch([q, workTypeFilter, objectTypeFilter, taskFilter, sourceFilter, periodTypeFilter], () => {
   pagination.page = 1
 })
 
@@ -2170,6 +2205,7 @@ async function loadWorks() {
   tableLoading.value = true
   try {
     const sourcePromise = loadSourceDirectory(true)
+    await loadTasksForSelect()
     const [workTypePayload, periodTypePayload, objectTypePayload, taskPayload, worksPayload] =
       await Promise.all([
         rpc('data/loadClsForSelect', ['Typ_Work']),
@@ -2223,6 +2259,7 @@ async function loadWorks() {
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
 
     const uniqueObjectTypes = new Map<string, string>()
+    const uniqueTasks = new Map<string, string>()
     for (const record of objectTypeRecords) {
       const workId = toOptionalString(record.idrom1)
       const name = toOptionalString(record.namerom2)
@@ -2237,7 +2274,8 @@ async function loadWorks() {
     for (const record of taskRecords) {
       const workId = toOptionalString(record.idrom1)
       const taskId = toOptionalString(record.idrom2)
-      const name = toOptionalString(record.namerom2 ?? record.NAMEROM2) ?? taskId
+      const fullName = taskId ? taskDirectory.get(taskId)?.fullName ?? null : null
+      const name = fullName ?? toOptionalString(record.namerom2 ?? record.NAMEROM2) ?? taskId
       const relId =
         toOptionalString(
           record.idro ?? record.IDRO ?? record.id ?? record.ID ?? record.idr ?? record.IDR,
@@ -2246,10 +2284,16 @@ async function loadWorks() {
         const arr = directories.tasks.get(workId) ?? []
         arr.push({ id: taskId ?? name, name, relId })
         directories.tasks.set(workId, arr)
+        if (fullName) {
+          uniqueTasks.set(fullName, fullName)
+        }
       }
     }
 
     objectTypeOptions.value = Array.from(uniqueObjectTypes.values())
+      .map((name) => ({ label: name, value: name }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+    taskFilterOptions.value = Array.from(uniqueTasks.values())
       .map((name) => ({ label: name, value: name }))
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
 

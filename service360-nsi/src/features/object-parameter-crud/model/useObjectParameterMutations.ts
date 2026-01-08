@@ -6,14 +6,17 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import {
   createParameter,
   deleteParameter,
+  linkParameterToComponent,
   updateParameter,
   type CreateParameterPayload,
   type DeleteParameterPayload,
+  type LinkParameterToComponentPayload,
   type UpdateParameterPayload,
 } from '@entities/object-parameter'
 
 export type CreateObjectParameterPayload = CreateParameterPayload
 export type UpdateObjectParameterPayload = UpdateParameterPayload
+export type LinkObjectParameterPayload = LinkParameterToComponentPayload
 
 export type RemoveObjectParameterPayload = DeleteParameterPayload
 
@@ -23,6 +26,11 @@ export function useObjectParameterMutations() {
 
   const create = useMutation({
     mutationFn: (payload: CreateObjectParameterPayload) => createParameter(payload),
+    onSuccess: () => invalidate(),
+  })
+
+  const link = useMutation({
+    mutationFn: (payload: LinkObjectParameterPayload) => linkParameterToComponent(payload),
     onSuccess: () => invalidate(),
   })
 
@@ -36,5 +44,5 @@ export function useObjectParameterMutations() {
     onSuccess: () => invalidate(),
   })
 
-  return { create, update, remove }
+  return { create, link, update, remove }
 }

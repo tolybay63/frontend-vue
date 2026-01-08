@@ -76,6 +76,11 @@ export interface UpdateParameterPayload extends CreateParameterPayload {
   details: ParameterDetails
 }
 
+export interface LinkParameterToComponentPayload extends CreateParameterPayload {
+  id: number
+  cls: number | null
+}
+
 export interface ObjectParameter {
   id: string
   name: string

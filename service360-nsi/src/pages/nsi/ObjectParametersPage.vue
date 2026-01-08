@@ -63,7 +63,7 @@
         </div>
         <article
           v-for="item in rows"
-          :key="item.id"
+          :key="rowKey(item)"
           class="card"
           role="group"
           :aria-label="primaryTitle(item)"
@@ -153,10 +153,27 @@
           :class="['creation-form', { 'creation-form--mobile': isMobile }]"
         >
           <NFormItem :label="t('nsi.objectTypes.params.form.name.label', {}, { default: 'Наименование параметра' })" path="name">
-            <NInput
-              v-model:value="creationForm.name"
-              :placeholder="t('nsi.objectTypes.params.form.name.placeholder', {}, { default: 'Введите наименование нового параметра' })"
-            />
+            <div class="name-field">
+              <NInput
+                v-model:value="creationForm.name"
+                :placeholder="t('nsi.objectTypes.params.form.name.placeholder', {}, { default: 'Введите наименование нового параметра' })"
+              />
+              <div v-if="existingParameterHint" class="field-hint">
+                {{ existingParameterHint }}
+              </div>
+              <div v-if="duplicateNameUnitWarning" class="field-hint field-hint--error">
+                {{ duplicateNameUnitWarning }}
+              </div>
+              <NSelect
+                v-if="showExistingParameterSuggestions"
+                v-model:value="selectedExistingParameterId"
+                :options="existingParameterOptions"
+                :render-label="renderParameterOptionLabel"
+                size="small"
+                clearable
+                :placeholder="t('nsi.objectTypes.params.form.name.matchPlaceholder', {}, { default: 'Выберите существующий параметр (ЕИ)' })"
+              />
+            </div>
           </NFormItem>
 
           <NFormItem :label="t('nsi.objectTypes.params.form.measure.label', {}, { default: 'Единица измерения' })" path="measureId">
@@ -167,6 +184,7 @@
               :multiple="false"
               :placeholder="t('nsi.objectTypes.params.form.measure.placeholder', {}, { default: 'Выберите единицу измерения' })"
               :create="createMeasureOption"
+              :disabled="isExistingSelection"
               @created="handleMeasureCreated"
               @update:value="(v) => (creationForm.measureId = typeof v === 'string' ? v : null)"
             />
@@ -179,6 +197,7 @@
               :loading="directoriesLoading && !directoriesLoaded"
               :multiple="false"
               :placeholder="t('nsi.objectTypes.params.form.source.placeholder', {}, { default: 'Выберите источник данных' })"
+              :disabled="isExistingSelection"
               @update:value="(v) => (creationForm.sourceId = typeof v === 'string' ? v : null)"
             />
           </NFormItem>
@@ -189,6 +208,7 @@
               type="textarea"
               :autosize="{ minRows: 2, maxRows: 4 }"
               :placeholder="t('nsi.objectTypes.params.form.description.placeholder', {}, { default: 'Добавьте описание параметра' })"
+              :disabled="isExistingSelection"
             />
           </NFormItem>
 
@@ -313,7 +333,11 @@ import {
   useObjectParameterMutations,
   useObjectParametersQuery,
 } from '@features/object-parameter-crud'
-import type { CreateObjectParameterPayload, UpdateObjectParameterPayload } from '@features/object-parameter-crud'
+import type {
+  CreateObjectParameterPayload,
+  LinkObjectParameterPayload,
+  UpdateObjectParameterPayload,
+} from '@features/object-parameter-crud'
 import {
   loadParameterComponents,
   loadParameterMeasures,
@@ -376,6 +400,8 @@ const sortOptions = [
 
 const { data: snapshot, isLoading, isFetching, error } = useObjectParametersQuery()
 const parameterMutations = useObjectParameterMutations()
+const snapshotData = computed(() => snapshot.value ?? undefined)
+const parameters = computed<LoadedObjectParameter[]>(() => snapshotData.value?.items ?? [])
 
 watch(
   () => route.query.q,
@@ -401,6 +427,7 @@ const measureOptions = ref<ParameterMeasureOption[]>([])
 const sourceOptions = ref<ParameterSourceOption[]>([])
 const componentOptions = ref<ParameterComponentOption[]>([])
 const editingParameter = ref<LoadedObjectParameter | null>(null)
+const selectedExistingParameterId = ref<string | null>(null)
 
 const creationForm = reactive<CreateParameterForm>({
   name: '',
@@ -440,6 +467,177 @@ const componentSelectOptions = computed(() =>
 const isEditMode = computed(() => editingParameter.value !== null)
 const modalTitle = computed(() => (isEditMode.value ? 'Изменить параметр' : 'Добавить параметр'))
 
+const normalizedCreationName = computed(() => normalizeText(creationForm.name))
+const MIN_SUGGESTION_LENGTH = 2
+const MAX_SUGGESTIONS = 8
+const DUPLICATE_NAME_UNIT_MESSAGE =
+  'Пара «Название + ЕИ» уже существует. Укажите другое название, другую единицу или выберите существующий параметр.'
+
+const limitedLevenshtein = (a: string, b: string, maxDistance: number): number | null => {
+  if (a === b) return 0
+  const aLen = a.length
+  const bLen = b.length
+  if (Math.abs(aLen - bLen) > maxDistance) return null
+
+  let prev = new Array(bLen + 1).fill(0).map((_, index) => index)
+  let cur = new Array(bLen + 1).fill(0)
+
+  for (let i = 1; i <= aLen; i += 1) {
+    cur[0] = i
+    let minInRow = cur[0]
+    const aChar = a.charAt(i - 1)
+    for (let j = 1; j <= bLen; j += 1) {
+      const cost = aChar === b.charAt(j - 1) ? 0 : 1
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+      if (cur[j] < minInRow) minInRow = cur[j]
+    }
+    if (minInRow > maxDistance) return null
+    const temp = prev
+    prev = cur
+    cur = temp
+  }
+
+  return prev[bLen] <= maxDistance ? prev[bLen] : null
+}
+
+const resolveSuggestionThreshold = (query: string) => {
+  if (query.length <= 4) return 1
+  if (query.length <= 7) return 2
+  return 3
+}
+const parametersById = computed(() => {
+  const map = new Map<string, LoadedObjectParameter>()
+  for (const item of parameters.value) {
+    const key = String(item.details.id ?? item.id)
+    if (!map.has(key)) map.set(key, item)
+  }
+  return map
+})
+type ParameterMatchReason = 'exact' | 'prefix' | 'contains' | 'fuzzy'
+type ParameterMatchEntry = { item: LoadedObjectParameter; score: number; reason: ParameterMatchReason }
+
+const existingParameterMatches = computed<ParameterMatchEntry[]>(() => {
+  if (isEditMode.value) return []
+  const query = normalizedCreationName.value
+  if (!query || query.length < MIN_SUGGESTION_LENGTH) return []
+
+  const threshold = resolveSuggestionThreshold(query)
+  const matches: ParameterMatchEntry[] = []
+  for (const item of parametersById.value.values()) {
+    const normalizedName = normalizeText(item.name)
+    if (!normalizedName) continue
+
+    let score = 0
+    let reason: ParameterMatchReason = 'fuzzy'
+    if (normalizedName === query) score = 100
+    if (score === 100) {
+      reason = 'exact'
+    } else if (normalizedName.startsWith(query)) {
+      score = 90
+      reason = 'prefix'
+    } else if (normalizedName.includes(query) || query.includes(normalizedName)) {
+      score = 80
+      reason = 'contains'
+    } else {
+      const distance = limitedLevenshtein(normalizedName, query, threshold)
+      if (distance === null) continue
+      score = 70 - distance
+      reason = 'fuzzy'
+    }
+
+    matches.push({ item, score, reason })
+  }
+
+  return matches
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      const unitCompare = (a.item.unitName ?? '').localeCompare(b.item.unitName ?? '', 'ru')
+      if (unitCompare !== 0) return unitCompare
+      return a.item.name.localeCompare(b.item.name, 'ru')
+    })
+    .slice(0, MAX_SUGGESTIONS)
+})
+
+const matchReasonLabel = (reason: ParameterMatchReason) =>
+  reason === 'exact' ? 'точное совпадение' : 'похожее совпадение'
+const existingParameterOptions = computed(() =>
+  existingParameterMatches.value.map(({ item, reason }) => {
+    const unitLabel = item.unitName?.trim() ? item.unitName.trim() : 'без ЕИ'
+    return {
+      label: `${item.name} — ${unitLabel}`,
+      value: String(item.details.id ?? item.id),
+      reason,
+    }
+  }),
+)
+
+const renderParameterOptionLabel = (
+  option: { label?: string | number; reason?: ParameterMatchReason },
+) => {
+  const label = option?.label ?? ''
+  const reason = option?.reason ?? 'fuzzy'
+  const tagType = reason === 'exact' ? 'success' : 'warning'
+  const reasonText = matchReasonLabel(reason)
+
+  return h('div', { class: 'existing-parameter-option' }, [
+    h('span', { class: 'existing-parameter-option__text' }, String(label)),
+    h(
+      NTag,
+      { size: 'small', bordered: false, type: tagType, class: 'existing-parameter-option__tag' },
+      { default: () => reasonText },
+    ),
+  ])
+}
+const selectedExistingParameter = computed(() => {
+  if (!selectedExistingParameterId.value) return null
+  return parametersById.value.get(String(selectedExistingParameterId.value)) ?? null
+})
+const isExistingSelection = computed(
+  () => !isEditMode.value && selectedExistingParameter.value !== null,
+)
+const showExistingParameterSuggestions = computed(
+  () => !isEditMode.value && existingParameterOptions.value.length > 0,
+)
+const existingParameterHint = computed(() => {
+  if (isExistingSelection.value) {
+    return 'Выбран существующий параметр — будет создана только связь с компонентом и лимиты.'
+  }
+  if (existingParameterOptions.value.length > 0) {
+    const hasExact = existingParameterMatches.value.some((match) => match.reason === 'exact')
+    return hasExact
+      ? 'Найдены точные и похожие совпадения. Можно выбрать существующий параметр по ЕИ.'
+      : 'Найдены похожие параметры. Проверьте название и выберите существующий по ЕИ.'
+  }
+  return ''
+})
+
+const duplicateParameterMatch = computed(() => {
+  if (isEditMode.value || isExistingSelection.value) return null
+  const query = normalizedCreationName.value
+  if (!query) return null
+  const measure = selectedMeasure.value
+  if (!measure) return null
+
+  for (const item of parametersById.value.values()) {
+    if (normalizeText(item.name) !== query) continue
+    const details = item.details
+    if (details.measureId !== null && Number(details.measureId) === Number(measure.id)) return item
+    if (details.measurePv !== null && Number(details.measurePv) === Number(measure.pv)) return item
+    if (
+      item.unitName &&
+      normalizeText(item.unitName) === normalizeText(measure.name)
+    ) {
+      return item
+    }
+  }
+
+  return null
+})
+
+const duplicateNameUnitWarning = computed(() =>
+  duplicateParameterMatch.value ? DUPLICATE_NAME_UNIT_MESSAGE : '',
+)
+
 const creationRules = computed<FormRules>(() => {
   const rules: FormRules = {
     name: [
@@ -452,9 +650,28 @@ const creationRules = computed<FormRules>(() => {
         },
         trigger: ['blur'],
       },
+      {
+        validator: () => {
+          if (duplicateParameterMatch.value) {
+            return Promise.reject(new Error(DUPLICATE_NAME_UNIT_MESSAGE))
+          }
+          return Promise.resolve()
+        },
+        trigger: ['input', 'blur'],
+      },
     ],
-    measureId: [{ required: true, message: 'Выберите единицу измерения', trigger: ['change', 'blur'] }],
-    sourceId: [{ required: true, message: 'Выберите источник', trigger: ['change', 'blur'] }],
+    ...(isExistingSelection.value
+      ? {}
+      : {
+          measureId: [
+            {
+              required: true,
+              message: 'Выберите единицу измерения',
+              trigger: ['change', 'blur'],
+            },
+          ],
+          sourceId: [{ required: true, message: 'Выберите источник', trigger: ['change', 'blur'] }],
+        }),
   }
 
   if (!isEditMode.value) {
@@ -466,7 +683,9 @@ const creationRules = computed<FormRules>(() => {
 
 const creationPending = computed(
   () =>
-    parameterMutations.create.isPending.value || parameterMutations.update.isPending.value,
+    parameterMutations.create.isPending.value ||
+    parameterMutations.link.isPending.value ||
+    parameterMutations.update.isPending.value,
 )
 const saveDisabled = computed(() => {
   if (directoriesLoading.value && !directoriesLoaded.value) return true
@@ -488,6 +707,85 @@ const resetCreationForm = () => {
   creationForm.limitMin = null
   creationForm.limitNorm = null
   creationForm.comment = ''
+  selectedExistingParameterId.value = null
+}
+
+const resolveParameterId = (parameter: LoadedObjectParameter): number | null => {
+  const detailId = Number(parameter.details.id)
+  if (Number.isFinite(detailId)) return detailId
+  const rawId = Number(parameter.id)
+  return Number.isFinite(rawId) ? rawId : null
+}
+
+const resolveParameterCls = (parameter: LoadedObjectParameter): number | null => {
+  const detailCls = Number(parameter.details.cls)
+  if (Number.isFinite(detailCls)) return detailCls
+  return null
+}
+
+const resolveExistingMeasureOption = (
+  parameter: LoadedObjectParameter,
+  preferSelected = true,
+): ParameterMeasureOption | null => {
+  if (preferSelected && selectedMeasure.value) return selectedMeasure.value
+  const details = parameter.details
+  const measureId = details.measureId
+  const measurePv = details.measurePv
+  const byId =
+    measureId !== null && measureId !== undefined
+      ? measureOptions.value.find((item) => Number(item.id) === Number(measureId))
+      : null
+  if (byId) return byId
+  const byPv =
+    measurePv !== null && measurePv !== undefined
+      ? measureOptions.value.find((item) => Number(item.pv) === Number(measurePv))
+      : null
+  if (byPv) return byPv
+  if (measureId !== null && measurePv !== null && measureId !== undefined && measurePv !== undefined) {
+    return {
+      id: Number(measureId),
+      pv: Number(measurePv),
+      name: parameter.unitName?.trim() || String(measureId),
+    }
+  }
+  return null
+}
+
+const resolveExistingSourceOption = (
+  parameter: LoadedObjectParameter,
+  preferSelected = true,
+): ParameterSourceOption | null => {
+  if (preferSelected && selectedSource.value) return selectedSource.value
+  const details = parameter.details
+  const sourceId = details.sourceObjId
+  const sourcePv = details.sourcePv
+  const byId =
+    sourceId !== null && sourceId !== undefined
+      ? sourceOptions.value.find((item) => Number(item.id) === Number(sourceId))
+      : null
+  if (byId) return byId
+  const byPv =
+    sourcePv !== null && sourcePv !== undefined
+      ? sourceOptions.value.find((item) => Number(item.pv) === Number(sourcePv))
+      : null
+  if (byPv) return byPv
+  if (sourceId !== null && sourcePv !== null && sourceId !== undefined && sourcePv !== undefined) {
+    return {
+      id: Number(sourceId),
+      pv: Number(sourcePv),
+      name: parameter.sourceName?.trim() || String(sourceId),
+    }
+  }
+  return null
+}
+
+const syncExistingParameterSelection = (parameter: LoadedObjectParameter) => {
+  creationForm.name = parameter.name
+  creationForm.description = parameter.description ?? ''
+  const measure = resolveExistingMeasureOption(parameter, false)
+  if (measure) creationForm.measureId = String(measure.id)
+  const source = resolveExistingSourceOption(parameter, false)
+  if (source) creationForm.sourceId = String(source.id)
 }
 
 const MEASURE_SORT_LOCALE = 'ru'
@@ -767,8 +1065,14 @@ const handleSubmit = async () => {
     return
   }
 
-  const measure = selectedMeasure.value
-  const source = selectedSource.value
+  const existingParameter = selectedExistingParameter.value
+  const linkingExisting = !isEditMode.value && existingParameter !== null
+  const measure = linkingExisting
+    ? resolveExistingMeasureOption(existingParameter)
+    : selectedMeasure.value
+  const source = linkingExisting
+    ? resolveExistingSourceOption(existingParameter)
+    : selectedSource.value
   const componentOption = (() => {
     if (selectedComponent.value) return selectedComponent.value
     if (!isEditMode.value || !editingParameter.value) return null
@@ -791,7 +1095,11 @@ const handleSubmit = async () => {
   })()
 
   if (!measure || !source || !componentOption) {
-    message.error('Заполните обязательные поля формы')
+    if (linkingExisting) {
+      message.error('Не удалось определить данные выбранного параметра')
+    } else {
+      message.error('Заполните обязательные поля формы')
+    }
     return
   }
 
@@ -826,6 +1134,20 @@ const handleSubmit = async () => {
       }
       await parameterMutations.update.mutateAsync(updatePayload)
       message.success('Параметр успешно обновлён')
+    } else if (linkingExisting && existingParameter) {
+      const parameterId = resolveParameterId(existingParameter)
+      const parameterCls = resolveParameterCls(existingParameter)
+      if (!parameterId || !parameterCls) {
+        message.error('Не удалось определить выбранный параметр')
+        return
+      }
+      const linkPayload: LinkObjectParameterPayload = {
+        ...basePayload,
+        id: parameterId,
+        cls: parameterCls,
+      }
+      await parameterMutations.link.mutateAsync(linkPayload)
+      message.success('Параметр успешно привязан')
     } else {
       const createPayload: CreateObjectParameterPayload = basePayload
       await parameterMutations.create.mutateAsync(createPayload)
@@ -835,7 +1157,9 @@ const handleSubmit = async () => {
   } catch (err) {
     const fallbackMessage = isEditMode.value
       ? 'Не удалось обновить параметр'
-      : 'Не удалось создать параметр'
+      : linkingExisting
+        ? 'Не удалось привязать параметр'
+        : 'Не удалось создать параметр'
     message.error(getErrorMessage(err) ?? fallbackMessage)
   }
 }
@@ -901,8 +1225,32 @@ watch(createModalOpen, (isOpen) => {
 })
 
 watch(
+  () => creationForm.name,
+  (value) => {
+    const selected = selectedExistingParameter.value
+    if (!selected) return
+    if (normalizeText(value) !== normalizeText(selected.name)) {
+      selectedExistingParameterId.value = null
+    }
+  },
+)
+
+watch([selectedExistingParameterId, measureOptions, sourceOptions], () => {
+  const selected = selectedExistingParameter.value
+  if (!selected || isEditMode.value) return
+  syncExistingParameterSelection(selected)
+})
+
+watch(isEditMode, (value) => {
+  if (value) selectedExistingParameterId.value = null
+})
+
+watch(
   () => creationForm.measureId,
-  (value) => revalidateFieldOnChange('measureId', value),
+  (value) => {
+    revalidateFieldOnChange('measureId', value)
+    revalidateFieldOnChange('name', creationForm.name)
+  },
 )
 watch(
   () => creationForm.sourceId,
@@ -912,9 +1260,6 @@ watch(
   () => creationForm.componentEnt,
   (value) => revalidateFieldOnChange('componentEnt', value),
 )
-
-const snapshotData = computed(() => snapshot.value ?? undefined)
-const parameters = computed<LoadedObjectParameter[]>(() => snapshotData.value?.items ?? [])
 
 const fetchErrorMessage = computed(() => getErrorMessage(error.value))
 watch(fetchErrorMessage, (next, prev) => {
@@ -974,7 +1319,10 @@ const paginatedRows = computed(() => {
 const mobileRows = computed(() => sortedRows.value.slice(0, pagination.page * pagination.pageSize))
 const rows = computed(() => (isMobile.value ? mobileRows.value : paginatedRows.value))
 const visibleCount = computed(() => rows.value.length)
-const rowKey = (row: LoadedObjectParameter) => row.id
+const rowKey = (row: LoadedObjectParameter) => {
+  const relationId = row.details.componentRelationId
+  return Number.isFinite(relationId) ? String(relationId) : row.id
+}
 
 const resetFormValidation = () => {
   formRef.value?.restoreValidation()
@@ -1347,6 +1695,7 @@ const openCreate = () => {
   resetCreationForm()
   editingParameter.value = null
   parameterMutations.create.reset()
+  parameterMutations.link.reset()
   parameterMutations.update.reset()
   createModalOpen.value = true
   void loadCreationDirectories(!directoriesLoaded.value)
@@ -1358,6 +1707,7 @@ const openEdit = async (row: LoadedObjectParameter) => {
   editingParameter.value = row
   parameterMutations.update.reset()
   parameterMutations.create.reset()
+  parameterMutations.link.reset()
   createModalOpen.value = true
   try {
     await loadCreationDirectories(true)
@@ -1380,6 +1730,7 @@ const deleteParameter = async (row: LoadedObjectParameter) => {
   parameterMutations.remove.reset()
 
   const rawId = row.details.id ?? Number(row.id)
+  const relationId = row.details.componentRelationId ?? null
   if (!rawId || !Number.isFinite(rawId)) {
     message.error('Не удалось определить идентификатор параметра для удаления')
     return
@@ -1388,9 +1739,13 @@ const deleteParameter = async (row: LoadedObjectParameter) => {
   try {
     await parameterMutations.remove.mutateAsync({
       id: Number(rawId),
-      relationId: row.details.componentRelationId ?? null,
+      relationId,
     })
-    message.success(`Параметр «${row.name}» удалён`)
+    if (relationId && Number.isFinite(relationId)) {
+      message.success(`Связь параметра «${row.name}» с компонентом удалена`)
+    } else {
+      message.success(`Параметр «${row.name}» удалён`)
+    }
   } catch (err) {
     message.error(getErrorMessage(err) ?? `Не удалось удалить параметр «${row.name}»`)
   }
@@ -1581,6 +1936,12 @@ const deleteParameter = async (row: LoadedObjectParameter) => {
   gap: 12px;
 }
 
+.name-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .creation-form :deep(.n-form-item-blank) {
   width: 100%;
 }
@@ -1624,6 +1985,29 @@ const deleteParameter = async (row: LoadedObjectParameter) => {
   margin-top: 6px;
   font-size: 12px;
   color: var(--n-text-color-3);
+}
+
+.field-hint--error {
+  color: var(--n-error-color);
+}
+
+.existing-parameter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.existing-parameter-option__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.existing-parameter-option__tag {
+  flex-shrink: 0;
 }
 
 .limits-grid {

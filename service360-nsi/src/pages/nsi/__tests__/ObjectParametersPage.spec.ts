@@ -27,6 +27,8 @@ const messageMock = vi.hoisted(() => ({
 
 const createResetMock = vi.hoisted(() => vi.fn())
 const createMutateAsyncMock = vi.hoisted(() => vi.fn())
+const linkResetMock = vi.hoisted(() => vi.fn())
+const linkMutateAsyncMock = vi.hoisted(() => vi.fn())
 const updateResetMock = vi.hoisted(() => vi.fn())
 const updateMutateAsyncMock = vi.hoisted(() => vi.fn())
 const removeResetMock = vi.hoisted(() => vi.fn())
@@ -159,6 +161,7 @@ vi.mock('@features/object-parameter-crud', () => ({
   }),
   useObjectParameterMutations: () => ({
     create: { reset: createResetMock, mutateAsync: createMutateAsyncMock, isPending: { value: false } },
+    link: { reset: linkResetMock, mutateAsync: linkMutateAsyncMock, isPending: { value: false } },
     update: { reset: updateResetMock, mutateAsync: updateMutateAsyncMock, isPending: { value: false } },
     remove: { reset: removeResetMock, mutateAsync: removeMutateAsyncMock },
   }),
@@ -200,6 +203,7 @@ describe('ObjectParametersPage creation flow', () => {
     messageMock.warning.mockReset()
 
     createResetMock.mockReset()
+    linkResetMock.mockReset()
     updateResetMock.mockReset()
     removeResetMock.mockReset()
     removeMutateAsyncMock.mockReset()
@@ -208,6 +212,7 @@ describe('ObjectParametersPage creation flow', () => {
     removeMutateAsyncMock.mockReset()
     removeMutateAsyncMock.mockReset()
     createMutateAsyncMock.mockReset()
+    linkMutateAsyncMock.mockReset()
     updateMutateAsyncMock.mockReset()
     loadMeasuresMock.mockReset()
     loadSourcesMock.mockReset()
@@ -230,6 +235,7 @@ describe('ObjectParametersPage creation flow', () => {
 
     expect(exposed.createModalOpen.value).toBe(true)
     expect(createResetMock).toHaveBeenCalledTimes(1)
+    expect(linkResetMock).toHaveBeenCalledTimes(1)
     expect(updateResetMock).toHaveBeenCalledTimes(1)
     expect(loadMeasuresMock).toHaveBeenCalledTimes(1)
     expect(loadSourcesMock).toHaveBeenCalledTimes(1)
@@ -320,9 +326,11 @@ describe('ObjectParametersPage edit flow', () => {
     messageMock.warning.mockReset()
 
     createResetMock.mockReset()
+    linkResetMock.mockReset()
     updateResetMock.mockReset()
     removeResetMock.mockReset()
     createMutateAsyncMock.mockReset()
+    linkMutateAsyncMock.mockReset()
     updateMutateAsyncMock.mockReset()
     loadMeasuresMock.mockReset()
     loadSourcesMock.mockReset()
@@ -343,6 +351,7 @@ describe('ObjectParametersPage edit flow', () => {
 
     expect(updateResetMock).toHaveBeenCalledTimes(1)
     expect(createResetMock).toHaveBeenCalledTimes(1)
+    expect(linkResetMock).toHaveBeenCalledTimes(1)
     expect(loadMeasuresMock).toHaveBeenCalledTimes(1)
     expect(loadSourcesMock).toHaveBeenCalledTimes(1)
     expect(loadComponentsMock).toHaveBeenCalledTimes(1)
@@ -440,9 +449,11 @@ describe('ObjectParametersPage mobile card fields', () => {
     ])
 
     createResetMock.mockReset()
+    linkResetMock.mockReset()
     updateResetMock.mockReset()
     removeResetMock.mockReset()
     createMutateAsyncMock.mockReset()
+    linkMutateAsyncMock.mockReset()
     loadMeasuresMock.mockReset()
     loadSourcesMock.mockReset()
     loadComponentsMock.mockReset()
@@ -468,9 +479,11 @@ describe('ObjectParametersPage sorting logic', () => {
     snapshotRef.value = buildSnapshot()
 
     createResetMock.mockReset()
+    linkResetMock.mockReset()
     updateResetMock.mockReset()
     removeResetMock.mockReset()
     createMutateAsyncMock.mockReset()
+    linkMutateAsyncMock.mockReset()
     loadMeasuresMock.mockReset()
     loadSourcesMock.mockReset()
     loadComponentsMock.mockReset()

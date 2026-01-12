@@ -1,15 +1,19 @@
 <template>
   <div class="actions">
-    <button
-      v-for="(action, index) in actions"
-      :key="index"
-      class="action-btn"
-      :class="{ 'mobile-icon-only': isMobile }"
-      @click="action.onClick"
-    >
-      <UiIcon :name="action.icon" />
-      <span v-if="!isMobile">{{ action.label }}</span>
-    </button>
+    <template v-for="(action, index) in actions" :key="index">
+      <span v-if="action.extraText && !isMobile" class="extra-text">{{ action.extraText }}</span>
+      <button
+        class="action-btn"
+        :class="{
+          'mobile-icon-only': isMobile,
+          'primary': action.variant === 'primary' && !isMobile
+        }"
+        @click="action.onClick"
+      >
+        <UiIcon :name="action.icon" />
+        <span v-if="!isMobile">{{ action.label }}</span>
+      </button>
+    </template>
   </div>
 </template>
 
@@ -33,6 +37,13 @@ const props = defineProps({
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.extra-text {
+  font-size: 14px;
+  color: #4a5568;
+  font-weight: 500;
 }
 
 .action-btn {
@@ -51,6 +62,21 @@ const props = defineProps({
 
 .action-btn:hover {
   background: #edf2f7;
+}
+
+.action-btn.primary {
+  background: #3182ce;
+  border-color: #3182ce;
+  color: #fff;
+}
+
+.action-btn.primary:hover {
+  background: #2c5aa0;
+  border-color: #2c5aa0;
+}
+
+.action-btn.primary :deep(.icon) {
+  color: #fff;
 }
 
 /* Mobile styles for action buttons to match the screenshot */

@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/dtj/ops/dev-sw.js?dev-sw', { scope: '/dtj/ops/', type: 'classic' })

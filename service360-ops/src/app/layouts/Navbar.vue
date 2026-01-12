@@ -174,15 +174,17 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 5px 24px;
+  padding-top: max(5px, env(safe-area-inset-top));
   border-bottom: 1px solid #e2e8f0;
   background: #fff;
-  height: 60px;
   min-height: 60px;
-  max-height: 60px;
   box-sizing: border-box;
   flex-shrink: 0;
 }

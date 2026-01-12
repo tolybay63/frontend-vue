@@ -1,13 +1,48 @@
 <!DOCTYPE html>
-<html lang="">
+<html lang="ru">
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="src\assets\img\favicon.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Service 360</title>
+
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Service 360 Operations - система управления заявками и ресурсами">
+    <meta name="theme-color" content="#2b6cb0">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#2b6cb0">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a202c">
+
+    <!-- Android/Chrome PWA -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Service 360">
+
+    <!-- Force standalone mode on Android -->
+    <meta name="x5-fullscreen" content="true">
+    <meta name="full-screen" content="yes">
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Service 360">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/dtj/ops/manifest.webmanifest">
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/dtj/ops/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/dtj/ops/icon-512x512.png">
+    <link rel="apple-touch-icon" href="/dtj/ops/apple-touch-icon.jpg">
   </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
+    <script>
+      // Check if running as PWA
+      if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+        console.log('Running as PWA in standalone mode');
+      } else {
+        console.log('Running in browser mode');
+      }
+    </script>
   </body>
 </html>

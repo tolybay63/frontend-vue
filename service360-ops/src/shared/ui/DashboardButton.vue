@@ -1,7 +1,7 @@
 <template>
   <button class="action-button" @click="$emit('click')">
     <div class="action-icon-container">
-      <UiIcon :name="iconName" :color="iconColor" class="icon-color" />
+      <UiIcon :name="iconName" class="icon-color" />
     </div>
     <span class="action-label">{{ label }}</span>
   </button>
@@ -18,10 +18,6 @@ defineProps({
   iconName: {
     type: String,
     required: true,
-  },
-  iconColor: {
-    type: String,
-    default: '#2b6cb0', 
   }
 });
 
@@ -33,54 +29,44 @@ defineEmits(['click']);
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px 24px;
+  padding: 20px;
   background: white;
-  border: 1px solid #e6f0fb; 
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); 
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: system-ui, sans-serif;
-  font-weight: 300;
+  font-family: system-ui;
   flex-grow: 1;
   min-width: 0;
   text-align: left;
 }
 
 .action-button:hover {
-  background: #edf2f7; 
-  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  border-color: #cbd5e0;
 }
 
 .action-icon-container {
   flex-shrink: 0;
   width: 48px;
   height: 48px;
-  background-color: #e6f0fb; 
-  border-radius: 8px;
+  background-color: #edf2f7;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.action-button:hover .action-icon-container {
-    background-color: #c3dafe; 
+  color: #3182ce;
 }
 
 .action-label {
-  font-size: 16px;
-  font-weight: 500;
-  color: #2b6cb0; 
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.2s;
-}
-
-.action-button:hover .action-label {
-  color: #2b6cb0; 
+  font-size: 15px;
+  font-weight: 600;
+  color: #2d3748;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
 }
 
 .icon-color {
@@ -90,13 +76,12 @@ defineEmits(['click']);
 
 @media (max-width: 768px) {
   .action-button {
-    padding: 12px 16px;
-    gap: 12px;
+    padding: 16px;
   }
 
   .action-icon-container {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
   }
 
   .icon-color {

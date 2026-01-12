@@ -65,10 +65,23 @@ label {
   line-height: 1.2;
 }
 
+.form-group :deep(.n-input) {
+  border-radius: 6px;
+}
+
+.form-group :deep(.n-input__input-el) {
+  border-radius: 6px;
+}
+
+.form-group :deep(.n-input-wrapper) {
+  border-radius: 6px;
+}
+
 /* Mobile styles */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .form-group {
     min-width: 0; /* Позволяет сжиматься меньше content size */
+    width: 100%;
   }
 
   label {
@@ -77,6 +90,35 @@ label {
 
   .form-group :deep(.n-input) {
     font-size: 16px; /* Предотвращает zoom на iOS */
+    border-radius: 12px;
+    width: 100%;
+    min-height: 50px;
+  }
+
+  .form-group :deep(.n-input__input-el) {
+    border-radius: 12px;
+    min-height: 50px;
+    height: 50px;
+  }
+
+  .form-group :deep(.n-input-wrapper) {
+    border-radius: 12px;
+    min-height: 50px;
+  }
+}
+
+@media (max-width: 480px) {
+  .form-group :deep(.n-input) {
+    min-height: 50px;
+  }
+
+  .form-group :deep(.n-input__input-el) {
+    min-height: 50px;
+    height: 50px;
+  }
+
+  .form-group :deep(.n-input-wrapper) {
+    min-height: 50px;
   }
 }
 </style>

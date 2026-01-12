@@ -1,5 +1,7 @@
 <template>
   <NaiveProvider>
+    <SplashScreen />
+
     <div v-if="!isLoginPage" class="app-layout">
       <div v-if="sidebar.mobileOpen" class="sidebar-overlay" @click="sidebar.toggleMobile"></div>
       <Sidebar />
@@ -23,6 +25,7 @@ import Sidebar from './app/layouts/Sidebar.vue'
 import Navbar from './app/layouts/Navbar.vue'
 import NaiveProvider from './naive.config.js'
 import AppNotification from './app/layouts/AppNotification.vue'
+import SplashScreen from './components/SplashScreen.vue'
 import { useSidebarStore } from './app/stores/sidebar'
 
 const route = useRoute()

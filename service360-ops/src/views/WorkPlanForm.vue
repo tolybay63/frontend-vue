@@ -7,35 +7,35 @@
     <div class="filters-section">
       <div class="filter-row">
         <AppDropdown
-          v-model:value="selectedSection"
+          :modelValue="selectedSection"
           label="Участок"
           placeholder="Выберите участок"
           :required="true"
           class="filter-item"
           :options="sections"
-          @update:value="onSectionChange"
+          @update:modelValue="onSectionChange"
         />
         <AppDropdown
           :key="monthDropdownKey"
-          v-model:value="selectedMonth"
+          :modelValue="selectedMonth"
           label="Месяц"
           placeholder="Выберите месяц"
           :required="true"
           class="filter-item"
           :options="months"
           :disabled="!selectedSection"
-          @update:value="onMonthChange"
+          @update:modelValue="onMonthChange"
         />
         <AppDropdown
           :key="dayDropdownKey"
-          v-model:value="selectedDay"
+          :modelValue="selectedDay"
           label="День"
           placeholder="Выберите день"
           :required="true"
           class="filter-item"
           :options="filteredDays"
           :disabled="!selectedMonth"
-          @update:value="onDayChange"
+          @update:modelValue="onDayChange"
         />
       </div>
     </div>
@@ -349,8 +349,15 @@ const loadAllUnfinishedWork = async () => {
       label: section,
     }));
 
-    // Отображаем все записи по умолчанию
-    filterTableData();
+    // Автоматически выбираем первый участок, если есть
+    if (sections.value.length > 0) {
+      selectedSection.value = sections.value[0].value;
+      updateMonthsForSection();
+      autoSelectDate();
+    } else {
+      // Если участков нет, отображаем все записи
+      filterTableData();
+    }
   } catch (error) {
     notificationStore.showNotification('Не удалось загрузить незавершенные работы', 'error');
     allRecords.value = [];
@@ -360,6 +367,88 @@ const loadAllUnfinishedWork = async () => {
   }
 };
 
+
+const autoSelectDate = () => {
+  if (!selectedSection.value || months.value.length === 0) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Сбрасываем время для корректного сравнения
+
+  // Собираем все даты для выбранного участка
+  const availableDates = [];
+  allRecords.value.forEach(record => {
+    if (record.nameLocationClsSection === selectedSection.value && record.PlanDateEnd) {
+      const recordDate = new Date(record.PlanDateEnd);
+      recordDate.setHours(0, 0, 0, 0);
+
+      // Добавляем только даты <= сегодняшней
+      if (recordDate <= today) {
+        availableDates.push({
+          fullDate: record.PlanDateEnd,
+          dateObj: recordDate
+        });
+      }
+    }
+  });
+
+  if (availableDates.length === 0) {
+    // Если нет дат <= сегодняшней, показываем все записи без фильтра
+    filterTableData();
+    return;
+  }
+
+  // Сортируем по убыванию (от новых к старым) и берем самую свежую
+  availableDates.sort((a, b) => b.dateObj - a.dateObj);
+  const closestDate = availableDates[0].fullDate;
+
+  // Разбираем выбранную дату на месяц и день
+  const [year, month, day] = closestDate.split('-');
+  selectedMonth.value = `${year}-${month}`;
+  selectedDay.value = day;
+
+  monthDropdownKey.value++;
+  dayDropdownKey.value++;
+
+  filterTableData();
+};
+
+const findClosestDay = (days, targetDay) => {
+  if (days.length === 0) return null;
+
+  const numericDays = days.map(d => parseInt(d, 10)).sort((a, b) => b - a); // Сортируем по убыванию
+
+  // Ищем ближайший день, который <= targetDay
+  for (const day of numericDays) {
+    if (day <= targetDay) {
+      return String(day).padStart(2, '0');
+    }
+  }
+
+  // Если все дни больше targetDay, возвращаем самый ранний (минимальный)
+  return String(Math.min(...numericDays)).padStart(2, '0');
+};
+
+const findClosestMonth = (monthsList, targetMonth) => {
+  if (monthsList.length === 0) return null;
+
+  const targetDate = new Date(`${targetMonth}-01`);
+
+  // Сортируем месяцы по убыванию (от нового к старому)
+  const sortedMonths = [...monthsList].sort((a, b) => {
+    return new Date(`${b}-01`) - new Date(`${a}-01`);
+  });
+
+  // Ищем ближайший месяц, который <= targetMonth
+  for (const month of sortedMonths) {
+    const monthDate = new Date(`${month}-01`);
+    if (monthDate <= targetDate) {
+      return month;
+    }
+  }
+
+  // Если все месяцы больше targetMonth, возвращаем самый ранний
+  return monthsList.sort()[0];
+};
 
 const updateMonthsForSection = () => {
   if (!selectedSection.value) {
@@ -393,18 +482,21 @@ const updateMonthsForSection = () => {
   dayDropdownKey.value++;
 };
 
-const onSectionChange = () => {
+const onSectionChange = (value) => {
+  selectedSection.value = value?.value || value;
   updateMonthsForSection();
-  filterTableData();
+  autoSelectDate();
 };
 
-const onMonthChange = () => {
+const onMonthChange = (value) => {
+  selectedMonth.value = value?.value || value;
   selectedDay.value = null;
   dayDropdownKey.value++;
   filterTableData();
 };
 
-const onDayChange = () => {
+const onDayChange = (value) => {
+  selectedDay.value = value?.value || value;
   filterTableData();
 };
 

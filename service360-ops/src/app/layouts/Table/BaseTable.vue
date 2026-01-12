@@ -3,18 +3,29 @@
     <table class="styled-table" :class="tableWidthClass">
       <thead>
         <tr>
-          <th 
-            v-for="col in columns" 
-            :key="col.key" 
+          <th
+            v-if="showCheckbox"
+            class="header-cell-container checkbox-column"
+            :style="{ cursor: 'default' }"
+          >
+            <n-checkbox
+              :checked="isAllSelected"
+              :indeterminate="isSomeSelected"
+              @update:checked="toggleSelectAll"
+            />
+          </th>
+          <th
+            v-for="col in columns"
+            :key="col.key"
             class="header-cell-container"
             :style="{ cursor: 'default' }"
             >
             <div class="header-cell">
               <span>{{ col.label }}</span>
               <div class="sort-filter-controls">
-                <button 
+                <button
                   v-if="showFilters"
-                  @click.stop="$emit('toggle-filter', col.key)" 
+                  @click.stop="$emit('toggle-filter', col.key)"
                   :class="['filter-button', { active: activeFilters[col.key] }]"
                   title="Фильтр"
                 >
@@ -39,13 +50,16 @@
           :toggleRowExpand="toggleRowExpand"
           :childrenMap="childrenMap"
           :getRowClassFn="getRowClassFn"
+          :showCheckbox="showCheckbox"
+          :isSelected="isRowSelected(row)"
           @dblclick="$emit('row-dblclick', $event)"
+          @toggle-select="toggleRowSelection(row)"
         />
         <tr v-if="!rows.length && !loading">
-          <td :colspan="columns.length" class="empty">Нет данных</td>
+          <td :colspan="showCheckbox ? columns.length + 1 : columns.length" class="empty">Нет данных</td>
         </tr>
         <tr v-if="loading">
-          <td :colspan="columns.length" class="loading">Загрузка...</td>
+          <td :colspan="showCheckbox ? columns.length + 1 : columns.length" class="loading">Загрузка...</td>
         </tr>
       </tbody>
     </table>
@@ -53,7 +67,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { NCheckbox } from 'naive-ui';
 import TableRow from './TableRow.vue'
 import UiIcon from '@/shared/ui/UiIcon.vue'
 
@@ -65,22 +80,77 @@ const props = defineProps({
   toggleRowExpand: Function,
   childrenMap: Object,
   activeFilters: Object,
-  showFilters: { 
+  showFilters: {
     type: Boolean,
     default: true
   },
   sortKey: String,
   sortDirection: String,
-  // НОВЫЙ ПРОПС
   getRowClassFn: {
     type: Function,
     default: () => ({}),
+  },
+  showCheckbox: {
+    type: Boolean,
+    default: false
+  },
+  selectedRows: {
+    type: Array,
+    default: () => []
   }
 })
 
-const emit = defineEmits(['row-dblclick', 'toggle-filter', 'sort'])
+const emit = defineEmits(['row-dblclick', 'toggle-filter', 'sort', 'update:selectedRows'])
 
-// Уменьшаем условие для wide-table и дефолтное значение
+const internalSelectedRows = ref([...props.selectedRows]);
+
+watch(() => props.selectedRows, (newVal) => {
+  internalSelectedRows.value = [...newVal];
+}, { deep: true });
+
+watch(() => props.rows, () => {
+  // Очищаем выбранные строки, которых больше нет в списке
+  internalSelectedRows.value = internalSelectedRows.value.filter(selectedId =>
+    props.rows.some(row => (row.id || row.index) === selectedId)
+  );
+});
+
+const isRowSelected = (row) => {
+  const rowId = row.id || row.index;
+  return internalSelectedRows.value.includes(rowId);
+};
+
+const toggleRowSelection = (row) => {
+  const rowId = row.id || row.index;
+  const index = internalSelectedRows.value.indexOf(rowId);
+
+  if (index > -1) {
+    internalSelectedRows.value.splice(index, 1);
+  } else {
+    internalSelectedRows.value.push(rowId);
+  }
+
+  emit('update:selectedRows', [...internalSelectedRows.value]);
+};
+
+const isAllSelected = computed(() => {
+  return props.rows.length > 0 && internalSelectedRows.value.length === props.rows.length;
+});
+
+const isSomeSelected = computed(() => {
+  return internalSelectedRows.value.length > 0 && internalSelectedRows.value.length < props.rows.length;
+});
+
+const toggleSelectAll = (checked) => {
+  if (checked) {
+    internalSelectedRows.value = props.rows.map(row => row.id || row.index);
+  } else {
+    internalSelectedRows.value = [];
+  }
+
+  emit('update:selectedRows', [...internalSelectedRows.value]);
+};
+
 const tableWidthClass = computed(() => {
   return props.columns && props.columns.length >= 5 ? 'wide-table' : 'default-table';
 });
@@ -197,5 +267,11 @@ th, td {
 .styled-table :deep(.label-strong) {
   font-weight: 600;
   color: #374151;
+}
+
+.checkbox-column {
+  width: 50px;
+  text-align: center;
+  padding: 12px 8px !important;
 }
 </style>

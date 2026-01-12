@@ -12,8 +12,11 @@
       :showFilters="true"
       :filters="filters"
       :getRowClassFn="getRowClass"
+      :showCheckbox="true"
+      :selectedRows="selectedRows"
       @update:filters="filters = $event"
       @row-dblclick="onRowDoubleClick"
+      @update:selectedRows="selectedRows = $event"
     >
       <template #modals="{ selectedRow, showEditModal, closeModals, onSave }">
         <ModalEditPlan
@@ -32,6 +35,15 @@
     @update-table="handleTableUpdate"
   />
 
+  <ModalCopyPlan
+    v-if="isCopyPlanModalOpen"
+    :selectedRows="selectedRows"
+    :currentDate="filters.date"
+    :currentPeriodType="filters.periodType"
+    @close="closeCopyPlanModal"
+    @update-table="handleTableUpdate"
+  />
+
   <ConfirmationModal
     v-if="isConfirmModalOpen"
     title="Завершение работы"
@@ -42,10 +54,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, h } from 'vue';
+import { ref, onMounted, computed, h, watch } from 'vue';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue';
 import ModalEditPlan from '@/features/work-plan/components/ModalEditPlan.vue';
 import ModalPlanWork from '@/features/work-plan/components/ModalPlanWork.vue';
+import ModalCopyPlan from '@/features/work-plan/components/ModalCopyPlan.vue';
 import { loadWorkPlan, completeThePlanWork } from '@/shared/api/plans/planApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -58,14 +71,21 @@ const { hasPermission } = usePermissions();
 
 const limit = 10;
 const isPlanWorkModalOpen = ref(false);
+const isCopyPlanModalOpen = ref(false);
 const tableWrapperRef = ref(null);
 const isConfirmModalOpen = ref(false);
 const recordToComplete = ref(null);
 const notificationStore = useNotificationStore();
+const selectedRows = ref([]);
 
 const filters = ref({
   date: new Date(),
   periodType: null,
+});
+
+// Отслеживаем изменения выбранных строк (для дебага или дальнейшего использования)
+watch(selectedRows, (newVal) => {
+  console.log('Выбранные строки:', newVal);
 });
 
 const datePickerConfig = {
@@ -100,6 +120,10 @@ onMounted(async () => {
 
 const closePlanWorkModal = () => {
   isPlanWorkModalOpen.value = false;
+};
+
+const closeCopyPlanModal = () => {
+  isCopyPlanModalOpen.value = false;
 };
 
 const handleTableUpdate = () => {
@@ -300,9 +324,24 @@ const columns = [
   },
 ];
 
+const handleCopyWorkPlan = () => {
+  if (selectedRows.value.length === 0) {
+    notificationStore.showNotification('Выберите работы для копирования', 'warning');
+    return;
+  }
+
+  isCopyPlanModalOpen.value = true;
+};
+
 const tableActions = computed(() => {
   // Mapping icons to match the screenshot (Plus/Download)
   const baseActions = [
+    {
+      label: 'Копировать план работ',
+      icon: 'Copy', // Copy icon
+      onClick: handleCopyWorkPlan,
+      hidden: !hasPermission('plan:copy'),
+    },
     {
       label: 'Запланировать новую работу',
       icon: 'Plus', // Plus for add
@@ -318,11 +357,12 @@ const tableActions = computed(() => {
     // }
   ];
 
-  // Reordering for mobile view to match the screenshot (Plus, then Print)
+  // Reordering for mobile view to match the screenshot
+  const copyAction = baseActions.find(a => a.icon === 'Copy');
   const plusAction = baseActions.find(a => a.icon === 'Plus');
   const exportAction = baseActions.find(a => a.icon === 'Printer');
 
-  return [plusAction, exportAction].filter(action => action && !action.hidden);
+  return [copyAction, plusAction, exportAction].filter(action => action && !action.hidden);
 });
 </script>
 

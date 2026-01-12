@@ -6,6 +6,16 @@
     @click="handleClick"
   >
     <td
+      v-if="showCheckbox"
+      class="cell checkbox-cell"
+      @click.stop
+    >
+      <n-checkbox
+        :checked="isSelected"
+        @update:checked="$emit('toggle-select')"
+      />
+    </td>
+    <td
       v-for="(col, i) in columns"
       :key="col.key"
       class="cell"
@@ -57,13 +67,17 @@
       :toggleRowExpand="toggleRowExpand"
       :parentIndex="`${fullIndex}.${i + 1}`"
       :getRowClassFn="getRowClassFn"
+      :showCheckbox="showCheckbox"
+      :isSelected="isSelected"
       @dblclick="$emit('dblclick', $event)"
+      @toggle-select="$emit('toggle-select')"
     />
   </template>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue';
+import { NCheckbox } from 'naive-ui';
 import UiIcon from '@/shared/ui/UiIcon.vue';
 import TableRow from './TableRow.vue';
 
@@ -80,6 +94,14 @@ const props = defineProps({
   getRowClassFn: {
     type: Function,
     default: () => ({}),
+  },
+  showCheckbox: {
+    type: Boolean,
+    default: false
+  },
+  isSelected: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -87,7 +109,7 @@ const children = computed(() => props.childrenMap?.[props.row.id] || []);
 const hasChildren = computed(() => children.value.length > 0);
 const isExpanded = computed(() => props.expandedRows.includes(props.row.id));
 
-const emits = defineEmits(['dblclick']);
+const emits = defineEmits(['dblclick', 'toggle-select']);
 
 // Поддержка мобильных устройств: два быстрых клика = double click
 const lastClickTime = ref(0);
@@ -236,5 +258,11 @@ const isFactDateOnTime = (key) => {
 .cell-content.preserve-newlines {
   white-space: pre-line;
   line-height: 1.5; /* Немного уменьшено для более компактного вида */
+}
+
+.checkbox-cell {
+  width: 50px;
+  text-align: center;
+  padding: 12px 8px !important;
 }
 </style>

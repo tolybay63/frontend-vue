@@ -142,4 +142,16 @@ const getIconName = (type) => colorMap[type]?.icon || 'AlertCircle'
 .fade-slide-move {
   transition: transform 0.3s ease;
 }
+
+@media (max-width: 768px) {
+  .notification-container.top-center {
+    top: 60px;
+  }
+}
+
+@media (max-width: 480px) {
+  .notification-container.top-center {
+    top: 60px;
+  }
+}
 </style>

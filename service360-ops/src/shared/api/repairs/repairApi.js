@@ -83,13 +83,13 @@ export async function loadDateWorkPlanCorrectional(selectedSectionId, pv) {
   }
 };
 
-export async function loadTasks() {
+export async function loadTasks(objWork = null) {
   try {
     const response = await axios.post(
-      API_OBJECT_URL,
+      API_NSI_URL,
       {
-        method: "data/loadObjList",
-        params: ["Cls_Task", "Prop_Task", "nsidata"],
+        method: "data/loadTaskForSelect",
+        params: [objWork, "Prop_Task"],
       },
       {
         withCredentials: true,

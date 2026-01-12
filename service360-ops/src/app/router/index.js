@@ -9,8 +9,11 @@ import Incidents from '@/views/Incidents.vue'
 import WorkPlanForm from '@/views/WorkPlanForm.vue'
 import ResourcePlanning from '@/views/ResourcePlanning.vue'
 import ResourcePlanningForm from '@/views/ResourcePlanningForm.vue'
+import ResourcePlanningEdit from '@/views/ResourcePlanningEdit.vue'
 import WorkLog from '@/views/WorkLog.vue'
 import WorkLogForm from '@/views/WorkLogForm.vue'
+import HeatmapTest from '@/views/HeatmapTest.vue'
+import TrackGaugeImport from '@/views/TrackGaugeImport.vue'
 import { isAuthenticated } from '@/shared/api/auth/auth'
 
 const routes = [
@@ -61,6 +64,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/resource-planning/edit/:id',
+    name: 'ResourcePlanningEdit',
+    component: ResourcePlanningEdit,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/inspections',
     name: 'Inspections',
     component: Inspections,
@@ -88,6 +97,18 @@ const routes = [
     path: '/incidents',
     name: 'Incidents',
     component: Incidents,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/heatmap-test',
+    name: 'HeatmapTest',
+    component: HeatmapTest,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/track-gauge-import',
+    name: 'TrackGaugeImport',
+    component: TrackGaugeImport,
     meta: { requiresAuth: true }
   },
 ];

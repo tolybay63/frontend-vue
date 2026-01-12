@@ -13,20 +13,25 @@
     <div class="login-container">
       <div class="login-card">
         <div class="login-content">
-          <div>
-            <h2 class="login-title centered">Вход в систему</h2>
-            <p class="login-subtitle centered">
-              Для входа во внутреннюю систему DTJ Service введите логин и пароль.
+          <div class="header-section">
+            <div class="logo-mobile">
+              <img src="@/assets/img/s360.PNG" alt="Service360 Logo" />
+            </div>
+            <h2 class="login-title">Добро пожаловать</h2>
+            <p class="login-subtitle">
+              Для входа во внутреннюю систему DTJ Service введите логин и пароль
             </p>
           </div>
 
           <form @submit.prevent="handleLogin">
             <div class="form-fields">
-              <AppInput v-model="username" placeholder="Логин" />
-              <AppInput v-model="password" type="password" placeholder="Пароль" />
+              <AppInput label="Логин" v-model="username" placeholder="Введите логин" />
+              <AppInput label="Пароль" v-model="password" type="password" placeholder="Введите пароль" />
             </div>
 
-            <MainButton :label="'ВОЙТИ'" :loading="loading" type="submit" />
+            <div class="submit-button-wrapper">
+              <MainButton :label="'ВОЙТИ'" :loading="loading" type="submit" />
+            </div>
           </form>
         </div>
       </div>
@@ -94,7 +99,7 @@ export default {
         localStorage.setItem("userId", userId)
 
         notify.showNotification("Успешный вход!", "success")
-        this.$router.push("/main")
+        this.$router.push({ name: 'WorkPlan' })
       } catch (err) {
         console.error("Ошибка при входе:", err)
 
@@ -156,6 +161,10 @@ export default {
   height: 60px;
 }
 
+.logo-mobile {
+  display: none;
+}
+
 .language-fixed {
   position: fixed;
   top: 5vw;
@@ -201,17 +210,31 @@ export default {
   box-sizing: border-box;
 }
 
+.header-section {
+  margin-bottom: 30px;
+}
 
 .login-title {
   font-size: 24px;
   font-weight: bold;
   margin-bottom: 10px;
+  color: #1f2937;
 }
 
 .login-subtitle {
   font-size: 15px;
+  color: #9ca3af;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+.input-label {
+  display: none;
+  font-size: 14px;
   color: #6b7280;
-  margin-bottom: 24px;
+  margin-bottom: 6px;
+  margin-top: 8px;
+  text-align: left;
 }
 
 .form-fields {
@@ -243,116 +266,207 @@ form {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: 100%;
 }
+
 @media (max-width: 768px) {
   .login-page {
-    padding: 16px;
+    padding: 0;
+    background: #f7fafc;
+    overflow: hidden;
+    height: 100vh;
   }
 
   .logo-fixed {
-    top: 20px;
-    left: 20px;
+    display: none;
   }
 
-  .logo-fixed img {
-    height: 45px;
+  .logo-mobile {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+    margin-top: 20px;
+  }
+
+  .logo-mobile img {
+    height: 160px;
   }
 
   .language-fixed {
-    top: 20px;
-    right: 20px;
-    font-size: 14px;
+    display: none;
   }
 
   .login-container {
-    padding: 20px 10px;
+    padding: 0;
+    max-width: 100%;
+    height: 100vh;
   }
 
   .login-card {
-    padding: 28px 24px;
-    min-height: auto;
+    padding: 40px 24px 20px 24px;
+    height: 100%;
     max-width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    justify-content: center;
+    padding-top: 60px;
+    display: flex;
+    flex-direction: column;
   }
 
   .login-title {
-    font-size: 20px;
-    margin-bottom: 8px;
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .header-section {
+    margin-bottom: 80px;
+    margin-top: 40px;
   }
 
   .login-subtitle {
-    font-size: 13px;
-    margin-bottom: 20px;
+    font-size: 14px;
+    margin-bottom: 0;
+    padding: 0 90px;
+  }
+
+  .input-label {
+    display: block;
+  }
+
+  .input-label:first-of-type {
+    margin-top: 0;
   }
 
   .form-fields {
-    gap: 12px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+  }
+
+  form {
+    justify-content: space-between;
+    flex: 1;
+    padding-bottom: 80px;
+  }
+
+  .login-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .submit-button-wrapper {
+    position: fixed;
+    bottom: 46px;
+    left: 0;
+    width: 100%;
+    padding: 0 20px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
   }
 
   .footer-note {
-    font-size: 10px;
-    bottom: 12px;
+    position: fixed;
+    bottom: 15px;
+    font-size: 11px;
+    color: #9ca3af;
   }
 }
 
 @media (max-width: 480px) {
-  .login-page {
-    padding: 12px;
-  }
-
-  .logo-fixed {
-    top: 16px;
-    left: 16px;
-  }
-
-  .logo-fixed img {
-    height: 36px;
-  }
-
-  .language-fixed {
-    top: 16px;
-    right: 16px;
-    font-size: 12px;
-  }
-
-  .language-fixed a {
-    margin-left: 6px;
-  }
-
-  .login-container {
-    padding: 16px 8px;
-  }
-
   .login-card {
-    padding: 20px 16px;
-    border-radius: 12px;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .login-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0 24px;
+    padding-bottom: 60px;
+  }
+
+  .header-section {
+    flex-shrink: 0;
+    padding-top: 40px;
+    margin-bottom: 0;
+  }
+
+  .logo-mobile {
+    margin-top: 0;
+    margin-bottom: 40px;
+  }
+
+  .logo-mobile img {
+    height: 120px;
   }
 
   .login-title {
-    font-size: 18px;
-    margin-bottom: 6px;
+    font-size: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    color: #1f2937;
   }
 
   .login-subtitle {
-    font-size: 12px;
-    margin-bottom: 16px;
-    line-height: 1.4;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 0;
+    color: #9ca3af;
+    padding: 0;
   }
 
-  .form-fields {
-    gap: 10px;
-    margin-bottom: 16px;
+  .input-label {
+    font-size: 13px;
+    color: #9ca3af;
+    font-weight: normal;
   }
 
   form {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+  }
+   
+
+  .form-fields {
     gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  form button {
+    margin-top: 0;
+  }
+
+  .submit-button-wrapper {
+    position: fixed;
+    bottom: 46px;
+    left: 0;
+    width: 100%;
+    padding: 0 20px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
   }
 
   .footer-note {
-    font-size: 9px;
-    bottom: 10px;
-    padding: 0 10px;
+    position: fixed;
+    bottom: 16px;
+    font-size: 10px;
+    color: #9ca3af;
+    left: 0;
+    right: 0;
+    text-align: center;
   }
 }
-
 </style>

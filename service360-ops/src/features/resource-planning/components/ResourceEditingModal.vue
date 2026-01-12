@@ -139,8 +139,9 @@
                       :id="`personnel-hours-input-${index}`"
                       v-model.number="personnel.hours"
                       placeholder="Введите часы"
-                      type="number" 
-                      :min="0" />
+                      type="number"
+                      :min="0"
+                      :required="true" />
                   </div>
               </div>
               
@@ -183,8 +184,9 @@
                       :id="`equipment-hours-input-${index}`"
                       v-model.number="equipment.hours"
                       placeholder="Введите часы"
-                      type="number" 
-                      :min="0" />
+                      type="number"
+                      :min="0"
+                      :required="true" />
                   </div>
               </div>
               

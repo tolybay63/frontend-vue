@@ -1,6 +1,5 @@
 <template>
   <TableWrapper
-    ref="tableWrapperRef"
     title="Журнал планирования ресурсов"
     :columns="columns"
     :actions="tableActions"
@@ -11,16 +10,8 @@
     :showFilters="true"
     :filters="filters"
     :getRowClassFn="getRowClassFn"
-    @update:filters="filters = $event"    
+    @update:filters="filters = $event"
     @row-dblclick="onRowDoubleClick"
-  />
-  <ResourceEditingModal
-    v-if="isModalOpen"
-    :record="selectedRecordForModal"
-    :section="selectedRecordForModal?.name"
-    :date="selectedRecordForModal?.planDateEnd"
-    @close="isModalOpen = false"
-    @saved="handleTableUpdate"
   />
 </template>
 
@@ -31,7 +22,6 @@ import TableWrapper from '@/app/layouts/Table/TableWrapper.vue';
 import { loadPlanCorrectional } from '@/shared/api/repairs/repairApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
-import ResourceEditingModal from '@/features/resource-planning/components/ResourceEditingModal.vue';
 
 const { hasPermission } = usePermissions();
 const canInsert = computed(() => hasPermission('res:ins'));
@@ -39,11 +29,6 @@ const canInsert = computed(() => hasPermission('res:ins'));
 const router = useRouter();
 
 const limit = 10;
-const tableWrapperRef = ref(null);
-const isModalOpen = ref(false);
-const selectedRecord = ref(null);
-const selectedRecordForModal = ref(null);
-
 
 const filters = ref({
   date: new Date(),
@@ -82,35 +67,21 @@ onMounted(async () => {
 
 const onRowDoubleClick = (row) => {
   // `row` - это объект, который мы создаем в `loadInspectionsWrapper`
-  selectedRecord.value = row;
-
   // `row.rawData` содержит исходный объект с бэкенда
   const rawData = row.rawData;
 
   if (rawData) {
-    // Формируем объект для WorkHeaderInfo согласно вашему запросу
-    selectedRecordForModal.value = {
-      id: rawData.id,
-      work: rawData.fullNameWork,
-      name: rawData.nameLocationClsSection, // Участок
-      location: rawData.nameSection, // Место
-      objectType: 'нет данных', // Тип объекта
-      object: rawData.fullNameObject, // Объект
-      coordinates: formatCoordinates(rawData.StartKm, rawData.StartPicket, rawData.StartLink, rawData.FinishKm, rawData.FinishPicket, rawData.FinishLink),
-      planDateEnd: rawData.PlanDateEnd,
-      rawData: rawData, // Сохраняем исходные данные на всякий случай
-    };
-    isModalOpen.value = true;
+    // Сохраняем данные фильтров в localStorage для использования на странице редактирования
+    localStorage.setItem('resourcePlanningDate', formatDateToString(filters.value.date));
+    localStorage.setItem('resourcePlanningPeriodType', filters.value.periodType?.value || '71');
+
+    // Переходим на страницу редактирования
+    router.push({ name: 'ResourcePlanningEdit', params: { id: rawData.id } });
   } else {
-    console.error("rawData отсутствует в выбранной строке. Невозможно открыть модальное окно.", row);
+    console.error("rawData отсутствует в выбранной строке. Невозможно открыть страницу редактирования.", row);
   }
 };
 
-const handleTableUpdate = () => {
-  if (tableWrapperRef.value && tableWrapperRef.value.refreshTable) {
-    tableWrapperRef.value.refreshTable();
-  }
-};
 
 const formatDateToString = (date) => {
   if (!date) return null;

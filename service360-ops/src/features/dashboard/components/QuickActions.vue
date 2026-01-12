@@ -2,23 +2,20 @@
   <div class="quick-actions">
     <h2 class="section-title">Быстрые действия</h2>
     <div class="actions-container">
-      <DashboardButton 
-        label="Добавить инцидент" 
-        iconName="BookOpen" 
-        iconColor="#2B6CB0"
-        @click="$emit('addIncident')" 
+      <DashboardButton
+        label="Добавить инцидент"
+        iconName="BookOpen"
+        @click="$emit('addIncident')"
       />
-      <DashboardButton 
-        label="Запланировать работу" 
-        iconName="Calendar" 
-        iconColor="#2B6CB0"
-        @click="$emit('planWork')" 
+      <DashboardButton
+        label="Запланировать работу"
+        iconName="Calendar"
+        @click="$emit('planWork')"
       />
-      <DashboardButton 
-        label="Журнал осмотров" 
-        iconName="ClipboardList" 
-        iconColor="#2B6CB0"
-        @click="$emit('goToInspections')" 
+      <DashboardButton
+        label="Журнал осмотров"
+        iconName="ClipboardList"
+        @click="$emit('goToInspections')"
       />
     </div>
   </div>
@@ -36,15 +33,15 @@ defineEmits(['addIncident', 'planWork', 'goToInspections']);
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: #2d3748;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .actions-container {
   display: flex;
-  gap: 16px;
+  gap: 24px;
 }
 
 @media (max-width: 768px) {
@@ -54,8 +51,8 @@ defineEmits(['addIncident', 'planWork', 'goToInspections']);
   }
 
   .section-title {
-    font-size: 16px;
-    margin-bottom: 12px;
+    font-size: 18px;
+    margin-bottom: 16px;
   }
 }
 </style>

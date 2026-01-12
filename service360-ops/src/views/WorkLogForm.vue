@@ -773,9 +773,22 @@ onMounted(async () => {
   }
 }
 
+/* Адаптация для планшетов */
+@media (max-width: 1024px) {
+  .cards-section :deep(.resource-card) {
+    min-width: 175px;
+    max-width: 195px;
+  }
+}
+
 @media (max-width: 768px) {
   .cards-section {
     gap: 8px;
+  }
+
+  .cards-section :deep(.resource-card) {
+    min-width: 150px;
+    max-width: 170px;
   }
 }
 </style>

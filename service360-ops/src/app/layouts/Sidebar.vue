@@ -59,7 +59,8 @@ const allItems = [
   {
     label: 'Главная',
     path: '/main',
-    icon: 'Home'
+    icon: 'Home',
+    permission: 'home'
   },
   {
     label: 'Планирование',
@@ -77,7 +78,8 @@ const allItems = [
       { label: 'Журнал осмотров и проверок', path: '/inspections', permission: 'ins' },
       { label: 'Журнал параметров', path: '/parameters', permission: 'par' },
       { label: 'Журнал неисправностей', path: '/defects', permission: 'def' },
-      { label: 'Журнал событий и запросов на работы', path: '/incidents', permission: 'inc' }
+      { label: 'Журнал событий и запросов на работы', path: '/incidents', permission: 'inc' },
+      { label: 'Импорт данных путеизмерителя', path: '/track-gauge-import' }
     ]
   },
   {
@@ -171,7 +173,13 @@ const filteredItems = computed(() => filterItems(JSON.parse(JSON.stringify(allIt
     left: 0;
   }
   .desktop-only {
-    display: none;
+    display: none !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .desktop-only {
+    display: none !important;
   }
 }
 

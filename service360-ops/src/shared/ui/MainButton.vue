@@ -28,7 +28,7 @@ export default {
   background-color: #2b6cb0;
   color: white;
   font-size: 16px;
-  border-radius: 8px;
+  border-radius: 16px;
   border: none;
   cursor: pointer;
   transition: background 0.3s;
@@ -39,5 +39,22 @@ export default {
 .main-button:disabled {
   background-color: #a0a0a0;
   cursor: not-allowed;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .main-button {
+    height: 50px;
+    font-size: 16px;
+    border-radius: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-button {
+    height: 50px;
+    font-size: 16px;
+    border-radius: 40px;
+  }
 }
 </style>

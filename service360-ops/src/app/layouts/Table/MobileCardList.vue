@@ -7,10 +7,19 @@
       @click="handleCardClick(row)"
     >
       <div class="card-header">
-        <div class="card-title">
-          <span class="card-id">№ {{ row.id || row.index || 'б/н' }}</span>
-          <span v-if="row.nameLocationClsSection" class="card-section">{{ row.nameLocationClsSection }}</span>
-          <span v-else-if="row.name && row.work" class="card-section">{{ row.name }}</span>
+        <div class="card-header-top">
+          <n-checkbox
+            v-if="showCheckbox"
+            :checked="isRowSelected(row)"
+            @update:checked="toggleRowSelection(row)"
+            @click.stop
+            class="card-checkbox"
+          />
+          <div class="card-title">
+            <span class="card-id">№ {{ row.id || row.index || 'б/н' }}</span>
+            <span v-if="row.nameLocationClsSection" class="card-section">{{ row.nameLocationClsSection }}</span>
+            <span v-else-if="row.name && row.work" class="card-section">{{ row.name }}</span>
+          </div>
         </div>
         <div class="card-date">{{ formatDate(row.planDate || row.date) }}</div>
       </div>
@@ -46,14 +55,49 @@
 </template>
 
 <script setup>
-import UiIcon from '@/shared/ui/UiIcon.vue' // Assuming UiIcon is available
+import { ref, watch } from 'vue'
+import { NCheckbox } from 'naive-ui'
+import UiIcon from '@/shared/ui/UiIcon.vue'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  showCheckbox: { type: Boolean, default: false },
+  selectedRows: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['row-dblclick'])
+const emit = defineEmits(['row-dblclick', 'update:selectedRows'])
+
+const internalSelectedRows = ref([...props.selectedRows])
+
+watch(() => props.selectedRows, (newVal) => {
+  internalSelectedRows.value = [...newVal]
+}, { deep: true })
+
+watch(() => props.rows, () => {
+  // Очищаем выбранные строки, которых больше нет в списке
+  internalSelectedRows.value = internalSelectedRows.value.filter(selectedId =>
+    props.rows.some(row => (row.id || row.index) === selectedId)
+  )
+})
+
+const isRowSelected = (row) => {
+  const rowId = row.id || row.index
+  return internalSelectedRows.value.includes(rowId)
+}
+
+const toggleRowSelection = (row) => {
+  const rowId = row.id || row.index
+  const index = internalSelectedRows.value.indexOf(rowId)
+
+  if (index > -1) {
+    internalSelectedRows.value.splice(index, 1)
+  } else {
+    internalSelectedRows.value.push(rowId)
+  }
+
+  emit('update:selectedRows', [...internalSelectedRows.value])
+}
 
 const handleCardClick = (row) => {
   // Simulating the double-click behavior on a single tap for mobile
@@ -99,6 +143,16 @@ const formatDate = (dateString) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.card-header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-checkbox {
+  flex-shrink: 0;
 }
 
 .card-title {

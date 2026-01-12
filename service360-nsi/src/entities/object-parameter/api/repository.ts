@@ -9,6 +9,7 @@ import type {
   DeleteParameterPayload,
   DirectoryLookup,
   DirectoryOption,
+  LinkParameterToComponentPayload,
   LoadedObjectParameter,
   ObjectParametersSnapshot,
   ParameterComponentOption,
@@ -476,7 +477,7 @@ export async function fetchObjectParametersSnapshot(): Promise<ObjectParametersS
 
   // 2) Связи параметр(idrom1, clsrom1) -> компонент(idrom2, clsrom2) + idro
   type RelInfo = { idro: string; compId: string; compCls: string }
-  const relByParamKey = new Map<string, RelInfo>()
+  const relByParamKey = new Map<string, RelInfo[]>()
   for (const rel of relationItems) {
     const rec = asRecord(rel)
     const idro = pickString(rec, ['idro'])
@@ -485,7 +486,10 @@ export async function fetchObjectParametersSnapshot(): Promise<ObjectParametersS
     const idrom2 = pickString(rec, ['idrom2'])
     const clsrom2 = pickString(rec, ['clsrom2'])
     if (!idro || !idrom1 || !clsrom1 || !idrom2 || !clsrom2) continue
-    relByParamKey.set(`${idrom1}|${clsrom1}`, { idro, compId: idrom2, compCls: clsrom2 })
+    const key = `${idrom1}|${clsrom1}`
+    const existing = relByParamKey.get(key) ?? []
+    existing.push({ idro, compId: idrom2, compCls: clsrom2 })
+    relByParamKey.set(key, existing)
   }
 
   // 3) Имя компонента по паре (id, cls) из loadComponents
@@ -507,49 +511,75 @@ export async function fetchObjectParametersSnapshot(): Promise<ObjectParametersS
   }
 
   // Присвоение componentName по связям и лимитов по idro
+  const expandedItems: LoadedObjectParameter[] = []
   for (const item of items) {
-    const cls = paramClsById.get(item.id) ?? null
-    if (!cls) continue
-    const rel = relByParamKey.get(`${item.id}|${cls}`)
-    if (!rel) continue
+    const cls =
+      paramClsById.get(item.id) ??
+      (item.details.cls !== null && item.details.cls !== undefined ? String(item.details.cls) : null)
+    if (!cls) {
+      expandedItems.push(item)
+      continue
+    }
+    const relations = relByParamKey.get(`${item.id}|${cls}`)
+    if (!relations || relations.length === 0) {
+      expandedItems.push(item)
+      continue
+    }
 
-    // Имя и id компонента из справочника компонентов
-    item.componentId = rel.compId
-    item.componentName = compNameByKey.get(`${rel.compId}|${rel.compCls}`) ?? null
-    item.details.componentRelationId = rel.idro ? Number(rel.idro) : null
-    item.details.componentRelationName = item.componentName
-    item.details.componentEnt = rel.compId ? Number(rel.compId) : null
-    item.details.componentCls = rel.compCls ? Number(rel.compCls) : null
-    item.details.componentRelcls = RELCLS_PARAMS_COMPONENT
-    item.details.componentRcm = 1149
+    for (const rel of relations) {
+      const componentName = compNameByKey.get(`${rel.compId}|${rel.compCls}`) ?? null
+      const nextItem: LoadedObjectParameter = {
+        ...item,
+        componentId: rel.compId,
+        componentName,
+        details: {
+          ...item.details,
+          componentRelationId: rel.idro ? Number(rel.idro) : null,
+          componentRelationName: componentName,
+          componentEnt: rel.compId ? Number(rel.compId) : null,
+          componentCls: rel.compCls ? Number(rel.compCls) : null,
+          componentRelcls: RELCLS_PARAMS_COMPONENT,
+          componentRcm: 1149,
+          limitMaxId: null,
+          limitMinId: null,
+          limitNormId: null,
+        },
+        minValue: item.minValue,
+        maxValue: item.maxValue,
+        normValue: item.normValue,
+        note: item.note,
+      }
 
-    // Лимиты и комментарии из loadParamsComponent по idro
-    const props = propsByIdro.get(rel.idro)
-    if (props) {
-      const limitMin = pickNumber(props, ['ParamsLimitMin', 'limitMin', 'minValue'])
-      if (limitMin !== null) item.minValue = limitMin
+      // Лимиты и комментарии из loadParamsComponent по idro
+      const props = propsByIdro.get(rel.idro)
+      if (props) {
+        const limitMin = pickNumber(props, ['ParamsLimitMin', 'limitMin', 'minValue'])
+        if (limitMin !== null) nextItem.minValue = limitMin
 
-      const limitMax = pickNumber(props, ['ParamsLimitMax', 'limitMax', 'maxValue'])
-      if (limitMax !== null) item.maxValue = limitMax
+        const limitMax = pickNumber(props, ['ParamsLimitMax', 'limitMax', 'maxValue'])
+        if (limitMax !== null) nextItem.maxValue = limitMax
 
-      const limitNorm = pickNumber(props, ['ParamsLimitNorm', 'limitNorm', 'normValue'])
-      if (limitNorm !== null) item.normValue = limitNorm
+        const limitNorm = pickNumber(props, ['ParamsLimitNorm', 'limitNorm', 'normValue'])
+        if (limitNorm !== null) nextItem.normValue = limitNorm
 
-      const comment = pickString(props, ['cmt', 'comment', 'note'])
-      if (comment) item.note = comment
+        const comment = pickString(props, ['cmt', 'comment', 'note'])
+        if (comment) nextItem.note = comment
 
-      const limitMaxId = pickNumber(props, ['idParamsLimitMax'])
-      const limitMinId = pickNumber(props, ['idParamsLimitMin'])
-      const limitNormId = pickNumber(props, ['idParamsLimitNorm'])
-      if (limitMaxId !== null) item.details.limitMaxId = Number(limitMaxId)
-      if (limitMinId !== null) item.details.limitMinId = Number(limitMinId)
-      if (limitNormId !== null) item.details.limitNormId = Number(limitNormId)
-      const relationName = pickString(props, ['name'])
-      if (relationName) item.details.componentRelationName = relationName
+        const limitMaxId = pickNumber(props, ['idParamsLimitMax'])
+        const limitMinId = pickNumber(props, ['idParamsLimitMin'])
+        const limitNormId = pickNumber(props, ['idParamsLimitNorm'])
+        if (limitMaxId !== null) nextItem.details.limitMaxId = Number(limitMaxId)
+        if (limitMinId !== null) nextItem.details.limitMinId = Number(limitMinId)
+        if (limitNormId !== null) nextItem.details.limitNormId = Number(limitNormId)
+        const relationName = pickString(props, ['name'])
+        if (relationName) nextItem.details.componentRelationName = relationName
+      }
+
+      expandedItems.push(nextItem)
     }
   }
 
-  return { items, unitDirectory, sourceDirectory }
+  return { items: expandedItems, unitDirectory, sourceDirectory }
 }
 
 export async function loadParameterMeasures(): Promise<ParameterMeasureOption[]> {
@@ -631,6 +661,96 @@ export async function loadParameterComponents(): Promise<ParameterComponentOptio
 const ensureFiniteNumber = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
+type RelationEntry = {
+  cls: number
+  relcls: number
+  rcm: number
+  ent: number
+  name: string
+}
+
+async function createComponentRelation(
+  parameterEntry: RelationEntry,
+  componentEntry: RelationEntry,
+  contextLabel: string,
+): Promise<{ relationId: number; relationName: string; relationObject: Record<string, unknown> }> {
+  let previousMaxNumber = 0
+  try {
+    const beforeResponse = await rpcWithDebug<RpcParamsComponentRecord[], [number]>(
+      'data/loadParamsComponent',
+      [REL_TYP_PARAMS_COMPONENT],
+      `${contextLabel}: загрузка текущих связей`,
+    )
+    const beforeRecords = extractArray<RpcParamsComponentRecord>(beforeResponse)
+    previousMaxNumber = beforeRecords.reduce((acc, record) => {
+      const num = pickNumber(asRecord(record), ['number'])
+      return num !== null ? Math.max(acc, Number(num)) : acc
+    }, 0)
+  } catch {
+    previousMaxNumber = 0
+  }
+
+  await rpcWithDebug(
+    'data/createGroupRelObj',
+    [REL_TYP_PARAMS_COMPONENT, [[[parameterEntry], [componentEntry]]]],
+    `${contextLabel}: создание связи с компонентом`,
+  )
+
+  const afterResponse = await rpcWithDebug<RpcParamsComponentRecord[], [number]>(
+    'data/loadParamsComponent',
+    [REL_TYP_PARAMS_COMPONENT],
+    `${contextLabel}: подтверждение связи`,
+  )
+  const afterRecords = extractArray<RpcParamsComponentRecord>(afterResponse)
+  const expectedRelationName = `${parameterEntry.name} <=> ${componentEntry.name}`
+  const relationRecord = afterRecords.find((record) => {
+    const recordObject = asRecord(record)
+    const num = pickNumber(recordObject, ['number'])
+    if (num !== null && num > previousMaxNumber) return true
+    const relationName = pickString(recordObject, ['name'])
+    return relationName === expectedRelationName
+  })
+
+  if (!relationRecord) {
+    throw new Error('Не удалось получить созданную связь параметра с компонентом')
+  }
+
+  const relationObject = asRecord(relationRecord)
+  const relationId = pickNumber(relationObject, ['id', 'idro'])
+  const relationName = pickString(relationObject, ['name']) ?? expectedRelationName
+
+  if (relationId === null) {
+    throw new Error('Не удалось определить идентификатор связи параметра и компонента')
+  }
+
+  return { relationId: Number(relationId), relationName, relationObject }
+}
+
+async function saveRelationLimits(
+  relationId: number,
+  relationName: string,
+  limits: Array<{ codProp: string; value: number | null }>,
+  contextLabel: string,
+): Promise<void> {
+  for (const { codProp, value } of limits) {
+    if (value === null) continue
+    await rpcWithDebug(
+      'data/saveParamComponentValue',
+      [
+        {
+          name: relationName,
+          codProp,
+          own: Number(relationId),
+          isObj: 0,
+          val: String(value),
+          mode: 'ins',
+        },
+      ],
+      `${contextLabel}: сохранение значения ${codProp}`,
+    )
+  }
+}
+
 export async function createParameter(
   payload: CreateParameterPayload,
 ): Promise<LoadedObjectParameter> {
@@ -678,22 +798,6 @@ export async function createParameter(
   const createdCls = pickNumber(savedRecord, ['cls', 'CLS']) ?? DEFAULT_PARAMETER_CLASS
   const createdName = pickString(savedRecord, ['name', 'ParamsName', 'paramsName']) ?? name
 
-  let previousMaxNumber = 0
-  try {
-    const beforeResponse = await rpcWithDebug<RpcParamsComponentRecord[], [number]>(
-      'data/loadParamsComponent',
-      [REL_TYP_PARAMS_COMPONENT],
-      'Создание параметра: загрузка текущих связей',
-    )
-    const beforeRecords = extractArray<RpcParamsComponentRecord>(beforeResponse)
-    previousMaxNumber = beforeRecords.reduce((acc, record) => {
-      const num = pickNumber(asRecord(record), ['number'])
-      return num !== null ? Math.max(acc, Number(num)) : acc
-    }, 0)
-  } catch {
-    previousMaxNumber = 0
-  }
-
   const parameterRelationEntry = {
     cls: Number(createdCls),
     relcls: RELCLS_PARAMS_COMPONENT,
@@ -709,39 +813,11 @@ export async function createParameter(
     ent: payload.component.ent,
     name: payload.component.name,
   }
-
-  await rpcWithDebug(
-    'data/createGroupRelObj',
-    [REL_TYP_PARAMS_COMPONENT, [[[parameterRelationEntry], [componentRelationEntry]]]],
-    'Создание параметра: создание связи с компонентом',
+  const { relationId, relationName, relationObject } = await createComponentRelation(
+    parameterRelationEntry,
+    componentRelationEntry,
+    'Создание параметра',
   )
-
-  const afterResponse = await rpcWithDebug<RpcParamsComponentRecord[], [number]>(
-    'data/loadParamsComponent',
-    [REL_TYP_PARAMS_COMPONENT],
-    'Создание параметра: подтверждение связи',
-  )
-  const afterRecords = extractArray<RpcParamsComponentRecord>(afterResponse)
-  const expectedRelationName = `${createdName} <=> ${componentRelationEntry.name}`
-  const relationRecord = afterRecords.find((record) => {
-    const recordObject = asRecord(record)
-    const num = pickNumber(recordObject, ['number'])
-    if (num !== null && num > previousMaxNumber) return true
-    const relationName = pickString(recordObject, ['name'])
-    return relationName === expectedRelationName
-  })
-
-  if (!relationRecord) {
-    throw new Error('Не удалось получить созданную связь параметра с компонентом')
-  }
-
-  const relationObject = asRecord(relationRecord)
-  const relationId = pickNumber(relationObject, ['id', 'idro'])
-  const relationName = pickString(relationObject, ['name']) ?? expectedRelationName
-
-  if (relationId === null) {
-    throw new Error('Не удалось определить идентификатор связи параметра и компонента')
-  }
 
   const limits: Array<{ codProp: string; value: number | null }> = [
     { codProp: 'Prop_ParamsLimitMax', value: limitMax },
@@ -749,23 +825,7 @@ export async function createParameter(
     { codProp: 'Prop_ParamsLimitNorm', value: limitNorm },
   ]
 
-  for (const { codProp, value } of limits) {
-    if (value === null) continue
-    await rpcWithDebug(
-      'data/saveParamComponentValue',
-      [
-        {
-          name: relationName,
-          codProp,
-          own: Number(relationId),
-          isObj: 0,
-          val: String(value),
-          mode: 'ins',
-        },
-      ],
-      `Создание параметра: сохранение значения ${codProp}`,
-    )
-  }
+  await saveRelationLimits(relationId, relationName, limits, 'Создание параметра')
 
   if (commentForResult) {
     await rpcWithDebug(
@@ -853,6 +913,123 @@ export async function createParameter(
     unitName: payload.measure.name,
     sourceName: payload.source.name,
     componentName: componentRelationEntry.name,
+    details,
+  }
+}
+
+export async function linkParameterToComponent(
+  payload: LinkParameterToComponentPayload,
+): Promise<LoadedObjectParameter> {
+  const name = payload.name.trim()
+  if (!name) throw new Error('Укажите наименование параметра')
+
+  const descriptionRaw = payload.description ?? ''
+  const descriptionTrimmed = descriptionRaw.trim()
+  const descriptionForResult = descriptionTrimmed || null
+
+  const commentRaw = payload.limits.comment ?? ''
+  const commentTrimmed = commentRaw.trim()
+  const commentForResult = commentTrimmed || null
+
+  const limitMax = ensureFiniteNumber(payload.limits.max)
+  const limitMin = ensureFiniteNumber(payload.limits.min)
+  const limitNorm = ensureFiniteNumber(payload.limits.norm)
+
+  const parameterId = Number(payload.id)
+  if (!Number.isFinite(parameterId)) {
+    throw new Error('Не удалось определить идентификатор параметра')
+  }
+
+  const parameterCls = Number(payload.cls ?? DEFAULT_PARAMETER_CLASS)
+  if (!Number.isFinite(parameterCls)) {
+    throw new Error('Не удалось определить класс параметра')
+  }
+
+  const accessLevel = payload.accessLevel ?? DEFAULT_ACCESS_LEVEL
+
+  const parameterRelationEntry = {
+    cls: parameterCls,
+    relcls: RELCLS_PARAMS_COMPONENT,
+    rcm: PARAMETER_RCM,
+    ent: parameterId,
+    name,
+  }
+
+  const componentRelationEntry = {
+    cls: payload.component.cls,
+    relcls: payload.component.relcls,
+    rcm: payload.component.rcm,
+    ent: payload.component.ent,
+    name: payload.component.name,
+  }
+
+  const { relationId, relationName } = await createComponentRelation(
+    parameterRelationEntry,
+    componentRelationEntry,
+    'Привязка параметра',
+  )
+
+  const limits: Array<{ codProp: string; value: number | null }> = [
+    { codProp: 'Prop_ParamsLimitMax', value: limitMax },
+    { codProp: 'Prop_ParamsLimitMin', value: limitMin },
+    { codProp: 'Prop_ParamsLimitNorm', value: limitNorm },
+  ]
+
+  await saveRelationLimits(relationId, relationName, limits, 'Привязка параметра')
+
+  if (commentForResult) {
+    await rpcWithDebug(
+      'data/editRelObj',
+      [
+        {
+          id: Number(relationId),
+          name: relationName,
+          cmt: commentTrimmed,
+        },
+      ],
+      'Привязка параметра: сохранение комментария связи',
+    )
+  }
+
+  const details: ParameterDetails = {
+    id: parameterId,
+    cls: parameterCls,
+    accessLevel,
+    measureRecordId: null,
+    measureId: payload.measure.id,
+    measurePv: payload.measure.pv,
+    sourceRecordId: null,
+    sourceObjId: payload.source.id,
+    sourcePv: payload.source.pv,
+    descriptionRecordId: null,
+    componentRelationId: Number(relationId),
+    componentRelationName: relationName,
+    componentCls: payload.component.cls,
+    componentRelcls: payload.component.relcls,
+    componentRcm: payload.component.rcm,
+    componentEnt: payload.component.ent,
+    limitMaxId: null,
+    limitMinId: null,
+    limitNormId: null,
+  }
+
+  return {
+    id: String(parameterId),
+    name,
+    code: null,
+    valueType: 'number',
+    unitId: String(payload.measure.pv),
+    sourceId: String(payload.source.id),
+    componentId: String(payload.component.ent),
+    minValue: limitMin,
+    maxValue: limitMax,
+    normValue: limitNorm,
+    isRequired: false,
+    note: commentForResult,
+    description: descriptionForResult,
+    unitName: payload.measure.name,
+    sourceName: payload.source.name,
+    componentName: payload.component.name,
     details,
   }
 }
@@ -1154,6 +1331,7 @@ export async function deleteParameter({ id, relationId }: DeleteParameterPayload
     if (relationError) {
       throw new Error(`Невозможно удалить связь параметра с компонентом: ${relationError}`)
     }
+    return
   }
 
   const parameterResponse = await rpcWithDebug(

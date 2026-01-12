@@ -1,5 +1,5 @@
 /** Файл: src/shared/api/dtjDataClient.ts
- *  Назначение: JSON-RPC клиенты для сервисов objects/personnal (http://45.8.116.32/dtj/api/*).
+ *  Назначение: JSON-RPC клиенты для сервисов objects/personnal (эндпоинты `/dtj/api/*`).
  *  Использование: импортируйте objectsRpc/personnalRpc и вызывайте методы, например
  *  objectsRpc('data/loadPeriodType', []).
  */

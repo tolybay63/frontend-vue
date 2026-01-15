@@ -2,7 +2,7 @@
  *  Назначение: адаптер RPC-методов для справочника параметров обслуживаемых объектов.
  *  Использование: импортируйте функции в фичах и страницах для загрузки и мутаций данных.
  */
-import { rpc } from '@shared/api'
+import { objectsRpc, rpc } from '@shared/api'
 
 import type {
   CreateParameterPayload,
@@ -15,6 +15,7 @@ import type {
   ParameterComponentOption,
   ParameterDetails,
   ParameterMeasureOption,
+  ParameterSignOption,
   ParameterSourceOption,
   UpdateParameterPayload,
 } from '../model/types'
@@ -37,6 +38,8 @@ const RELCLS_PARAMS_COMPONENT = 1074
 const PARAMETER_RCM = 1148
 const DEFAULT_PARAMETER_CLASS = 1041
 const DEFAULT_ACCESS_LEVEL = 1
+const SIGN_MULTI_CLASS = 1278
+const SIGN_MULTI_PV = 1676
 
 async function rpcWithDebug<T = unknown, TParams = unknown>(
   method: string,
@@ -123,6 +126,16 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | n
   }
 
   return null
+}
+
+function parseNumberList(value: string | null | undefined): number[] {
+  if (!value) return []
+  return value
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => Number(part))
+    .filter((num) => Number.isFinite(num))
 }
 
 function pickBoolean(source: Record<string, unknown>, keys: string[]): boolean {
@@ -362,6 +375,8 @@ function mapParameter(
     sourceName: sourceName ?? null,
     componentName: null,
     details,
+    signMultiIds: [],
+    signMultiNames: null,
   }
 }
 
@@ -548,6 +563,8 @@ export async function fetchObjectParametersSnapshot(): Promise<ObjectParametersS
         maxValue: item.maxValue,
         normValue: item.normValue,
         note: item.note,
+        signMultiIds: item.signMultiIds ?? [],
+        signMultiNames: item.signMultiNames ?? null,
       }
 
       // Лимиты и комментарии из loadParamsComponent по idro
@@ -573,6 +590,11 @@ export async function fetchObjectParametersSnapshot(): Promise<ObjectParametersS
         if (limitNormId !== null) nextItem.details.limitNormId = Number(limitNormId)
         const relationName = pickString(props, ['name'])
         if (relationName) nextItem.details.componentRelationName = relationName
+
+        const signMultiRaw = pickString(props, ['objSignMulti'])
+        const signMultiNames = pickString(props, ['nameSignMulti'])
+        nextItem.signMultiIds = parseNumberList(signMultiRaw)
+        nextItem.signMultiNames = signMultiNames ?? null
       }
 
       expandedItems.push(nextItem)
@@ -656,6 +678,56 @@ export async function loadParameterComponents(): Promise<ParameterComponentOptio
   })
 
   return Array.from(unique.values()).sort(compareByNameRu)
+}
+
+export async function loadParameterSignTypes(): Promise<ParameterSignOption[]> {
+  const response = await objectsRpc<unknown, [string, string, string]>(
+    'data/loadObjList',
+    ['Cls_Sign', 'Prop_SignMulti', 'nsidata'],
+  )
+  const items = extractArray<Record<string, unknown>>(response)
+  const unique = new Map<number, ParameterSignOption>()
+
+  items.forEach((item, index) => {
+    const record = asRecord(item)
+    const id = pickNumber(record, ['id', 'ID', 'number'])
+    if (id === null) return
+    const name =
+      pickString(record, ['name', 'NAME', 'fullName', 'full_name', 'caption', 'title']) ??
+      `Признак ${index + 1}`
+    unique.set(Number(id), { id: Number(id), name })
+  })
+
+  return Array.from(unique.values()).sort(compareByNameRu)
+}
+
+export async function saveParameterSignTypes(
+  relationId: number,
+  signs: ParameterSignOption[],
+): Promise<void> {
+  const numericId = Number(relationId)
+  if (!Number.isFinite(numericId)) {
+    throw new Error('Не удалось определить идентификатор связи параметра и компонента')
+  }
+
+  await rpcWithDebug(
+    'data/savePropObjMulti',
+    [
+      {
+        id: numericId,
+        isObj: false,
+        codProp: 'Prop_SignMulti',
+        objOrRelObjLst: signs.map((sign) => ({
+          id: sign.id,
+          cls: SIGN_MULTI_CLASS,
+          name: sign.name,
+          fullName: sign.name,
+          pv: SIGN_MULTI_PV,
+        })),
+      },
+    ],
+    'Сохранение признаков параметра',
+  )
 }
 
 const ensureFiniteNumber = (value: number | null | undefined): number | null =>

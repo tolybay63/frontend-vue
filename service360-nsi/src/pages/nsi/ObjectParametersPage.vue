@@ -227,7 +227,23 @@
 
           </NFormItem>
 
-          <NFormItem :label="t('nsi.objectTypes.params.form.limits.label', {}, { default: 'Предельные значения (если применимо)' })">
+          <NFormItem :label="t('nsi.objectTypes.params.form.signType.label', {}, { default: 'Тип признака' })">
+            <CreatableSelect
+              :value="creationForm.signTypeIds"
+              :options="signSelectOptions"
+              :multiple="true"
+              :clearable="true"
+              :loading="signOptionsLoading"
+              :placeholder="t('nsi.objectTypes.params.form.signType.placeholder', {}, { default: 'Выберите тип признака' })"
+              @update:value="(v) => (creationForm.signTypeIds = Array.isArray(v) ? v.map(String) : [])"
+              :create="createSignTypeOption"
+            />
+          </NFormItem>
+
+          <NFormItem
+            v-if="!hasSignTypeSelection"
+            :label="t('nsi.objectTypes.params.form.limits.label', {}, { default: 'Предельные значения (если применимо)' })"
+          >
             <div class="limits-grid">
               <div class="limits-grid__item">
                 <span class="limits-grid__label">{{ t('nsi.objectTypes.params.form.limits.max.label', {}, { default: 'Максимум' }) }}</span>
@@ -244,15 +260,6 @@
                   v-model:value="creationForm.limitMin"
                   :show-button="false"
                   :placeholder="t('nsi.objectTypes.params.form.limits.min.placeholder', {}, { default: 'Минимальное значение' })"
-                  clearable
-                />
-              </div>
-              <div class="limits-grid__item">
-                <span class="limits-grid__label">{{ t('nsi.objectTypes.params.form.limits.norm.label', {}, { default: 'Норма' }) }}</span>
-                <NInputNumber
-                  v-model:value="creationForm.limitNorm"
-                  :show-button="false"
-                  :placeholder="t('nsi.objectTypes.params.form.limits.norm.placeholder', {}, { default: 'Нормативное значение' })"
                   clearable
                 />
               </div>
@@ -305,6 +312,7 @@ import {
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { useQueryClient } from '@tanstack/vue-query'
 
 import {
   NButton,
@@ -342,14 +350,18 @@ import {
   loadParameterComponents,
   loadParameterMeasures,
   loadParameterSources,
+  loadParameterSignTypes,
+  saveParameterSignTypes,
 } from '@entities/object-parameter'
 import type {
   LoadedObjectParameter,
   ParameterComponentOption,
   ParameterMeasureOption,
+  ParameterSignOption,
   ParameterSourceOption,
 } from '@entities/object-parameter'
-import { getErrorMessage, normalizeText } from '@shared/lib'
+import { rpc } from '@shared/api'
+import { firstRecord, getErrorMessage, normalizeText, toNumericOrUndefined, toOptionalString } from '@shared/lib'
 import { ComponentsSelect } from '@features/components-select'
 import { CreatableSelect } from '@features/creatable-select'
 import { createMeasureAndSelect } from '@entities/object-parameter'
@@ -374,6 +386,7 @@ interface CreateParameterForm {
   sourceId: string | null
   description: string
   componentEnt: string | null
+  signTypeIds: string[]
   limitMax: number | null
   limitMin: number | null
   limitNorm: number | null
@@ -382,6 +395,7 @@ interface CreateParameterForm {
 
 const router = useRouter()
 const route = useRoute()
+const queryClient = useQueryClient()
 
 const { t } = useI18n()
 
@@ -426,6 +440,9 @@ let componentRefreshToken = 0
 const measureOptions = ref<ParameterMeasureOption[]>([])
 const sourceOptions = ref<ParameterSourceOption[]>([])
 const componentOptions = ref<ParameterComponentOption[]>([])
+const signOptions = ref<ParameterSignOption[]>([])
+const signOptionsLoading = ref(false)
+let signOptionsRequestToken = 0
 const editingParameter = ref<LoadedObjectParameter | null>(null)
 const selectedExistingParameterId = ref<string | null>(null)
 
@@ -435,6 +452,7 @@ const creationForm = reactive<CreateParameterForm>({
   sourceId: null,
   description: '',
   componentEnt: null,
+  signTypeIds: [],
   limitMax: null,
   limitMin: null,
   limitNorm: null,
@@ -463,9 +481,13 @@ const sourceSelectOptions = computed(() =>
 const componentSelectOptions = computed(() =>
   componentOptions.value.map((item) => ({ label: item.name, value: String(item.ent) })),
 )
+const signSelectOptions = computed(() =>
+  signOptions.value.map((item) => ({ label: item.name, value: String(item.id) })),
+)
 
 const isEditMode = computed(() => editingParameter.value !== null)
 const modalTitle = computed(() => (isEditMode.value ? 'Изменить параметр' : 'Добавить параметр'))
+const hasSignTypeSelection = computed(() => creationForm.signTypeIds.length > 0)
 
 const normalizedCreationName = computed(() => normalizeText(creationForm.name))
 const MIN_SUGGESTION_LENGTH = 2
@@ -703,6 +725,7 @@ const resetCreationForm = () => {
   creationForm.sourceId = null
   creationForm.description = ''
   creationForm.componentEnt = null
+  creationForm.signTypeIds = []
   creationForm.limitMax = null
   creationForm.limitMin = null
   creationForm.limitNorm = null
@@ -791,6 +814,53 @@ const syncExistingParameterSelection = (parameter: LoadedObjectParameter) => {
 const MEASURE_SORT_LOCALE = 'ru'
 const COMPONENT_RELCLS = 1074
 const COMPONENT_RCM = 1149
+const SIGN_TYPE_DEFAULT_CLS = 1278
+
+const resolveDateStamp = (date = new Date()): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const readStorageNumber = (key: string): number | undefined => {
+  if (typeof window === 'undefined') return undefined
+  const raw = window.localStorage.getItem(key)
+  if (!raw) return undefined
+  const numeric = Number(raw)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+const resolveSignUserMeta = () => ({
+  objUser:
+    readStorageNumber('objUser') ??
+    readStorageNumber('obj_user') ??
+    readStorageNumber('objUserId'),
+  pvUser:
+    readStorageNumber('pvUser') ??
+    readStorageNumber('pv_user') ??
+    readStorageNumber('pvUserId'),
+})
+
+const extractRecordId = (payload: unknown): string | null => {
+  if (typeof payload === 'number' || typeof payload === 'string') {
+    return toOptionalString(payload)
+  }
+
+  const record = firstRecord<unknown>(payload)
+  if (!record) return null
+
+  if (typeof record === 'number' || typeof record === 'string') {
+    return toOptionalString(record)
+  }
+
+  if (typeof record === 'object' && record !== null) {
+    const obj = record as Record<string, unknown>
+    return toOptionalString(obj.id ?? obj.ID ?? obj.Id)
+  }
+
+  return null
+}
 
 const normalizeOptionName = (name: string | null | undefined, fallback: string): string => {
   const trimmed = name?.trim()
@@ -923,6 +993,30 @@ function upsertComponentOptions(
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, MEASURE_SORT_LOCALE))
 }
 
+function upsertSignOptions(
+  base: ParameterSignOption[],
+  updates: ParameterSignOption[],
+): ParameterSignOption[] {
+  const map = new Map<number, ParameterSignOption>()
+  for (const option of base) {
+    const id = Number(option?.id)
+    if (!Number.isFinite(id)) continue
+    map.set(id, {
+      id,
+      name: normalizeOptionName(option?.name, String(id)),
+    })
+  }
+  for (const option of updates) {
+    const id = Number(option?.id)
+    if (!Number.isFinite(id)) continue
+    map.set(id, {
+      id,
+      name: normalizeOptionName(option?.name, String(id)),
+    })
+  }
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, MEASURE_SORT_LOCALE))
+}
+
 function mergeMeasureOptions(...batches: ParameterMeasureOption[][]) {
   const normalized: ParameterMeasureOption[] = []
   for (const batch of batches) {
@@ -957,6 +1051,18 @@ function mergeComponentOptions(...batches: ParameterComponentOption[][]) {
   }
   if (normalized.length === 0) return
   componentOptions.value = upsertComponentOptions(componentOptions.value, normalized)
+}
+
+function mergeSignOptions(...batches: ParameterSignOption[][]) {
+  const normalized: ParameterSignOption[] = []
+  for (const batch of batches) {
+    for (const option of batch) {
+      if (!option) continue
+      normalized.push(option)
+    }
+  }
+  if (normalized.length === 0) return
+  signOptions.value = upsertSignOptions(signOptions.value, normalized)
 }
 
 async function refreshMeasureDirectory(
@@ -1015,6 +1121,58 @@ const loadCreationDirectories = async (force = false) => {
   }
 }
 
+const loadSignOptions = async (force = false) => {
+  if (signOptionsLoading.value) return
+  if (signOptions.value.length > 0 && !force) return
+
+  signOptionsLoading.value = true
+  const requestToken = ++signOptionsRequestToken
+
+  try {
+    const signs = await loadParameterSignTypes()
+    if (requestToken !== signOptionsRequestToken) return
+    mergeSignOptions(signs)
+  } catch (err) {
+    if (requestToken !== signOptionsRequestToken) return
+    message.error(getErrorMessage(err) ?? 'Не удалось загрузить признаки')
+  } finally {
+    if (requestToken === signOptionsRequestToken) {
+      signOptionsLoading.value = false
+    }
+  }
+}
+
+const createSignTypeOption = async (name: string) => {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    throw new Error('Укажите название признака')
+  }
+
+  const stamp = resolveDateStamp()
+  const meta = resolveSignUserMeta()
+
+  const payload: Record<string, unknown> = {
+    name: trimmed,
+    cls: SIGN_TYPE_DEFAULT_CLS,
+    CreatedAt: stamp,
+    UpdatedAt: stamp,
+    objUser: meta.objUser,
+    pvUser: meta.pvUser,
+  }
+
+  const response = await rpc('data/saveSign', ['ins', payload])
+  const createdId = extractRecordId(response)
+  const numericId = createdId ? toNumericOrUndefined(createdId) : undefined
+  if (!numericId) {
+    throw new Error('Не удалось определить созданный тип признака')
+  }
+
+  const option: ParameterSignOption = { id: numericId, name: trimmed }
+  mergeSignOptions([option])
+
+  return { label: option.name, value: String(option.id) }
+}
+
 const handleCancelCreate = () => {
   createModalOpen.value = false
   editingParameter.value = null
@@ -1031,6 +1189,29 @@ const revalidateFieldOnChange = (path: keyof CreateParameterForm, value: unknown
     .catch(() => undefined)
 }
 
+const splitSignNames = (value: string | null | undefined): string[] => {
+  if (!value) return []
+  return value
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+const ensureSignOptionsForSelection = (ids: number[], names: string | null | undefined) => {
+  if (ids.length === 0) return
+  const nameList = splitSignNames(names)
+  const existingIds = new Set(signOptions.value.map((option) => Number(option.id)))
+  const fallback: ParameterSignOption[] = []
+  ids.forEach((id, index) => {
+    if (existingIds.has(id)) return
+    fallback.push({
+      id,
+      name: nameList[index] ?? `Признак ${id}`,
+    })
+  })
+  if (fallback.length > 0) mergeSignOptions(fallback)
+}
+
 const applyParameterToForm = (parameter: LoadedObjectParameter) => {
   creationForm.name = parameter.name
   creationForm.description = parameter.description ?? ''
@@ -1044,10 +1225,30 @@ const applyParameterToForm = (parameter: LoadedObjectParameter) => {
     parameter.details.componentEnt ??
     (parameter.componentId ? Number(parameter.componentId) : null)
   creationForm.componentEnt = componentEntValue !== null ? String(componentEntValue) : null
+  creationForm.signTypeIds = (parameter.signMultiIds ?? []).map((id) => String(id))
   creationForm.limitMax = parameter.maxValue ?? null
   creationForm.limitMin = parameter.minValue ?? null
   creationForm.limitNorm = parameter.normValue ?? null
   creationForm.comment = parameter.note ?? ''
+
+  if ((parameter.signMultiIds ?? []).length > 0) {
+    ensureSignOptionsForSelection(parameter.signMultiIds ?? [], parameter.signMultiNames)
+  }
+}
+
+const resolveSelectedSignOptions = (): ParameterSignOption[] => {
+  if (creationForm.signTypeIds.length === 0) return []
+  const map = new Map(signOptions.value.map((option) => [String(option.id), option]))
+
+  return creationForm.signTypeIds
+    .map((rawId) => {
+      const numericId = Number(rawId)
+      if (!Number.isFinite(numericId)) return null
+      const option = map.get(String(rawId))
+      const name = option?.name?.trim() || String(numericId)
+      return { id: numericId, name }
+    })
+    .filter((item): item is ParameterSignOption => Boolean(item))
 }
 
 const handleSubmit = async () => {
@@ -1119,6 +1320,13 @@ const handleSubmit = async () => {
   }
 
   try {
+    const selectedSigns = resolveSelectedSignOptions()
+    const hasExistingSigns = (editingParameter.value?.signMultiIds ?? []).length > 0
+    const shouldPersistSigns =
+      selectedSigns.length > 0 || (isEditMode.value && hasExistingSigns)
+    let savedParameter: LoadedObjectParameter | null = null
+    let successMessage = ''
+
     if (isEditMode.value && editingParameter.value) {
       const parameterId = Number(
         editingParameter.value.details.id ?? editingParameter.value.id,
@@ -1132,8 +1340,8 @@ const handleSubmit = async () => {
         id: parameterId,
         details: editingParameter.value.details,
       }
-      await parameterMutations.update.mutateAsync(updatePayload)
-      message.success('Параметр успешно обновлён')
+      savedParameter = await parameterMutations.update.mutateAsync(updatePayload)
+      successMessage = 'Параметр успешно обновлён'
     } else if (linkingExisting && existingParameter) {
       const parameterId = resolveParameterId(existingParameter)
       const parameterCls = resolveParameterCls(existingParameter)
@@ -1146,13 +1354,32 @@ const handleSubmit = async () => {
         id: parameterId,
         cls: parameterCls,
       }
-      await parameterMutations.link.mutateAsync(linkPayload)
-      message.success('Параметр успешно привязан')
+      savedParameter = await parameterMutations.link.mutateAsync(linkPayload)
+      successMessage = 'Параметр успешно привязан'
     } else {
       const createPayload: CreateObjectParameterPayload = basePayload
-      await parameterMutations.create.mutateAsync(createPayload)
-      message.success('Параметр успешно создан')
+      savedParameter = await parameterMutations.create.mutateAsync(createPayload)
+      successMessage = 'Параметр успешно создан'
     }
+
+    if (shouldPersistSigns) {
+      const relationId = savedParameter?.details.componentRelationId ?? null
+      if (relationId && Number.isFinite(Number(relationId))) {
+        try {
+          await saveParameterSignTypes(Number(relationId), selectedSigns)
+          void queryClient.invalidateQueries({ queryKey: ['object-parameters'] })
+        } catch (err) {
+          message.warning(
+            getErrorMessage(err) ??
+              'Параметр сохранён, но признаки не удалось обновить',
+          )
+        }
+      } else {
+        message.warning('Параметр сохранён, но не удалось сохранить признаки')
+      }
+    }
+
+    message.success(successMessage)
     createModalOpen.value = false
   } catch (err) {
     const fallbackMessage = isEditMode.value
@@ -1218,6 +1445,10 @@ watch(q, () => {
 })
 
 watch(createModalOpen, (isOpen) => {
+  if (isOpen) {
+    void loadSignOptions()
+    return
+  }
   if (!isOpen) {
     resetCreationForm()
     editingParameter.value = null
@@ -1279,12 +1510,12 @@ const filteredRows = computed(() => {
       item.componentName,
       item.unitName,
       item.sourceName,
+      item.signMultiNames,
       item.code,
       item.description,
       item.note,
       item.minValue != null ? String(item.minValue) : null,
       item.maxValue != null ? String(item.maxValue) : null,
-      item.normValue != null ? String(item.normValue) : null,
     ]
     return fields.some((field) => normalizeText(field ?? '').includes(search))
   })
@@ -1461,7 +1692,6 @@ function renderRange(row: LoadedObjectParameter): VNodeChild {
     { label: 'ЕИ', value: row.unitName ?? '—', type: 'info' as const },
     { label: 'Мин', value: renderLimit(row.minValue), type: 'warning' as const },
     { label: 'Макс', value: renderLimit(row.maxValue), type: 'error' as const },
-    { label: 'Норм', value: renderLimit(row.normValue), type: 'success' as const },
   ]
 
   const rows = items.map(({ label, value, type }) => {
@@ -1495,6 +1725,10 @@ function renderRange(row: LoadedObjectParameter): VNodeChild {
   })
 
   return h('div', { class: 'range-cell' }, rows)
+}
+
+function renderSignDetails(row: LoadedObjectParameter): VNodeChild {
+  return renderMultilineCell(row.signMultiNames ?? null)
 }
 
 function renderComments(row: LoadedObjectParameter): VNodeChild {
@@ -1567,6 +1801,12 @@ const columns = computed<DataTableColumn<LoadedObjectParameter>[]>(() => [
     render: renderRange,
   },
   {
+    title: 'Признаки, различающие значения параметра',
+    key: 'signMulti',
+    minWidth: 220,
+    render: renderSignDetails,
+  },
+  {
     title: 'Комментарии по диапазонам',
     key: 'note',
     minWidth: 200,
@@ -1606,6 +1846,11 @@ const cardFields = computed<CardField[]>(() => [
     key: 'range',
     label: 'ЕИ и границы',
     render: renderRange,
+  },
+  {
+    key: 'signMulti',
+    label: 'Признаки, различающие значения параметра',
+    render: renderSignDetails,
   },
   {
     key: 'note',
@@ -1699,6 +1944,7 @@ const openCreate = () => {
   parameterMutations.update.reset()
   createModalOpen.value = true
   void loadCreationDirectories(!directoriesLoaded.value)
+  void loadSignOptions()
 }
 
 const openEdit = async (row: LoadedObjectParameter) => {
@@ -1714,6 +1960,7 @@ const openEdit = async (row: LoadedObjectParameter) => {
   } finally {
     applyParameterToForm(row)
   }
+  void loadSignOptions()
 }
 
 defineExpose({

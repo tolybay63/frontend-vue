@@ -9,6 +9,7 @@ const NsiDashboardPage = () => import('@pages/nsi/NsiDashboardPage.vue')
 const ObjectTypesPage = () => import('@pages/nsi/ObjectTypesPage.vue')
 const ObjectDefectsPage = () => import('@pages/nsi/ObjectDefectsPage.vue')
 const ObjectParametersPage = () => import('@pages/nsi/ObjectParametersPage.vue')
+const SignsPage = () => import('@pages/nsi/SignsPage.vue')
 const WorksPage = () => import('@pages/nsi/WorksPage.vue')
 const TasksPage = () => import('@pages/nsi/TasksPage.vue')
 const SourcesPage = () => import('@pages/nsi/SourcesPage.vue')
@@ -46,6 +47,12 @@ const router = createRouter({
       path: '/nsi/object-parameters',
       name: 'object-parameters',
       component: ObjectParametersPage,
+      // meta: { requiresAuth: true },
+    },
+    {
+      path: '/nsi/signs',
+      name: 'signs',
+      component: SignsPage,
       // meta: { requiresAuth: true },
     },
     {

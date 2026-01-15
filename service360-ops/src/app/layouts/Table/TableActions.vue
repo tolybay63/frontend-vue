@@ -8,6 +8,7 @@
           'mobile-icon-only': isMobile,
           'primary': action.variant === 'primary' && !isMobile
         }"
+        :disabled="action.disabled"
         @click="action.onClick"
       >
         <UiIcon :name="action.icon" />
@@ -62,6 +63,12 @@ const props = defineProps({
 
 .action-btn:hover {
   background: #edf2f7;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .action-btn.primary {

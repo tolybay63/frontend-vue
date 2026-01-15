@@ -159,10 +159,8 @@ const workOptions = ref([])
 const loadingWorks = ref(false)
 const isAddingObject = ref(false)
 
-const isDateDisabled = (timestamp) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return timestamp < today.getTime();
+const isDateDisabled = () => {
+  return false; // Разрешаем выбирать любую дату
 };
 
 const closeModal = () => {

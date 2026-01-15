@@ -75,6 +75,10 @@ import UiIcon from '@/shared/ui/UiIcon.vue'
 const props = defineProps({
   columns: Array,
   rows: Array,
+  allRows: {
+    type: Array,
+    default: () => []
+  },
   loading: Boolean,
   expandedRows: Array,
   toggleRowExpand: Function,
@@ -109,10 +113,12 @@ watch(() => props.selectedRows, (newVal) => {
 }, { deep: true });
 
 watch(() => props.rows, () => {
-  // Очищаем выбранные строки, которых больше нет в списке
-  internalSelectedRows.value = internalSelectedRows.value.filter(selectedId =>
-    props.rows.some(row => (row.id || row.index) === selectedId)
-  );
+  // Очищаем выбранные строки, которых больше нет во ВСЕХ данных (allRows)
+  if (allRowsData.value.length > 0) {
+    internalSelectedRows.value = internalSelectedRows.value.filter(selectedId =>
+      allRowsData.value.some(row => (row.id || row.index) === selectedId)
+    );
+  }
 });
 
 const isRowSelected = (row) => {
@@ -133,17 +139,20 @@ const toggleRowSelection = (row) => {
   emit('update:selectedRows', [...internalSelectedRows.value]);
 };
 
+const allRowsData = computed(() => props.allRows.length > 0 ? props.allRows : props.rows);
+
 const isAllSelected = computed(() => {
-  return props.rows.length > 0 && internalSelectedRows.value.length === props.rows.length;
+  return allRowsData.value.length > 0 && internalSelectedRows.value.length === allRowsData.value.length;
 });
 
 const isSomeSelected = computed(() => {
-  return internalSelectedRows.value.length > 0 && internalSelectedRows.value.length < props.rows.length;
+  return internalSelectedRows.value.length > 0 && internalSelectedRows.value.length < allRowsData.value.length;
 });
 
 const toggleSelectAll = (checked) => {
   if (checked) {
-    internalSelectedRows.value = props.rows.map(row => row.id || row.index);
+    // Выбираем все строки из allRows (все страницы)
+    internalSelectedRows.value = allRowsData.value.map(row => row.id || row.index);
   } else {
     internalSelectedRows.value = [];
   }

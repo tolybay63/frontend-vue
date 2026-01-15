@@ -79,7 +79,7 @@ const allItems = [
       { label: 'Журнал параметров', path: '/parameters', permission: 'par' },
       { label: 'Журнал неисправностей', path: '/defects', permission: 'def' },
       { label: 'Журнал событий и запросов на работы', path: '/incidents', permission: 'inc' },
-      { label: 'Импорт данных путеизмерителя', path: '/track-gauge-import' }
+      { label: 'Импорт данных путеизмерителя', path: '/track-gauge-import', permission: 'imp'  }
     ]
   },
   {

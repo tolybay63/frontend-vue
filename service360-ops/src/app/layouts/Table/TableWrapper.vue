@@ -49,12 +49,16 @@
         <slot name="custom-header"></slot>
         <TableActions :actions="actions" :isMobile="isMobile" />
       </div>
+      <div v-if="!isMobile" class="controls-footer">
+        <slot name="controls-footer"></slot>
+      </div>
     </div>
 
     <BaseTable
       v-if="!isMobile"
       :columns="columns"
       :rows="pagedRows"
+      :allRows="filteredRows"
       :loading="loading"
       :expanded-rows="expandedRows"
       :toggle-row-expand="toggleRowExpand"
@@ -394,7 +398,7 @@ onUnmounted(() => {
 .header-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .table-wrapper.mobile-view .header-content {
@@ -405,6 +409,13 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.controls-footer {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-top: 0;
 }
 
 .title {

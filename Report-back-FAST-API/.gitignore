@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 report-back-fast-api_*.tar
 *.tar
+.idea
+.venv
+build
+dist

@@ -2,16 +2,31 @@
   <section class="page">
     <header class="page__header">
       <div>
-        <h1>Управление представлениями данных</h1>
+        <h1>Представления данных</h1>
         <p class="muted">
-          Создавайте и редактируйте сохраненные конфигурации данных. Их можно
-          повторно использовать при настройке произвольных страниц.
+          Представления — финальный результат работы конструктора. Источники и
+          конфигурации доступны как расширенные настройки.
         </p>
       </div>
       <button class="btn-primary" type="button" @click="goToData">
         Создать представление
       </button>
     </header>
+
+    <ConstructorTabs />
+
+    <div class="info-card">
+      <div>
+        <div class="info-card__title">Мастер создания представления</div>
+        <p class="muted">
+          Быстрый сценарий: источник → конфигурация → представление. Можно
+          вернуться на любой шаг и переиспользовать данные.
+        </p>
+      </div>
+      <button class="btn-outline btn-sm" type="button" @click="goToData">
+        Запустить мастер
+      </button>
+    </div>
 
     <div v-if="loading" class="empty-state">
       <p>Загружаем представления...</p>
@@ -49,9 +64,9 @@
           <button
             class="icon-btn"
             type="button"
-            @click="previewView(view)"
             aria-label="Открыть представление"
             title="Открыть представление"
+            @click="previewView(view)"
           >
             <span class="icon icon-eye" />
           </button>
@@ -59,27 +74,27 @@
             class="icon-btn"
             type="button"
             :class="{ 'is-active': detailsId === view.id }"
-            @click="toggleDetails(view.id)"
             :aria-label="
               detailsId === view.id ? 'Скрыть детали' : 'Показать детали'
             "
             :title="detailsId === view.id ? 'Скрыть детали' : 'Показать детали'"
+            @click="toggleDetails(view.id)"
           >
             <span class="icon icon-info" />
           </button>
           <button
             class="icon-btn"
             type="button"
-            @click="startEdit(view)"
             aria-label="Редактировать представление"
+            @click="startEdit(view)"
           >
             <span class="icon icon-edit" />
           </button>
           <button
             class="icon-btn icon-btn--danger"
             type="button"
-            @click="removeView(view)"
             aria-label="Удалить представление"
+            @click="removeView(view)"
           >
             <span class="icon icon-trash" />
           </button>
@@ -160,6 +175,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ConstructorTabs from '@/components/ConstructorTabs.vue'
 import { fetchFactorValues } from '@/shared/api/objects'
 import {
   loadReportConfigurations,
@@ -171,6 +187,7 @@ import {
 import { useNavigationStore } from '@/shared/stores/navigation'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import { humanizeKey } from '@/shared/lib/pivotUtils'
+import { trackEvent } from '@/shared/lib/analytics'
 
 const router = useRouter()
 const navigationStore = useNavigationStore()
@@ -191,6 +208,7 @@ const editDraft = reactive({
 })
 
 onMounted(() => {
+  trackEvent('constructor_nav_open', { section: 'presentations' })
   fieldDictionaryStore.fetchDictionary()
   fetchVisualizations()
   fetchViews()
@@ -222,6 +240,8 @@ const visualizationOptions = computed(() =>
 
 function goToData() {
   navigationStore.allowDataAccess()
+  navigationStore.startViewCreation()
+  trackEvent('view_creation_start', { source: 'templates' })
   router.push('/data')
 }
 
@@ -237,6 +257,7 @@ function previewView(view) {
     return
   }
   navigationStore.allowDataAccess()
+  trackEvent('presentation_open', { id: presentationId })
   router.push({
     path: '/data',
     query: { sourceId, configId, presentationId },
@@ -283,6 +304,9 @@ async function fetchViews() {
     })
   } catch (err) {
     console.warn('Failed to load report views', err)
+    trackEvent('presentation_load_error', {
+      message: String(err?.message || err),
+    })
     loadError.value = 'Не удалось загрузить представления. Попробуйте позже.'
     views.value = []
   } finally {
@@ -355,8 +379,13 @@ async function submitEdit(viewId) {
     await saveReportPresentation('upd', payload)
     await fetchViews()
     cancelEdit()
+    trackEvent('presentation_updated', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to update presentation', err)
+    trackEvent('presentation_update_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось сохранить представление. Попробуйте позже.')
   } finally {
     editSaving.value = false
@@ -379,8 +408,13 @@ async function removeView(view) {
       cancelEdit()
     }
     await fetchViews()
+    trackEvent('presentation_deleted', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to delete presentation', err)
+    trackEvent('presentation_delete_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось удалить представление. Попробуйте позже.')
   }
 }
@@ -520,15 +554,23 @@ function normalizePresentation(entry = {}, index = 0) {
 
 function normalizeConfig(entry = {}, index = 0) {
   const remoteId = toNumericId(entry?.id ?? entry?.Id ?? entry?.ID)
-  const headerOverrides = extractHeaderOverrides(entry)
+  const filterPayload = parseMetaPayload(entry?.FilterVal)
+  const rowPayload = parseMetaPayload(entry?.RowVal)
+  const colPayload = parseMetaPayload(entry?.ColVal)
+  const knownKeys = collectKnownFieldKeys(filterPayload, rowPayload, colPayload)
+  const headerOverrides = {
+    ...(filterPayload.headerOverrides || {}),
+    ...(rowPayload.headerOverrides || {}),
+    ...(colPayload.headerOverrides || {}),
+  }
   return {
     id: remoteId ? String(remoteId) : createLocalId(`config-${index}`),
     remoteId,
     parentId: toNumericId(entry?.parent ?? entry?.parentId ?? entry?.Parent),
     name: entry?.name || entry?.Name || `Конфигурация ${index + 1}`,
-    rows: parseFieldSequence(entry?.Row),
-    columns: parseFieldSequence(entry?.Col),
-    filters: parseFieldSequence(entry?.Filter),
+    rows: parseFieldSequence(entry?.Row, knownKeys),
+    columns: parseFieldSequence(entry?.Col, knownKeys),
+    filters: parseFieldSequence(entry?.Filter, knownKeys),
     metrics: Array.isArray(entry?.complex)
       ? entry.complex
           .map((record, metricIndex) => normalizeMetricRecord(record, metricIndex))
@@ -577,7 +619,7 @@ function normalizeMetricRecord(entry = {}, index = 0) {
   }
 }
 
-function parseFieldSequence(value) {
+function parseFieldSequence(value, knownKeys = null) {
   if (!value) return []
   if (Array.isArray(value)) {
     return value.map((item) => String(item).trim()).filter(Boolean)
@@ -592,24 +634,15 @@ function parseFieldSequence(value) {
   } catch {
     // ignore
   }
-  return trimmed
+  const tokens = trimmed
     .split(/[.,|;]/)
     .map((item) => item.trim())
     .filter(Boolean)
+  if (!tokens.length) return []
+  return rebuildSequenceTokens(tokens, knownKeys)
 }
 
-function extractHeaderOverrides(entry = {}) {
-  const overrides = {}
-  ;['RowVal', 'ColVal', 'FilterVal'].forEach((key) => {
-    const payload = parseMetaValue(entry?.[key])
-    Object.entries(payload?.headerOverrides || {}).forEach(([field, label]) => {
-      if (field && label) overrides[field] = String(label)
-    })
-  })
-  return overrides
-}
-
-function parseMetaValue(raw) {
+function parseMetaPayload(raw) {
   if (!raw) return {}
   if (typeof raw === 'object') return raw
   if (typeof raw === 'string') {
@@ -621,6 +654,82 @@ function parseMetaValue(raw) {
     }
   }
   return {}
+}
+
+function collectKnownFieldKeys(...payloads) {
+  const set = new Set()
+  payloads.forEach((payload) => {
+    if (!payload || typeof payload !== 'object') return
+    collectKeysFromObject(set, payload.values)
+    collectKeysFromObject(set, payload.headerOverrides)
+    collectKeysFromObject(set, payload.sorts)
+    collectKeysFromObject(set, payload.fieldMeta)
+    if (Array.isArray(payload.filtersMeta)) {
+      payload.filtersMeta.forEach((meta) => {
+        if (meta?.key) set.add(String(meta.key).trim())
+      })
+    }
+    if (Array.isArray(payload.metricSettings)) {
+      payload.metricSettings.forEach((meta) => {
+        if (meta?.fieldKey) set.add(String(meta.fieldKey).trim())
+      })
+    }
+  })
+  return set
+}
+
+function collectKeysFromObject(target, source) {
+  if (!source || typeof source !== 'object') return
+  Object.keys(source).forEach((key) => {
+    const normalized = String(key).trim()
+    if (normalized) target.add(normalized)
+  })
+}
+
+function rebuildSequenceTokens(tokens = [], knownKeys = new Set()) {
+  const result = []
+  let index = 0
+  while (index < tokens.length) {
+    const match = findKnownSequence(tokens, index, knownKeys)
+    if (match) {
+      result.push(match.value)
+      index = match.nextIndex
+      continue
+    }
+    const heuristic = attemptJoinHeuristic(tokens, index)
+    if (heuristic) {
+      result.push(heuristic.value)
+      index = heuristic.nextIndex
+      continue
+    }
+    result.push(tokens[index])
+    index += 1
+  }
+  return result
+}
+
+function findKnownSequence(tokens, start, knownKeys = new Set()) {
+  if (!knownKeys || !knownKeys?.size) return null
+  for (let end = tokens.length; end > start; end -= 1) {
+    const candidate = tokens.slice(start, end).join('.')
+    if (knownKeys.has(candidate)) {
+      return { value: candidate, nextIndex: end }
+    }
+  }
+  return null
+}
+
+const JOIN_PREFIX_PATTERN = /^[A-Z0-9_]+$/
+const JOIN_FIELD_PATTERN = /^[a-zA-Z0-9_]+$/
+
+function attemptJoinHeuristic(tokens, start) {
+  const prefix = tokens[start]
+  const next = tokens[start + 1]
+  if (!prefix || !next) return null
+  if (JOIN_PREFIX_PATTERN.test(prefix) && JOIN_FIELD_PATTERN.test(next)) {
+    return { value: `${prefix}.${next}`, nextIndex: start + 2 }
+  }
+  return null
 }
 
 function toNumericId(value) {
@@ -691,6 +800,10 @@ function readUserMeta() {
   gap: 16px;
   align-items: center;
   background: #f8fafc;
+}
+.info-card__title {
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 .empty-state {
   border: 1px dashed #d1d5db;

@@ -4,6 +4,13 @@ import { DEFAULT_PARAMETER_PAYLOAD } from '@/shared/api/parameter'
 import { callReportMethod } from '@/shared/api/report'
 import { fetchMethodTypeRecords } from '@/shared/api/objects'
 import { fetchCurrentUserRecord, fetchPersonnelInfo } from '@/shared/api/user'
+import {
+  normalizeJoinList,
+  parseJoinConfig,
+  serializeJoinConfig,
+  extractJoinsFromBody,
+  stripJoinPresentationFields,
+} from '@/shared/lib/sourceJoins'
 
 const STORAGE_KEY = 'report-data-sources'
 const USER_CONTEXT_KEY = 'report-user-context'
@@ -27,6 +34,7 @@ const defaultSources = [
     supportsPivot: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    joins: [],
   },
   {
     id: 'source-parameters',
@@ -46,26 +54,31 @@ const defaultSources = [
     supportsPivot: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    joins: [],
   },
 ]
 
 function loadSources() {
-  if (typeof window === 'undefined') return structuredClone(defaultSources)
+  if (typeof window === 'undefined') {
+    return structuredClone(defaultSources).map(applyJoinDefaults)
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length) return parsed
+      if (Array.isArray(parsed) && parsed.length)
+        return parsed.map(applyJoinDefaults)
     }
   } catch (err) {
     console.warn('Failed to load data sources', err)
   }
-  return structuredClone(defaultSources)
+  return structuredClone(defaultSources).map(applyJoinDefaults)
 }
 
 function persistSources(list) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  const normalized = Array.isArray(list) ? list.map(applyJoinDefaults) : []
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
 }
 
 function loadUserContext() {
@@ -84,7 +97,7 @@ function loadUserContext() {
 
 function persistUserContext(context) {
   if (typeof window === 'undefined') return
-  if (!context) {
+  if (!context || context.__fallback) {
     window.localStorage.removeItem(USER_CONTEXT_KEY)
     return
   }
@@ -101,10 +114,42 @@ function loadExternalUserContext() {
     const currentUser = curParsed?.result || curParsed
     const personnel = extractPersonRecord(personParsed)
     const context = buildUserContext(currentUser, personnel)
-    return hasValidUserContext(context) ? context : null
+    if (hasValidUserContext(context)) return context
   } catch (err) {
     console.warn('Failed to parse external user context', err)
-    return null
+  }
+  const stored = loadStoredUserMeta()
+  if (stored) return stored
+  return null
+}
+
+function loadStoredUserMeta() {
+  if (typeof window === 'undefined') return null
+  const parseNumericValue = (raw) => {
+    if (raw === null || typeof raw === 'undefined') return null
+    try {
+      return toNumericId(JSON.parse(raw))
+    } catch {
+      return toNumericId(raw)
+    }
+  }
+  const objUser = parseNumericValue(window.localStorage.getItem('objUser'))
+  const pvUser = parseNumericValue(window.localStorage.getItem('pvUser'))
+  if (objUser === null || pvUser === null) return null
+  let fullNameUser = ''
+  const fullNameRaw = window.localStorage.getItem('fullNameUser')
+  if (typeof fullNameRaw === 'string') {
+    try {
+      fullNameUser = String(JSON.parse(fullNameRaw) || '')
+    } catch {
+      fullNameUser = fullNameRaw
+    }
+  }
+  return {
+    idUser: objUser,
+    objUser,
+    pvUser,
+    fullNameUser: fullNameUser || '',
   }
 }
 
@@ -145,7 +190,8 @@ export const useDataSourcesStore = defineStore('dataSources', {
     userLoading: false,
   }),
   getters: {
-    getById: (state) => (id) => state.sources.find((source) => source.id === id),
+    getById: (state) => (id) =>
+      state.sources.find((source) => source.id === id),
   },
   actions: {
     async saveSource(payload) {
@@ -156,14 +202,15 @@ export const useDataSourcesStore = defineStore('dataSources', {
       base.httpMethod = base.httpMethod?.toUpperCase?.() || 'POST'
       base.rawBody = base.rawBody || ''
       base.headers = base.headers || { 'Content-Type': 'application/json' }
+      const index = this.sources.findIndex((item) => item.id === base.id)
+      const existing = index >= 0 ? this.sources[index] : null
       base.supportsPivot = payload.supportsPivot !== false
       base.updatedAt = new Date().toISOString()
+      base.joins = normalizeJoinList(base.joins || existing?.joins || [])
       if (!base.createdAt) {
         base.createdAt = base.updatedAt
       }
 
-      const index = this.sources.findIndex((item) => item.id === base.id)
-      const existing = index >= 0 ? this.sources[index] : null
       base.remoteMeta = base.remoteMeta || existing?.remoteMeta || {}
       if (index >= 0) {
         this.sources.splice(index, 1, base)
@@ -171,13 +218,18 @@ export const useDataSourcesStore = defineStore('dataSources', {
         this.sources.push(base)
       }
       persistSources(this.sources)
-      try {
-        await this.saveRemoteRecord(base)
-        persistSources(this.sources)
-      } catch (err) {
-        console.warn('Failed to sync data source', err)
-      }
-      return base.id
+
+      const syncPromise = this.saveRemoteRecord(base)
+        .then((nextId) => {
+          persistSources(this.sources)
+          return nextId || base.id
+        })
+        .catch((err) => {
+          console.warn('Failed to sync data source', err)
+          return base.id
+        })
+
+      return { id: base.id, syncPromise }
     },
     removeSource(sourceId) {
       const index = this.sources.findIndex((item) => item.id === sourceId)
@@ -192,9 +244,44 @@ export const useDataSourcesStore = defineStore('dataSources', {
         const data = await callReportMethod('report/loadReportSource', [0])
         const records = extractRecords(data)
         if (!records.length) return
-        const mapped = records.map((entry, index) => normalizeRemoteSource(entry, index))
-        if (mapped.length) {
-          this.sources = mapped
+        const localById = new Map(this.sources.map((source) => [String(source.id || ''), source]))
+        const localByRemoteId = new Map()
+        this.sources.forEach((source) => {
+          const remoteId = toNumericId(
+            source.remoteId ||
+              source.remoteMeta?.id ||
+              source.remoteMeta?.Id ||
+              source.remoteMeta?.ID,
+          )
+          if (remoteId != null) {
+            localByRemoteId.set(String(remoteId), source)
+          }
+        })
+        const mapped = records.map((entry, index) => {
+          const remote = normalizeRemoteSource(entry, index)
+          const remoteId = toNumericId(remote.remoteMeta?.id || remote.remoteMeta?.Id || remote.remoteMeta?.ID)
+          const match =
+            localById.get(String(remote.id || '')) ||
+            (remoteId != null ? localByRemoteId.get(String(remoteId)) : null)
+          if (match?.pushdown) {
+            remote.pushdown = match.pushdown
+          }
+          return applyJoinDefaults(remote)
+        })
+        const normalized = mapped
+        if (normalized.length) {
+          const remoteIds = new Set(normalized.map((item) => item.id))
+          const locals = this.sources.filter((source) => {
+            if (remoteIds.has(source.id)) return false
+            const remoteMetaId = toNumericId(
+              source.remoteId ||
+                source.remoteMeta?.id ||
+                source.remoteMeta?.Id ||
+                source.remoteMeta?.ID,
+            )
+            return !remoteMetaId
+          })
+          this.sources = [...normalized, ...locals]
           this.loadedFromRemote = true
           persistSources(this.sources)
         }
@@ -256,7 +343,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
             const external = loadExternalUserContext()
             if (external) this.userContext = external
           }
-          persistUserContext(hasValidUserContext(this.userContext) ? this.userContext : null)
+          persistUserContext(
+            hasValidUserContext(this.userContext) ? this.userContext : null,
+          )
         } catch (err) {
           console.warn('Failed to fetch user context', err)
           if (!this.userContext) {
@@ -280,19 +369,45 @@ export const useDataSourcesStore = defineStore('dataSources', {
       return this.userContext
     },
     async saveRemoteRecord(source) {
-      const userContext = await this.fetchUserContext()
+      const previousId = source?.id
+      const fallbackUserContext = loadExternalUserContext()
+      const userContext = fallbackUserContext || (await this.fetchUserContext())
       const payload = buildRemotePayload(source, this.methodTypes, userContext)
-      if (!payload) return
+      if (!payload) return source.id
       const numericId = toNumericId(source.remoteMeta?.id || source.id)
       const operation = numericId ? 'upd' : 'ins'
-      const data = await callReportMethod('report/saveReportSource', [operation, payload])
+      const data = await callReportMethod('report/saveReportSource', [
+        operation,
+        payload,
+      ])
       const saved = extractRecords(data)[0]
       if (saved) {
         source.remoteMeta = buildRemoteMeta(saved)
-        if (saved.id) {
-          source.id = String(saved.id)
+        if (saved.id !== null && typeof saved.id !== 'undefined') {
+          const normalizedId = String(saved.id)
+          source.id = normalizedId
+          const index = this.sources.findIndex(
+            (item) =>
+              item === source ||
+              item.id === previousId ||
+              String(item.remoteMeta?.id) === normalizedId,
+          )
+          if (index >= 0) {
+            const current = this.sources[index]
+            if (current !== source) {
+              this.sources.splice(index, 1, {
+                ...current,
+                ...source,
+                id: normalizedId,
+              })
+            } else if (current.id !== normalizedId) {
+              current.id = normalizedId
+            }
+          }
         }
+        return source.id
       }
+      return source.id
     },
   },
 })
@@ -307,22 +422,26 @@ function extractRecords(payload) {
 
 function normalizeRemoteSource(entry = {}, index = 0) {
   const id = entry.id ? String(entry.id) : createId(`remote-${index}`)
-  const name = entry.name || entry.title || entry.Name || `Источник ${index + 1}`
+  const name =
+    entry.name || entry.title || entry.Name || `Источник ${index + 1}`
   const url = entry.url || entry.URL || entry.requestUrl || '/dtj/api/plan'
   const httpMethod =
     entry.nameMethodTyp?.toUpperCase?.() ||
     entry.method?.toUpperCase?.() ||
     entry.Method?.toUpperCase?.() ||
     'POST'
-  const rawBody = toRawBody(
+  const baseBody =
     entry.body ||
-      entry.payload ||
-      entry.requestBody ||
-      entry.rawBody ||
-      entry.MethodBody,
-  )
-  const headers = entry.headers || entry.Headers || { 'Content-Type': 'application/json' }
-  return {
+    entry.payload ||
+    entry.requestBody ||
+    entry.rawBody ||
+    entry.MethodBody
+  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(baseBody)
+  const rawBody = cleanedBody || toRawBody(baseBody)
+  const headers = entry.headers ||
+    entry.Headers || { 'Content-Type': 'application/json' }
+  const pushdown = entry.pushdown || entry.Pushdown
+  const source = {
     id,
     name,
     description: entry.description || '',
@@ -334,7 +453,15 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     createdAt: entry.createdAt || new Date().toISOString(),
     updatedAt: entry.updatedAt || new Date().toISOString(),
     remoteMeta: buildRemoteMeta(entry),
+    joins:
+      bodyJoins.length
+        ? bodyJoins
+        : parseJoinConfig(entry.joinConfig || entry.JoinConfig),
   }
+  if (pushdown) {
+    source.pushdown = pushdown
+  }
+  return source
 }
 
 function normalizeMethodTypeRecord(entry = {}) {
@@ -388,22 +515,21 @@ function buildRemoteMeta(entry = {}) {
     pvUser: entry.pvUser,
     fullNameUser: entry.fullNameUser,
     URL: entry.URL || entry.url,
+    joinConfig: entry.joinConfig || entry.JoinConfig || entry.joinPayload,
   }
 }
 
 function buildRemotePayload(source, methodTypes = [], userContext = null) {
   if (!source?.name) return null
-  const nativeId = toNumericId(source.remoteMeta?.id || source.id)
+  const nativeId = toNumericId(source.remoteMeta?.id)
   const meta = source.remoteMeta || {}
   const methodName = source.httpMethod?.toUpperCase?.() || 'POST'
-  const methodMeta =
-    findMethodMeta(methodName, methodTypes) ||
-    {
-      fvMethodTyp: meta.fvMethodTyp,
-      pvMethodTyp: meta.pvMethodTyp,
-      nameMethodTyp: meta.nameMethodTyp || methodName,
-    }
-  return {
+  const methodMeta = findMethodMeta(methodName, methodTypes) || {
+    fvMethodTyp: meta.fvMethodTyp,
+    pvMethodTyp: meta.pvMethodTyp,
+    nameMethodTyp: meta.nameMethodTyp || methodName,
+  }
+  const payload = {
     id: nativeId,
     cls: meta.cls,
     name: source.name,
@@ -414,7 +540,6 @@ function buildRemotePayload(source, methodTypes = [], userContext = null) {
     pvMethodTyp: methodMeta.pvMethodTyp || 0,
     nameMethodTyp: methodMeta.nameMethodTyp || methodName,
     idMethodBody: meta.idMethodBody,
-    MethodBody: source.rawBody || meta.MethodBody || '',
     idCreatedAt: meta.idCreatedAt,
     CreatedAt: meta.CreatedAt || source.createdAt || new Date().toISOString(),
     idUpdatedAt: meta.idUpdatedAt,
@@ -424,7 +549,33 @@ function buildRemotePayload(source, methodTypes = [], userContext = null) {
     pvUser: pickUserValue(userContext?.pvUser, meta.pvUser),
     fullNameUser: userContext?.fullNameUser || meta.fullNameUser || '',
     URL: source.url || meta.URL || '',
+    joinConfig: serializeJoinConfig(source.joins || []),
+    MethodBody: serializeSourcePayload(source),
   }
+
+  if (!nativeId) {
+    delete payload.id
+  }
+
+  return payload
+}
+
+function serializeSourcePayload(source = {}) {
+  const base = source.rawBody?.trim()
+  let payload
+  if (!base) {
+    payload = {}
+  } else {
+    try {
+      payload = JSON.parse(base)
+    } catch {
+      return base
+    }
+  }
+  if (Array.isArray(source.joins) && source.joins.length) {
+    payload.__joins = source.joins.map(stripJoinPresentationFields)
+  }
+  return JSON.stringify(payload)
 }
 
 function toNumericId(value) {
@@ -482,4 +633,27 @@ function hasValidUserContext(context) {
     Number.isFinite(Number(context.objUser)) &&
     Number.isFinite(Number(context.pvUser))
   )
+}
+
+function applyJoinDefaults(source = {}) {
+  if (!source) return source
+  const next = { ...source }
+  const rawBodySource =
+    source.rawBody ||
+    source.remoteMeta?.MethodBody ||
+    source.remoteMeta?.methodBody ||
+    ''
+  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(rawBodySource)
+  next.rawBody = cleanedBody || source.rawBody || rawBodySource || ''
+  let normalized = normalizeJoinList(source.joins || [])
+  if (!normalized.length) {
+    normalized = parseJoinConfig(
+      source.remoteMeta?.joinConfig || source.remoteMeta?.JoinConfig,
+    )
+  }
+  if (!normalized.length) {
+    normalized = bodyJoins
+  }
+  next.joins = normalized
+  return next
 }

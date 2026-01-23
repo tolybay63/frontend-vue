@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { attachApiInterceptors } from '@/shared/api/http'
 
 const REPORT_API_URL = (import.meta.env.VITE_REPORT_API_BASE || '/dtj/api/report').trim()
 
@@ -8,6 +9,8 @@ const reportApi = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
+
+attachApiInterceptors(reportApi, { source: 'reportApi' })
 
 export async function callReportMethod(method, params = []) {
   const { data } = await reportApi.post('', {

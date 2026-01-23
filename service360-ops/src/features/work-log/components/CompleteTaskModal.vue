@@ -28,7 +28,7 @@
             <div class="resource-table">
               <div v-for="tool in flattenedTools" :key="tool.complexId" class="table-row">
                 <span class="table-cell" :title="tool.fullName">{{ tool.displayName }}</span>
-                <span class="table-cell value">{{ tool.quantity }} шт</span>
+                <span class="table-cell value">{{ tool.quantity }} мин</span>
               </div>
             </div>
           </div>
@@ -39,7 +39,7 @@
             <div class="resource-table">
               <div v-for="equipment in flattenedEquipment" :key="equipment.complexId" class="table-row">
                 <span class="table-cell" :title="equipment.fullName">{{ equipment.displayName }}</span>
-                <span class="table-cell value">{{ equipment.time }} час</span>
+                <span class="table-cell value">{{ equipment.time }} мин</span>
               </div>
             </div>
           </div>
@@ -62,7 +62,7 @@
               <div v-for="item in resources.performers" :key="item.id">
                 <div v-for="performer in item.performerDetails" :key="performer.complexId" class="table-row">
                   <span class="table-cell">{{ performer.fullName }} ({{ item.name }})</span>
-                  <span class="table-cell value">{{ performer.time }} час</span>
+                  <span class="table-cell value">{{ performer.time }} мин</span>
                 </div>
               </div>
             </div>
@@ -78,6 +78,15 @@
           :required="true"
           class="volume-input"
         />
+
+        <AppInput
+          label="Новый номер объекта (приборы)"
+          id="newObjectNumber"
+          v-model="newObjectNumber"
+          placeholder="Введите новый номер объекта"
+          class="object-number-input"
+        />
+        
         <AppInput
           label="Комментарий"
           id="reasonDeviation"
@@ -126,11 +135,13 @@ const props = defineProps({
 const emit = defineEmits(['close', 'confirm']);
 
 const actualVolume = ref(null);
+const newObjectNumber = ref('');
 const reasonDeviation = ref('');
 
 watch(() => props.isOpen, (newVal) => {
   if (newVal) {
     actualVolume.value = props.maxVolume === Infinity ? null : props.maxVolume; // Предзаполнить плановым объемом
+    newObjectNumber.value = ''; // Очистить новый номер объекта при открытии
     reasonDeviation.value = ''; // Очистить комментарий при открытии
   }
 });
@@ -198,7 +209,7 @@ const close = () => {
 
 const confirm = () => {
   if (isVolumeValid.value) {
-    emit('confirm', actualVolume.value, reasonDeviation.value);
+    emit('confirm', actualVolume.value, newObjectNumber.value, reasonDeviation.value);
   }
 };
 </script>
@@ -377,6 +388,10 @@ const confirm = () => {
 
 .volume-input {
   margin-top: 20px;
+}
+
+.object-number-input {
+  margin-top: 16px;
 }
 
 .reason-input {

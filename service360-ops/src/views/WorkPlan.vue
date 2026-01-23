@@ -44,6 +44,12 @@
     @update-table="handleTableUpdate"
   />
 
+  <ModalPlanByObjects
+    v-if="isPlanByObjectsModalOpen"
+    @close="closePlanByObjectsModal"
+    @update-table="handleTableUpdate"
+  />
+
   <ConfirmationModal
     v-if="isConfirmModalOpen"
     title="Завершение работы"
@@ -51,6 +57,7 @@
     @confirm="handleConfirmComplete"
     @cancel="isConfirmModalOpen = false"
   />
+
 </template>
 
 <script setup>
@@ -59,6 +66,7 @@ import TableWrapper from '@/app/layouts/Table/TableWrapper.vue';
 import ModalEditPlan from '@/features/work-plan/components/ModalEditPlan.vue';
 import ModalPlanWork from '@/features/work-plan/components/ModalPlanWork.vue';
 import ModalCopyPlan from '@/features/work-plan/components/ModalCopyPlan.vue';
+import ModalPlanByObjects from '@/features/work-plan/components/ModalPlanByObjects.vue';
 import { loadWorkPlan, completeThePlanWork } from '@/shared/api/plans/planApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -72,6 +80,7 @@ const { hasPermission } = usePermissions();
 const limit = 10;
 const isPlanWorkModalOpen = ref(false);
 const isCopyPlanModalOpen = ref(false);
+const isPlanByObjectsModalOpen = ref(false);
 const tableWrapperRef = ref(null);
 const isConfirmModalOpen = ref(false);
 const recordToComplete = ref(null);
@@ -124,6 +133,10 @@ const closePlanWorkModal = () => {
 
 const closeCopyPlanModal = () => {
   isCopyPlanModalOpen.value = false;
+};
+
+const closePlanByObjectsModal = () => {
+  isPlanByObjectsModalOpen.value = false;
 };
 
 const handleTableUpdate = () => {
@@ -350,6 +363,14 @@ const tableActions = computed(() => {
       },
       hidden: !hasPermission('plan:ins'),
     },
+    {
+      label: 'Запланировать по объектам',
+      icon: 'Layers', // Layers icon for objects
+      onClick: () => {
+        isPlanByObjectsModalOpen.value = true;
+      },
+      hidden: !hasPermission('plan:ins'),
+    },
     // {
     //   label: 'Экспорт',
     //   icon: 'Printer', // Printer for print/export (like the screenshot)
@@ -360,9 +381,10 @@ const tableActions = computed(() => {
   // Reordering for mobile view to match the screenshot
   const copyAction = baseActions.find(a => a.icon === 'Copy');
   const plusAction = baseActions.find(a => a.icon === 'Plus');
+  const objectsAction = baseActions.find(a => a.icon === 'Layers');
   const exportAction = baseActions.find(a => a.icon === 'Printer');
 
-  return [copyAction, plusAction, exportAction].filter(action => action && !action.hidden);
+  return [copyAction, plusAction, objectsAction, exportAction].filter(action => action && !action.hidden);
 });
 </script>
 

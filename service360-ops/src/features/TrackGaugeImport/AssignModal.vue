@@ -79,7 +79,7 @@ import { ref, watch } from 'vue';
 import { Pencil, Check, X } from 'lucide-vue-next';
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue';
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
-import { loadAssignData, loadRelObjForSelect, loadObjForSelect } from '@/shared/api/track-gauge/trackGaugeApi';
+import { loadAssignData, loadRelObjForSelect, loadObjForSelect, saveAssign } from '@/shared/api/track-gauge/trackGaugeApi';
 
 const props = defineProps({
   show: {
@@ -97,8 +97,10 @@ const emit = defineEmits(['close']);
 const loading = ref(false);
 const assignData = ref([]);
 const tofiOptions = ref([]);
+const tofiOptionsRaw = ref([]); // Храним полные данные опций
 const editingIndex = ref(null);
 const editingValue = ref(null);
+const saving = ref(false);
 
 const closeModal = () => {
   emit('close');
@@ -141,29 +143,70 @@ const startEdit = async (index, currentValue) => {
       options = data;
     }
 
-    // Формируем опции для dropdown
-    // Предполагаем, что в ответе есть поля для value и label
+    // Сохраняем полные данные опций для использования при сохранении
+    tofiOptionsRaw.value = options;
+
+    // Формируем опции для dropdown - используем id как value
     tofiOptions.value = options.map(option => ({
-      value: option.name || option.value || option,
+      value: option.id,
       label: option.name || option.label || option
     }));
   } catch (error) {
     console.error('Ошибка при загрузке опций для dropdown:', error);
     tofiOptions.value = [];
+    tofiOptionsRaw.value = [];
   }
 };
 
 const cancelEdit = () => {
   editingIndex.value = null;
   editingValue.value = null;
+  tofiOptionsRaw.value = [];
 };
 
-const saveEdit = (index) => {
-  if (editingValue.value !== null && editingValue.value !== undefined) {
-    assignData.value[index].name = editingValue.value;
+const saveEdit = async (index) => {
+  if (editingValue.value === null || editingValue.value === undefined) {
+    cancelEdit();
+    return;
   }
-  editingIndex.value = null;
-  editingValue.value = null;
+
+  // AppDropdown возвращает объект {value, label}, поэтому берем value из него
+  const selectedId = typeof editingValue.value === 'object' ? editingValue.value.value : editingValue.value;
+
+  // Находим выбранный элемент по id
+  const selectedOption = tofiOptionsRaw.value.find(opt => opt.id === selectedId || opt.id === Number(selectedId));
+
+  if (!selectedOption) {
+    console.error('Не найден выбранный элемент');
+    cancelEdit();
+    return;
+  }
+
+  const item = assignData.value[index];
+
+  // Формируем данные для сохранения
+  const assignDataToSave = {
+    cod: item.cod,
+    id: selectedOption.id,
+    syscod: selectedOption.syscod || selectedOption.id,
+    name: selectedOption.name
+  };
+
+  saving.value = true;
+  try {
+    await saveAssign(assignDataToSave);
+
+    // Обновляем локальные данные после успешного сохранения
+    assignData.value[index].name = selectedOption.name;
+
+    editingIndex.value = null;
+    editingValue.value = null;
+    tofiOptionsRaw.value = [];
+  } catch (error) {
+    console.error('Ошибка при сохранении привязки:', error);
+  } finally {
+    saving.value = false;
+  }
 };
 
 watch(() => props.show, (newVal) => {

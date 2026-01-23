@@ -20,7 +20,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue';
-import { loadTaskLog, loadObjTaskLog } from '@/shared/api/execution/executionApi';
+import { loadTaskLog } from '@/shared/api/execution/executionApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
 import WorkStatus from '@/features/work-log/components/WorkStatus.vue';
@@ -71,26 +71,17 @@ onMounted(async () => {
   }
 });
 
-const onRowDoubleClick = async (row) => {
+const onRowDoubleClick = (row) => {
   const workLogId = row.id;
   if (!workLogId) {
     console.error("ID записи журнала работ отсутствует.", row);
     return;
   }
-  
-  try {
-    // Сначала вызываем API, как вы и просили
-    const data = await loadObjTaskLog(workLogId); 
-    console.log(`Данные для записи с ID ${workLogId}:`, data); 
 
-    // Затем выполняем переход на страницу формы
-    router.push({ 
-      name: 'WorkLogForm', 
-      params: { id: workLogId } 
-    });
-  } catch (error) {
-    console.error('Ошибка при загрузке данных записи журнала работ:', error);
-  }
+  router.push({
+    name: 'WorkLogForm',
+    params: { id: workLogId }
+  });
 };
 
 // Функция handleTableUpdate больше не нужна, так как модальное окно не вызывает событие 'saved'.

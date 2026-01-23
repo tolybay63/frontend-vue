@@ -128,6 +128,27 @@ export async function loadObjForSelect(code) {
   return response.data.result?.records || response.data.result || [];
 }
 
+export async function saveAssign(assignData) {
+  console.log('Вызов метода import/saveAssign', {
+    assignData
+  });
+
+  const response = await axios.post(
+    API_INSPECTIONS_URL,
+    {
+      method: "import/saveAssign",
+      params: [assignData]
+    },
+    {
+      withCredentials: true
+    }
+  );
+
+  console.log('Ответ от import/saveAssign:', response.data);
+
+  return response.data.result || response.data;
+}
+
 export async function uploadTrackGaugeData(records) {
   try {
     const user = await getUserData();

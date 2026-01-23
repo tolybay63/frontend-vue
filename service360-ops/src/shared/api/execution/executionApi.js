@@ -380,12 +380,38 @@ export async function deleteComplexPersonnel(complexId) {
   }
 }
 
-export async function saveTaskLogFact(payload) {
-  if (!payload || !payload.id) {
-    throw new Error("Payload должен содержать ID записи.");
+export async function saveTaskLogFact(taskData) {
+  if (!taskData || !taskData.id) {
+    throw new Error("Данные должны содержать ID записи.");
   }
 
   try {
+    const user = await getUserData();
+    const today = new Date().toISOString().split('T')[0];
+
+    const payload = {
+      id: taskData.id,
+      objWorkPlan: taskData.objWorkPlan,
+      FactDateEnd: taskData.FactDateEnd,
+      ReasonDeviation: taskData.ReasonDeviation || '',
+      Number: taskData.Number || '',
+      objObject: taskData.objObject,
+      fullNameWork: taskData.fullNameWork,
+      objUser: user.id,
+      pvUser: user.pv,
+      UpdatedAt: today
+    };
+
+    // Добавляем idUser только если он есть
+    if (taskData.idUser) {
+      payload.idUser = taskData.idUser;
+    }
+
+    // Добавляем idUpdatedAt только если он есть
+    if (taskData.idUpdatedAt) {
+      payload.idUpdatedAt = taskData.idUpdatedAt;
+    }
+
     console.log('Вызов метода data/saveTaskLogFact с данными:', payload);
     const response = await axios.post(
       API_REPAIR_URL,
@@ -399,7 +425,7 @@ export async function saveTaskLogFact(payload) {
     );
     return response.data.result;
   } catch (error) {
-    console.error(`Ошибка при вызове saveTaskLogFact для ID ${payload.id}:`, error);
+    console.error(`Ошибка при вызове saveTaskLogFact для ID ${taskData.id}:`, error);
     throw error;
   }
 }

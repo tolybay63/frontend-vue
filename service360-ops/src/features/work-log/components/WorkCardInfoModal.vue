@@ -781,12 +781,8 @@ const saveWork = async () => {
 };
 
 const initialLoad = async () => {
-
-  if (savedInspectionId.value) {
-    await loadExistingDefects(savedInspectionId.value);
-    await loadExistingParameters(savedInspectionId.value);
-  }
-
+  // Загрузка дефектов и параметров выполняется в watch по props.inspectionId с immediate: true
+  // чтобы избежать двойного вызова
   await loadComponents();
 };
 
@@ -817,8 +813,12 @@ watch(() => props.record, (newRecordData) => {
 watch(() => props.inspectionId, (newId) => {
   savedInspectionId.value = newId;
   if (newId) {
-    loadExistingDefects(newId);
-    loadExistingParameters(newId);
+    // Загружаем данные только для текущей активной вкладки
+    if (activeTab.value === 'defects') {
+      loadExistingDefects(newId);
+    } else if (activeTab.value === 'parameters') {
+      loadExistingParameters(newId);
+    }
   }
 }, { immediate: true });
 </script>

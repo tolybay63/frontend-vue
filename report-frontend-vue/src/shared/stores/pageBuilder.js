@@ -54,37 +54,65 @@ const filterLibrary = [
   },
 ]
 
+const FETCH_COOLDOWN_MS = 20000
+
+function normalizeFetchOptions(options) {
+  if (options && typeof options === 'object') {
+    return {
+      force: Boolean(options.force),
+      skipCooldown: Boolean(options.skipCooldown),
+    }
+  }
+  return { force: Boolean(options), skipCooldown: false }
+}
+
+function shouldSkipFetch({ loading, loaded, lastFetchedAt, force, skipCooldown }) {
+  if (loading) return true
+  if (!force && loaded) return true
+  if (!skipCooldown && force && lastFetchedAt) {
+    return Date.now() - lastFetchedAt < FETCH_COOLDOWN_MS
+  }
+  return false
+}
+
 export const usePageBuilderStore = defineStore('pageBuilder', {
   state: () => ({
     pages: [],
     pagesLoading: false,
     pagesLoaded: false,
+    pagesFetchedAt: 0,
     pagesError: '',
     pageContainers: {},
     templates: [],
     templatesLoading: false,
     templatesLoaded: false,
+    templatesFetchedAt: 0,
     templatesError: '',
     filters: filterLibrary,
     layoutOptions: [],
     layoutLoading: false,
     layoutLoaded: false,
+    layoutFetchedAt: 0,
     layoutError: '',
     widthOptions: [],
     widthLoading: false,
     widthLoaded: false,
+    widthFetchedAt: 0,
     widthError: '',
     heightOptions: [],
     heightLoading: false,
     heightLoaded: false,
+    heightFetchedAt: 0,
     heightError: '',
     privacyOptions: [],
     privacyLoading: false,
     privacyLoaded: false,
+    privacyFetchedAt: 0,
     privacyError: '',
     pageUsers: [],
     pageUsersLoading: false,
     pageUsersLoaded: false,
+    pageUsersFetchedAt: 0,
     pageUsersError: '',
   }),
   getters: {
@@ -112,14 +140,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       }, {}),
   },
   actions: {
-    async fetchTemplates(force = false) {
-      if (this.templatesLoading || (this.templatesLoaded && !force)) return
+    async fetchTemplates(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.templatesLoading,
+          loaded: this.templatesLoaded,
+          lastFetchedAt: this.templatesFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.templatesLoading = true
       this.templatesError = ''
       try {
         const remoteTemplates = await fetchReportViewTemplates()
         this.templates = Array.isArray(remoteTemplates) ? remoteTemplates : []
         this.templatesLoaded = true
+        this.templatesFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load report templates', err)
         this.templatesError = 'Не удалось загрузить представления.'
@@ -128,14 +168,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.templatesLoading = false
       }
     },
-    async fetchLayoutOptions(force = false) {
-      if (this.layoutLoading || (this.layoutLoaded && !force)) return
+    async fetchLayoutOptions(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.layoutLoading,
+          loaded: this.layoutLoaded,
+          lastFetchedAt: this.layoutFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.layoutLoading = true
       this.layoutError = ''
       try {
         const records = await fetchFactorValues(LAYOUT_FACTOR_CODE)
         this.layoutOptions = normalizeLayoutOptions(records)
         this.layoutLoaded = true
+        this.layoutFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load layout options', err)
         this.layoutError = 'Не удалось загрузить макеты.'
@@ -144,14 +196,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.layoutLoading = false
       }
     },
-    async fetchWidthOptions(force = false) {
-      if (this.widthLoading || (this.widthLoaded && !force)) return
+    async fetchWidthOptions(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.widthLoading,
+          loaded: this.widthLoaded,
+          lastFetchedAt: this.widthFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.widthLoading = true
       this.widthError = ''
       try {
         const records = await fetchFactorValues(WIDTH_FACTOR_CODE)
         this.widthOptions = normalizeSizeOptions(records, 'width')
         this.widthLoaded = true
+        this.widthFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load width options', err)
         this.widthError = 'Не удалось загрузить ширины.'
@@ -160,14 +224,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.widthLoading = false
       }
     },
-    async fetchHeightOptions(force = false) {
-      if (this.heightLoading || (this.heightLoaded && !force)) return
+    async fetchHeightOptions(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.heightLoading,
+          loaded: this.heightLoaded,
+          lastFetchedAt: this.heightFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.heightLoading = true
       this.heightError = ''
       try {
         const records = await fetchFactorValues(HEIGHT_FACTOR_CODE)
         this.heightOptions = normalizeSizeOptions(records, 'height')
         this.heightLoaded = true
+        this.heightFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load height options', err)
         this.heightError = 'Не удалось загрузить высоты.'
@@ -176,14 +252,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.heightLoading = false
       }
     },
-    async fetchPrivacyOptions(force = false) {
-      if (this.privacyLoading || (this.privacyLoaded && !force)) return
+    async fetchPrivacyOptions(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.privacyLoading,
+          loaded: this.privacyLoaded,
+          lastFetchedAt: this.privacyFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.privacyLoading = true
       this.privacyError = ''
       try {
         const records = await fetchFactorValues(PRIVACY_FACTOR_CODE)
         this.privacyOptions = normalizePrivacyOptions(records)
         this.privacyLoaded = true
+        this.privacyFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load privacy options', err)
         this.privacyError = 'Не удалось загрузить параметры публичности.'
@@ -192,14 +280,26 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.privacyLoading = false
       }
     },
-    async fetchPageUsers(force = false) {
-      if (this.pageUsersLoading || (this.pageUsersLoaded && !force)) return
+    async fetchPageUsers(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.pageUsersLoading,
+          loaded: this.pageUsersLoaded,
+          lastFetchedAt: this.pageUsersFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.pageUsersLoading = true
       this.pageUsersError = ''
       try {
         const records = await fetchPersonnelAccessList()
         this.pageUsers = normalizeAccessUsers(records)
         this.pageUsersLoaded = true
+        this.pageUsersFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load page users', err)
         this.pageUsersError = 'Не удалось загрузить список пользователей.'
@@ -217,8 +317,19 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         this.fetchPrivacyOptions(),
       ])
     },
-    async fetchPages(force = false) {
-      if (this.pagesLoading || (this.pagesLoaded && !force)) return
+    async fetchPages(forceOrOptions = false) {
+      const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
+      if (
+        shouldSkipFetch({
+          loading: this.pagesLoading,
+          loaded: this.pagesLoaded,
+          lastFetchedAt: this.pagesFetchedAt,
+          force,
+          skipCooldown,
+        })
+      ) {
+        return
+      }
       this.pagesLoading = true
       this.pagesError = ''
       try {
@@ -252,6 +363,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
           }
         })
         this.pagesLoaded = true
+        this.pagesFetchedAt = Date.now()
       } catch (err) {
         console.warn('Failed to load report pages', err)
         this.pagesError = 'Не удалось загрузить страницы.'
@@ -263,7 +375,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
     async fetchPageContainers(pageId, force = false) {
       if (!pageId) return []
       if (force || !this.pageContainers[pageId]?.loaded) {
-        await this.fetchPages(true)
+        await this.fetchPages(force ? { force: true } : false)
       }
       return this.pageContainers[pageId]?.items || []
     },
@@ -310,7 +422,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       const saved = await saveReportPage(operation, payload)
       let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id ?? resolvedRawId)
       if (!remoteId) {
-        await this.fetchPages(true)
+        await this.fetchPages({ force: true, skipCooldown: true })
         const match = this.pages.find(
           (page) =>
             page.menuTitle === payload.MenuItem &&
@@ -330,7 +442,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         await this.updatePageLayoutMeta(draft, layoutMeta, normalizedDescription, finalContainerTabs, userMeta)
         draft.layout.containerTabs = { ...finalContainerTabs }
       }
-      await this.fetchPages(true)
+      await this.fetchPages({ force: true, skipCooldown: true })
       return remoteId
     },
     async updatePageLayoutMeta(draft, layoutMeta, normalizedDescription, containerTabMap, userMeta) {
@@ -345,7 +457,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
     },
     async ensureDraftRemoteMeta(draft, remoteId) {
       if (hasRequiredPageMeta(draft.remoteMeta)) return
-      await this.fetchPages(true)
+      await this.fetchPages()
       const target = this.pages.find((page) => page.remoteId === remoteId || page.id === remoteId)
       if (!target) {
         throw new Error('Не удалось найти страницу для обновления макета. Обновите список страниц и попробуйте снова.')

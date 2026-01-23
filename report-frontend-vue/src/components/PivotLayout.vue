@@ -58,6 +58,7 @@
           :value-store="filterValues"
           :range-store="filterRangeValues"
           :mode-store="filterModeStore"
+          :filter-visibility-store="filterVisibilityStore"
           :value-options-resolver="valueOptionsResolver"
           :sort-state="filterSorts"
           :allow-metric-sort="false"
@@ -68,6 +69,7 @@
           @update-filter-values="$emit('update-filter-values', $event)"
           @update-range-values="$emit('update-filter-range', $event)"
           @update-filter-mode="$emit('update-filter-mode', $event)"
+          @update-filter-visibility="$emit('update-filter-visibility', $event)"
           @update-sort="$emit('update-filter-sort', $event)"
         />
       </div>
@@ -125,6 +127,10 @@ defineProps({
     default: () => ({}),
   },
   filterModeStore: {
+    type: Object,
+    default: () => ({}),
+  },
+  filterVisibilityStore: {
     type: Object,
     default: () => ({}),
   },
@@ -188,6 +194,7 @@ defineEmits([
   'update-column-values',
   'update-filter-range',
   'update-filter-mode',
+  'update-filter-visibility',
   'update-row-range',
   'update-column-range',
   'update-row-sort',

@@ -16,7 +16,13 @@
     </div>
     <div v-else-if="pagesError" class="empty-state empty-state--error">
       <p>{{ pagesError }}</p>
-      <button class="btn-outline btn-sm" type="button" @click="store.fetchPages(true)">Повторить</button>
+      <button
+        class="btn-outline btn-sm"
+        type="button"
+        @click="store.fetchPages({ force: true, skipCooldown: true })"
+      >
+        Повторить
+      </button>
     </div>
     <div v-else-if="!pages.length" class="empty-state">
       <p>Страниц пока нет. Нажмите «Создать страницу», чтобы начать.</p>
@@ -107,7 +113,7 @@ const currentUserMeta = computed(() => {
 })
 
 onMounted(() => {
-  store.fetchPages(true)
+  store.fetchPages()
   fieldDictionaryStore.fetchDictionary()
 })
 
@@ -176,7 +182,7 @@ async function removePage(pageId) {
   if (confirm('Удалить страницу?')) {
     try {
       await store.removePage(pageId)
-      store.fetchPages(true)
+      store.fetchPages({ force: true, skipCooldown: true })
     } catch (err) {
       alert('Не удалось удалить страницу. Попробуйте позже.')
     }

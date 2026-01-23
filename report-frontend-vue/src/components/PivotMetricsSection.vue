@@ -372,12 +372,31 @@ const fieldOptions = computed(() =>
     value: field.key,
   })),
 )
-const detailFieldOptions = computed(() =>
-  props.fields.map((field) => ({
-    label: props.getFieldLabel ? props.getFieldLabel(field.key) : field.label,
-    value: field.key,
-  })),
-)
+const detailFieldOptions = computed(() => {
+  const options = []
+  const seen = new Set()
+  const labelFor = (key, fallbackLabel) =>
+    props.getFieldLabel ? props.getFieldLabel(key) : fallbackLabel || key
+  props.fields.forEach((field) => {
+    if (!field?.key) return
+    const baseLabel = labelFor(field.key, field.label)
+    if (!seen.has(field.key)) {
+      seen.add(field.key)
+      options.push({ label: baseLabel, value: field.key })
+    }
+    if (Array.isArray(field.dateParts)) {
+      field.dateParts.forEach((part) => {
+        if (!part?.key || seen.has(part.key)) return
+        seen.add(part.key)
+        options.push({
+          label: labelFor(part.key, part.label || baseLabel),
+          value: part.key,
+        })
+      })
+    }
+  })
+  return options
+})
 const aggregatorOptions = computed(() => props.aggregators)
 const metricTokens = computed(() => props.metricTokens || [])
 const metricTypeOptions = [

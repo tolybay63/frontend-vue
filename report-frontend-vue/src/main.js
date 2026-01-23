@@ -40,21 +40,6 @@ router.beforeEach(async (to) => {
     return loginRoute
   }
 
-  if (authStore.isAuthenticated) {
-    if (!pageStore.pagesLoaded && !pageStore.pagesLoading) {
-      pageStore.fetchPages()
-    }
-    if (to.path.startsWith('/pages')) {
-      pageStore.fetchTemplates(true)
-      pageStore.fetchPages(true)
-      pageStore.fetchLayoutOptions?.()
-      pageStore.fetchWidthOptions?.()
-      pageStore.fetchHeightOptions?.()
-    } else if (!pageStore.templatesLoaded && !pageStore.templatesLoading) {
-      pageStore.fetchTemplates()
-    }
-  }
-
   if (to.path === '/' && pageStore.pages.length) {
     const firstPage = pageStore.pages[0]
     if (firstPage?.id) {

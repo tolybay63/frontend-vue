@@ -1,17 +1,27 @@
 <template>
   <section class="page">
     <div class="page-heading">
-      <h1>Данные</h1>
+      <h1>Мастер создания представления</h1>
       <button class="btn-outline" type="button" @click="returnToViews">
         Вернуться к представлениям
       </button>
     </div>
 
-    <article class="step">
+    <div class="wizard-card">
+      <div>
+        <div class="wizard-card__title">Шаги мастера</div>
+        <p class="muted">
+          Источник → Конфигурация данных → Представление. Можно менять шаги в
+          любом порядке после загрузки данных.
+        </p>
+      </div>
+    </div>
+
+    <article ref="sourceStepRef" class="step">
       <header class="step__header">
         <div class="step__badge">1</div>
         <div>
-          <h2>Источник</h2>
+          <h2>Источник данных</h2>
           <p class="muted">
             Выберите источник данных и задайте параметры выборки. Сначала
             загрузите таблицу, чтобы перейти к следующему шагу.
@@ -131,7 +141,11 @@
               size="large"
             />
             <span
-              v-if="!structuredBodyAvailable && !hasPrimitiveParams"
+              v-if="
+                !structuredBodyAvailable &&
+                !hasPrimitiveParams &&
+                !multiParamsAvailable
+              "
               class="muted"
             >
               Добавьте параметры в формате объекта в «Raw body», чтобы
@@ -139,8 +153,161 @@
             </span>
           </label>
 
+          <div v-if="!multiParamsAvailable" class="params-table__starter">
+            <n-button size="small" quaternary @click="enableMultiParamTable">
+              Создать таблицу
+            </n-button>
+            <span class="muted">
+              Таблица удобна для ввода нескольких наборов параметров.
+            </span>
+          </div>
+
+          <div v-if="multiParamsAvailable" class="params-table">
+            <div class="params-table__actions">
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    size="small"
+                    quaternary
+                    circle
+                    aria-label="Добавить колонку"
+                    @click="addMultiParamColumn"
+                  >
+                    <span class="icon icon-columns" />
+                  </n-button>
+                </template>
+                Добавить колонку
+              </n-tooltip>
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    size="small"
+                    quaternary
+                    circle
+                    aria-label="Добавить строку"
+                    @click="addMultiParamRow"
+                  >
+                    <span class="icon icon-rows" />
+                  </n-button>
+                </template>
+                Добавить строку
+              </n-tooltip>
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    size="small"
+                    quaternary
+                    :disabled="!canFillDownMultiParams"
+                    circle
+                    aria-label="Заполнить вниз"
+                    @click="fillDownMultiParam"
+                  >
+                    <span class="icon icon-down" />
+                  </n-button>
+                </template>
+                Копирует значение активной ячейки вниз по колонке.
+              </n-tooltip>
+            </div>
+            <p class="muted params-table__hint">
+              Вставляйте данные из Excel/Sheets (tab/CSV). Названия колонок
+              станут ключами параметров. «Заполнить вниз» копирует значение
+              активной ячейки по колонке.
+            </p>
+            <div class="params-table__grid">
+              <div class="params-table__row params-table__row--header">
+                <div class="params-table__cell params-table__cell--index">
+                  #
+                </div>
+                <div
+                  v-for="column in multiParamColumns"
+                  :key="column.id"
+                  class="params-table__cell params-table__cell--header"
+                  :class="resolveMultiParamColumnClass(column.id)"
+                >
+                  <div class="params-table__header-input">
+                    <n-input
+                      v-model:value="column.key"
+                      size="small"
+                      placeholder="ключ"
+                      :status="resolveMultiParamColumnStatus(column.id)"
+                      @paste="handleMultiParamHeaderPaste($event, column.id)"
+                    />
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      aria-label="Удалить колонку"
+                      @click="removeMultiParamColumn(column.id)"
+                    >
+                      <span class="icon icon-close" />
+                    </n-button>
+                  </div>
+                </div>
+                <div class="params-table__cell params-table__cell--actions">
+                  Действия
+                </div>
+              </div>
+              <div
+                v-for="(row, rowIndex) in multiParamRows"
+                :key="row.id"
+                class="params-table__row"
+              >
+                <div class="params-table__cell params-table__cell--index">
+                  {{ rowIndex + 1 }}
+                </div>
+                <div
+                  v-for="column in multiParamColumns"
+                  :key="`${row.id}-${column.id}`"
+                  class="params-table__cell"
+                >
+                  <n-input
+                    v-model:value="row.values[column.id]"
+                    size="small"
+                    @focus="setActiveMultiParamCell(row.id, column.id)"
+                    @keydown="
+                      handleMultiParamKeydown($event, rowIndex, column.id)
+                    "
+                    @paste="handleMultiParamPaste($event, row.id, column.id)"
+                  />
+                </div>
+                <div class="params-table__cell params-table__cell--actions">
+                  <n-tooltip trigger="hover">
+                    <template #trigger>
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        aria-label="Дублировать строку"
+                        @click="duplicateMultiParamRow(rowIndex)"
+                      >
+                        <span class="icon icon-duplicate" />
+                      </n-button>
+                    </template>
+                    Дублировать строку
+                  </n-tooltip>
+                  <n-tooltip trigger="hover">
+                    <template #trigger>
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        aria-label="Удалить строку"
+                        @click="removeMultiParamRow(rowIndex)"
+                      >
+                        <span class="icon icon-trash" />
+                      </n-button>
+                    </template>
+                    Удалить строку
+                  </n-tooltip>
+                </div>
+              </div>
+            </div>
+            <p v-if="multiParamColumnsWarning" class="muted">
+              {{ multiParamColumnsWarning }}
+            </p>
+          </div>
           <div
-            v-if="structuredBodyAvailable && parameterKeys.length"
+            v-else-if="structuredBodyAvailable && parameterKeys.length"
             class="params-grid"
           >
             <label v-for="key in parameterKeys" :key="key" class="field">
@@ -272,6 +439,168 @@
             </article>
           </section>
 
+          <details class="pushdown-section">
+            <summary class="pushdown-section__summary">
+              <span>Pushdown (оптимизация upstream)</span>
+              <span class="muted">метаданные для report-back</span>
+            </summary>
+            <div class="pushdown-section__body">
+              <div class="pushdown-toggle">
+                <span class="field__label">Enable pushdown</span>
+                <n-switch v-model:value="sourceDraft.pushdown.enabled" />
+              </div>
+              <p class="muted">
+                Настройка не влияет на текущие запросы. Backend применит pushdown
+                только при поддержке выбранного upstream.
+              </p>
+
+              <div v-if="sourceDraft.pushdown.enabled" class="pushdown-grid">
+                <label class="field">
+                  <span class="field__label">Mode</span>
+                  <n-select
+                    v-model:value="sourceDraft.pushdown.mode"
+                    :options="pushdownModeOptions"
+                    size="large"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Paging strategy</span>
+                  <n-select
+                    v-model:value="sourceDraft.pushdown.paging.strategy"
+                    :options="pushdownPagingOptions"
+                    size="large"
+                  />
+                </label>
+                <label
+                  v-if="sourceDraft.pushdown.paging.strategy === 'offset'"
+                  class="field"
+                >
+                  <span class="field__label">limitPath</span>
+                  <n-input
+                    v-model:value="sourceDraft.pushdown.paging.limitPath"
+                    placeholder="body.params.0.limit"
+                  />
+                </label>
+                <label
+                  v-if="sourceDraft.pushdown.paging.strategy === 'offset'"
+                  class="field"
+                >
+                  <span class="field__label">offsetPath</span>
+                  <n-input
+                    v-model:value="sourceDraft.pushdown.paging.offsetPath"
+                    placeholder="body.params.0.offset"
+                  />
+                </label>
+                <label
+                  v-if="sourceDraft.pushdown.paging.strategy === 'cursor'"
+                  class="field"
+                >
+                  <span class="field__label">cursorPath</span>
+                  <n-input
+                    v-model:value="sourceDraft.pushdown.paging.cursorPath"
+                    placeholder="body.params.0.cursor"
+                  />
+                </label>
+              </div>
+
+              <section
+                v-if="sourceDraft.pushdown.enabled"
+                class="pushdown-filters"
+              >
+                <div class="pushdown-filters__header">
+                  <div>
+                    <span class="field__label">Filters mapping</span>
+                    <p class="muted">
+                      Карта полей фильтров → путь в body.* для upstream.
+                    </p>
+                  </div>
+                  <n-button size="small" quaternary @click="addPushdownFilter">
+                    Добавить фильтр
+                  </n-button>
+                </div>
+                <p v-if="!sourceDraft.pushdown.filters.length" class="muted">
+                  Фильтры не заданы.
+                </p>
+                <div
+                  v-for="(mapping, index) in sourceDraft.pushdown.filters"
+                  :key="`pushdown-filter-${index}`"
+                  class="pushdown-filter-row"
+                >
+                  <n-input
+                    v-model:value="mapping.filterKey"
+                    placeholder="requestDate"
+                    size="small"
+                  />
+                  <n-select
+                    v-model:value="mapping.op"
+                    :options="pushdownOperatorOptions"
+                    size="small"
+                  />
+                  <n-input
+                    v-model:value="mapping.targetPath"
+                    placeholder="body.params.0.date"
+                    size="small"
+                  />
+                  <n-button
+                    quaternary
+                    circle
+                    size="small"
+                    aria-label="Удалить фильтр"
+                    @click="removePushdownFilter(index)"
+                  >
+                    <span class="icon icon-close" />
+                  </n-button>
+                </div>
+                <p v-if="pushdownFilterHasErrors" class="error">
+                  Заполните filterKey и targetPath для каждого фильтра.
+                </p>
+              </section>
+
+              <label v-if="sourceDraft.pushdown.enabled" class="field">
+                <span class="field__label">Notes</span>
+                <n-input
+                  v-model:value="sourceDraft.pushdown.notes"
+                  type="textarea"
+                  :autosize="{ minRows: 2, maxRows: 4 }"
+                  placeholder="Комментарий к pushdown mapping"
+                />
+              </label>
+
+              <div
+                v-if="sourceDraft.pushdown.enabled"
+                class="pushdown-test"
+              >
+                <n-button size="small" quaternary @click="runPushdownTest">
+                  Test mapping locally
+                </n-button>
+                <div
+                  v-if="pushdownTest.executed"
+                  class="pushdown-test__result"
+                >
+                  <p class="muted">
+                    Preview: {{
+                      pushdownTest.preview.length
+                        ? pushdownTest.preview.join(', ')
+                        : 'нет путей для записи'
+                    }}
+                  </p>
+                  <p
+                    v-for="(warning, index) in pushdownTest.warnings"
+                    :key="`pushdown-warning-${index}`"
+                    class="error"
+                  >
+                    {{ warning }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="pushdown-warning">
+                Это только подсказка для report-back. Реально применится только
+                если backend разрешит pushdown для этого upstream.
+              </div>
+            </div>
+          </details>
+
           <div class="source-actions">
             <n-tooltip trigger="hover">
               <template #trigger>
@@ -335,6 +664,29 @@
         </div>
 
         <p v-if="planError" class="error">{{ planError }}</p>
+        <div v-if="batchJobId" class="batch-status">
+          <div class="batch-status__header">
+            <span>Пакетная загрузка</span>
+            <span class="muted">
+              Статус: {{ batchStatusLabel || 'в очереди' }}
+            </span>
+          </div>
+          <div class="batch-status__meta">
+            <span
+              >Готово: {{ batchTotals.done }} из {{ batchTotals.total }}</span
+            >
+            <span>Прогресс: {{ Math.round(batchProgress * 100) }}%</span>
+          </div>
+          <button
+            v-if="batchIsActive"
+            class="btn-outline btn-xs"
+            type="button"
+            :disabled="batchCancelRequested"
+            @click="cancelBatchJob"
+          >
+            {{ batchCancelRequested ? 'Отмена отправлена' : 'Отменить' }}
+          </button>
+        </div>
         <p v-else-if="planLoading" class="muted">Выполняем запрос...</p>
 
         <div v-if="hasResultData" class="result-tabs">
@@ -386,6 +738,7 @@
     </article>
 
     <article
+      ref="configStepRef"
       v-if="isPivotSource"
       class="step"
       :class="{ 'step--disabled': !hasPlanData }"
@@ -393,10 +746,10 @@
       <header class="step__header">
         <div class="step__badge">2</div>
         <div>
-          <h2>Макет</h2>
+          <h2>Конфигурация данных</h2>
           <p class="muted">
-            Выберите поля для фильтров, строк и столбцов, задайте агрегации и
-            сразу увидите результат ниже.
+            Настройте фильтры, строки, столбцы и агрегации — это логика, которую
+            можно переиспользовать в разных представлениях.
           </p>
         </div>
         <div class="step__header-actions">
@@ -429,7 +782,7 @@
           <div class="source-panel layout-panel">
             <div class="source-panel__selector">
               <label class="field">
-                <span class="field__label">Конфигурации</span>
+                <span class="field__label">Конфигурации данных</span>
                 <n-select
                   v-model:value="selectedConfigId"
                   :options="configOptions"
@@ -543,6 +896,7 @@
               :filter-values="filterValues"
               :filter-range-values="filterRangeValues"
               :filter-mode-store="filterModeSelections"
+              :filter-visibility-store="filterVisibilityStore"
               :row-value-filters="dimensionValueFilters.rows"
               :row-range-filters="dimensionRangeFilters.rows"
               :column-value-filters="dimensionValueFilters.columns"
@@ -561,6 +915,7 @@
               @update-filter-values="handleFilterValuesChange"
               @update-filter-range="handleFilterRangeChange"
               @update-filter-mode="handleFilterModePreference"
+              @update-filter-visibility="handleFilterVisibilityChange"
               @update-row-values="handleRowValueFiltersChange"
               @update-row-range="handleRowRangeFiltersChange"
               @update-column-values="handleColumnValueFiltersChange"
@@ -590,27 +945,33 @@
               <thead>
                 <tr v-if="metricColumnGroups.length" class="metric-header">
                   <th
+                    v-for="(label, index) in rowHeaderColumns"
+                    :key="`row-header-${index}`"
                     :rowspan="rowHeaderRowSpan"
                     :style="columnStyle('__rows__')"
                     class="row-header-title"
                   >
-                    {{ rowHeaderTitle }}
+                    {{ label }}
                   </th>
                   <th
                     v-for="group in metricColumnGroups"
                     :key="`metric-${group.metric.id}`"
                     :colspan="group.span || 1"
                     class="column-field-group"
+                    :title="group.metric.label || ''"
                   >
                     <span class="column-field-label">Метрика</span>
-                    <span class="column-field-value">{{
-                      group.metric.label
-                    }}</span>
+                    <span
+                      class="column-field-value"
+                      :title="group.metric.label || ''"
+                    >
+                      {{ group.metric.label }}
+                    </span>
                   </th>
                   <th
                     v-if="hasRowTotals"
                     :rowspan="rowHeaderRowSpan"
-                    class="column-field-group"
+                    class="column-field-group row-total-header"
                   >
                     <span class="column-field-label">Итоги</span>
                   </th>
@@ -633,13 +994,17 @@
                           v-if="cell.isValue"
                           :style="columnStyle(cell.styleKey)"
                           class="column-field-group"
+                          :title="cell.label || ''"
                         >
                           <span class="column-field-label">{{
                             headerRow.fieldLabel
                           }}</span>
-                          <span class="column-field-value">{{
-                            cell.label
-                          }}</span>
+                          <span
+                            class="column-field-value"
+                            :title="cell.label || ''"
+                          >
+                            {{ cell.label }}
+                          </span>
                           <span
                             class="resize-handle"
                             @mousedown.prevent="
@@ -651,33 +1016,45 @@
                           v-else
                           :colspan="cell.colspan"
                           class="column-field-group"
+                          :title="cell.label || ''"
                         >
                           <span class="column-field-label">{{
                             headerRow.fieldLabel
                           }}</span>
-                          <span class="column-field-value">{{
-                            cell.label
-                          }}</span>
+                          <span
+                            class="column-field-value"
+                            :title="cell.label || ''"
+                          >
+                            {{ cell.label }}
+                          </span>
                         </th>
                       </template>
                     </template>
                   </tr>
                 </template>
                 <tr v-else>
-                  <th :style="columnStyle('__rows__')">
-                    {{ rowHeaderTitle }}
+                  <th
+                    v-for="(label, index) in rowHeaderColumns"
+                    :key="`row-header-${index}`"
+                    :style="columnStyle('__rows__')"
+                  >
+                    {{ label }}
                   </th>
                   <th
                     v-for="column in pivotView.columns"
                     :key="column.key"
                     :style="columnStyle(column.key)"
+                    :title="resolveColumnHeaderLabel(column)"
                   >
-                    {{ column.label }}
+                    <span :title="resolveColumnHeaderLabel(column)">
+                      {{ resolveColumnHeaderLabel(column) }}
+                    </span>
                   </th>
                   <template v-if="hasRowTotals">
                     <th
                       v-for="total in rowTotalHeaders"
                       :key="`row-total-${total.metricId}`"
+                      class="row-total-header"
                     >
                       {{ total.label }}
                     </th>
@@ -686,11 +1063,33 @@
               </thead>
               <tbody>
                 <tr
-                  v-for="row in tableRows"
+                  v-for="(row, rowIndex) in tableRows"
                   :key="row.key"
                   :style="rowStyle(row.key)"
                 >
-                  <td class="row-label">
+                  <template v-if="useRowHeaderColumns">
+                    <template
+                      v-for="(cell, levelIndex) in rowHeaderMatrix[rowIndex] ||
+                      []"
+                      :key="`row-${row.key}-${levelIndex}`"
+                    >
+                      <td
+                        v-if="cell.show"
+                        :rowspan="cell.rowspan"
+                        class="row-label row-header-cell"
+                      >
+                        <div class="row-content">
+                          <span>{{ cell.value }}</span>
+                        </div>
+                        <span
+                          v-if="levelIndex === rowHeaderCellCount - 1"
+                          class="row-resize-handle"
+                          @mousedown.prevent="startRowResize(row.key, $event)"
+                        ></span>
+                      </td>
+                    </template>
+                  </template>
+                  <td v-else class="row-label">
                     <div
                       class="row-tree"
                       :style="{ paddingLeft: `${row.depth * 18}px` }"
@@ -704,7 +1103,7 @@
                         {{ isRowCollapsed(row.key) ? '+' : '−' }}
                       </button>
                       <div class="row-content">
-                        <span>{{ row.label }}</span>
+                        <span>{{ resolveRowHeaderLabel(row) }}</span>
                       </div>
                     </div>
                     <span
@@ -807,15 +1206,49 @@
       <header class="step__header">
         <div class="step__badge">3</div>
         <div>
-          <h2>Вид</h2>
+          <h2>Представление</h2>
           <p class="muted">
-            После настройки сводной таблицы выберите вид диаграммы или выгрузите
-            результат.
+            Настройте визуализацию и сохраните представление для повторного
+            использования на страницах.
           </p>
         </div>
       </header>
 
       <div class="step__body">
+        <div class="presentation-context">
+          <div class="context-item">
+            <span class="context-label">Источник</span>
+            <button
+              class="link-btn"
+              type="button"
+              :disabled="!selectedSource"
+              @click="jumpToSource"
+            >
+              {{ selectedSource?.name || 'Не выбран' }}
+            </button>
+          </div>
+          <div class="context-item">
+            <span class="context-label">Конфигурация</span>
+            <div class="context-actions">
+              <button
+                class="link-btn"
+                type="button"
+                :disabled="!selectedConfig"
+                @click="jumpToConfig"
+              >
+                {{ selectedConfig?.name || 'Не выбрана' }}
+              </button>
+              <button
+                class="link-btn link-btn--muted"
+                type="button"
+                :disabled="!selectedConfig"
+                @click="quickEditConfig"
+              >
+                Быстрое редактирование
+              </button>
+            </div>
+          </div>
+        </div>
         <div class="source-panel presentation-panel">
           <div class="source-panel__selector">
             <label class="field">
@@ -1028,11 +1461,17 @@
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NButton, NTooltip, NSelect, NInput, NModal } from 'naive-ui'
+import { NButton, NTooltip, NSelect, NInput, NModal, NSwitch } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
 import PivotLayout from '@/components/PivotLayout.vue'
 import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
+import { createBatch, getBatchStatus, cancelBatch } from '@/shared/api/batch'
+import {
+  fetchBackendView,
+  isPivotBackendEnabled,
+  normalizeBackendView,
+} from '@/shared/services/reportViewBackend'
 import {
   loadReportConfigurations,
   loadReportPresentations,
@@ -1048,6 +1487,8 @@ import { fetchFactorValues } from '@/shared/api/objects'
 import { useDataSourcesStore } from '@/shared/stores/dataSources'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import { useNavigationStore } from '@/shared/stores/navigation'
+import { useEntityArchiveStore } from '@/shared/stores/entityArchive'
+import { trackEvent } from '@/shared/lib/analytics'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 import {
   buildPivotView,
@@ -1081,6 +1522,7 @@ const dataSourcesStore = useDataSourcesStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
 const navigationStore = useNavigationStore()
 const pageBuilderStore = usePageBuilderStore()
+const archiveStore = useEntityArchiveStore()
 const dataSources = computed(() => dataSourcesStore.sources)
 const dataSource = ref('')
 const vizType = ref('table')
@@ -1094,6 +1536,23 @@ const result = ref(null)
 const isCreatingSource = ref(false)
 const sourceSearch = ref('')
 const pendingNewSourceName = ref('')
+const sourceStepRef = ref(null)
+const configStepRef = ref(null)
+
+function sourceArchiveKey(source) {
+  if (!source) return ''
+  const raw =
+    source.remoteMeta?.id ??
+    source.remoteMeta?.Id ??
+    source.remoteMeta?.ID ??
+    source.id
+  if (raw === null || typeof raw === 'undefined') return ''
+  return String(raw).trim()
+}
+
+function isSourceArchived(source) {
+  return archiveStore.isArchived('source', sourceArchiveKey(source))
+}
 const EMPTY_BODY_TEMPLATE = JSON.stringify(
   {
     method: '',
@@ -1102,14 +1561,32 @@ const EMPTY_BODY_TEMPLATE = JSON.stringify(
   null,
   2,
 )
+const REQUEST_FIELD_PREFIX = 'request'
 const HTTP_METHOD_FALLBACKS = ['POST', 'GET', 'PUT', 'PATCH']
 const joinTypeOptions = [
   { label: 'LEFT (все строки основного источника)', value: 'left' },
   { label: 'INNER (только совпадения)', value: 'inner' },
 ]
+const pushdownModeOptions = [
+  { label: 'JSON-RPC params', value: 'jsonrpc_params' },
+  { label: 'REST query', value: 'rest_query' },
+]
+const pushdownPagingOptions = [
+  { label: 'offset', value: 'offset' },
+  { label: 'cursor', value: 'cursor' },
+]
+const pushdownOperatorOptions = [
+  { label: '=', value: 'eq' },
+  { label: 'in', value: 'in' },
+  { label: 'range', value: 'range' },
+]
 const FORMULA_ALLOWED_CHARS = /^[0-9+\-*/().<>=!&|?:,_\s]+$/
 const FORMULA_STRING_LITERAL_PATTERN = /(["'])(?:\\.|(?!\1).)*\1/g
 const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+const MAX_CONCURRENT_REQUESTS =
+  Number(import.meta.env.VITE_MAX_SOURCE_REQUESTS) || 4
+const BATCH_THRESHOLD = Number(import.meta.env.VITE_BATCH_THRESHOLD) || 0
+const BATCH_POLL_MS = Number(import.meta.env.VITE_BATCH_POLL_MS) || 2000
 const sourceDraft = reactive(createBlankSource())
 const rawBodyError = ref('')
 const structuredBodyAvailable = ref(false)
@@ -1117,12 +1594,21 @@ const rpcMethod = ref('')
 const bodyParams = reactive({})
 const bodyParamTypes = reactive({})
 const primitiveParams = ref([])
+const multiParamsAvailable = ref(false)
+const multiParamColumns = ref([])
+const multiParamRows = ref([])
+const activeMultiParamCell = reactive({ rowId: '', columnId: '' })
 const activeResultTab = ref('preview')
 const detailsVisible = ref(false)
 const paramContainerType = ref('array')
 const showDictionaryModal = ref(false)
 const dictionaryGrouping = ref('alphabet')
 const dictionarySearch = ref('')
+const pushdownTest = reactive({
+  executed: false,
+  preview: [],
+  warnings: [],
+})
 const router = useRouter()
 const route = useRoute()
 const routePrefill = reactive({
@@ -1137,8 +1623,14 @@ const routePrefill = reactive({
   loadedPresentation: true,
 })
 const hasRoutePrefill = ref(false)
+const routeActions = reactive({
+  createSource: false,
+  createConfig: false,
+})
+const pendingConfigCreation = ref(false)
 
 onMounted(() => {
+  trackEvent('constructor_open', { section: 'wizard' })
   dataSourcesStore.fetchRemoteSources()
   dataSourcesStore.fetchMethodTypes()
   dataSourcesStore.fetchUserContext()
@@ -1157,6 +1649,8 @@ watch(
     const sourceId = extractRouteParam(query.sourceId)
     const configId = extractRouteParam(query.configId)
     const presentationId = extractRouteParam(query.presentationId)
+    routeActions.createSource = extractRouteFlag(query.createSource)
+    routeActions.createConfig = extractRouteFlag(query.createConfig)
     routePrefill.sourceId = sourceId
     routePrefill.configId = configId
     routePrefill.presentationId = presentationId
@@ -1190,6 +1684,14 @@ const dimensionFieldKeys = computed(() => {
 })
 const planLoading = ref(false)
 const planError = ref('')
+const batchJobId = ref('')
+const batchStatus = ref('')
+const batchTotals = reactive({ total: 0, done: 0 })
+const batchProgress = ref(0)
+const batchResultsSummary = ref(null)
+const batchResultsFileRef = ref('')
+const batchCancelRequested = ref(false)
+let batchPollToken = 0
 const selectedSource = computed(
   () =>
     dataSources.value.find((source) => source.id === dataSource.value) || null,
@@ -1203,14 +1705,22 @@ const canDeleteSource = computed(() => {
   )
   return Number.isFinite(remoteId)
 })
+const selectableSources = computed(() => {
+  const selectedId = dataSource.value
+  return dataSources.value.filter((source) => {
+    if (!source) return false
+    if (source.id === selectedId) return true
+    return !isSourceArchived(source)
+  })
+})
 const sourceOptions = computed(() =>
-  dataSources.value.map((source) => ({
+  selectableSources.value.map((source) => ({
     label: source.name,
     value: source.id,
   })),
 )
 const joinSourceOptions = computed(() =>
-  dataSources.value.map((source) => ({
+  selectableSources.value.map((source) => ({
     label: source.name,
     value: source.id,
     disabled: source.id === sourceDraft.id || source.id === dataSource.value,
@@ -1225,6 +1735,10 @@ const isPivotSource = computed(() => {
   if (isCreatingSource.value) return true
   return pivotSourceIds.value.includes(dataSource.value)
 })
+const pivotBackendEnabled = isPivotBackendEnabled()
+const pivotBackendActive = computed(() => pivotBackendEnabled)
+const debugLogsEnabled =
+  String(import.meta.env.VITE_DEBUG_LOGS || '').toLowerCase() === 'true'
 const hasResultData = computed(() => {
   const value = result.value
   if (Array.isArray(value)) return value.length > 0
@@ -1264,6 +1778,50 @@ const canSendRequest = computed(() => {
 const canToggleDetails = computed(() => hasSourceContext.value)
 const parameterKeys = computed(() => Object.keys(bodyParams))
 const hasPrimitiveParams = computed(() => primitiveParams.value.length > 0)
+const multiParamColumnMeta = computed(() => {
+  const meta = {}
+  const counts = {}
+  multiParamColumns.value.forEach((column) => {
+    const key = String(column.key || '').trim()
+    if (key) {
+      counts[key] = (counts[key] || 0) + 1
+    }
+  })
+  multiParamColumns.value.forEach((column) => {
+    const key = String(column.key || '').trim()
+    meta[column.id] = {
+      key,
+      empty: !key,
+      duplicate: Boolean(key && counts[key] > 1),
+    }
+  })
+  return meta
+})
+const multiParamColumnsWarning = computed(() => {
+  const meta = multiParamColumnMeta.value
+  const emptyCount = Object.values(meta).filter((item) => item.empty).length
+  const duplicateKeys = Array.from(
+    new Set(
+      Object.values(meta)
+        .filter((item) => item.duplicate)
+        .map((item) => item.key),
+    ),
+  ).filter(Boolean)
+  if (!emptyCount && !duplicateKeys.length) return ''
+  const parts = []
+  if (emptyCount) {
+    parts.push('Есть пустые названия колонок. Они будут пропущены.')
+  }
+  if (duplicateKeys.length) {
+    parts.push(
+      `Повторяющиеся колонки: ${duplicateKeys.join(', ')}. Дубли будут пропущены.`,
+    )
+  }
+  return parts.join(' ')
+})
+const canFillDownMultiParams = computed(() =>
+  Boolean(activeMultiParamCell.rowId && activeMultiParamCell.columnId),
+)
 const detailsTooltipLabel = computed(() =>
   shouldShowDetails.value ? 'Скрыть детали' : 'Показать детали',
 )
@@ -1385,6 +1943,7 @@ const pivotConfig = reactive({
 const filterValues = reactive({})
 const filterRangeValues = reactive({})
 const filterModeSelections = reactive({})
+const filterVisibilityStore = reactive({})
 const pivotMetrics = reactive([])
 const pivotMetricsVersion = ref(0)
 const dimensionValueFilters = reactive({
@@ -1475,6 +2034,21 @@ const pendingPresentationName = ref('')
 const presentationDetailsVisible = ref(false)
 const currentPresentationMeta = ref(null)
 
+function configArchiveKey(config) {
+  if (!config) return ''
+  const raw =
+    config.remoteMeta?.id ??
+    config.remoteMeta?.Id ??
+    config.remoteId ??
+    config.id
+  if (raw === null || typeof raw === 'undefined') return ''
+  return String(raw).trim()
+}
+
+function isConfigArchived(config) {
+  return archiveStore.isArchived('config', configArchiveKey(config))
+}
+
 const currentSourceParentId = computed(() => {
   const remoteId = selectedSource.value?.remoteMeta?.id
   const fallback = selectedSource.value?.id
@@ -1496,7 +2070,11 @@ const filteredConfigs = computed(() => {
   if (!configsReady.value) return []
   const parentId = currentSourceParentId.value
   if (!parentId) return []
-  return reportConfigs.value.filter((cfg) => cfg.parent === parentId)
+  return reportConfigs.value.filter((cfg) => {
+    if (cfg.parent !== parentId) return false
+    if (cfg.id === selectedConfigId.value) return true
+    return !isConfigArchived(cfg)
+  })
 })
 
 const configOptions = computed(() =>
@@ -1516,6 +2094,12 @@ const presentationOptions = computed(() =>
     label: item.name,
     value: item.id,
   })),
+)
+
+const selectedConfig = computed(
+  () =>
+    reportConfigs.value.find((cfg) => cfg.id === selectedConfigId.value) ||
+    null,
 )
 
 const selectedPresentation = computed(
@@ -1566,14 +2150,44 @@ watch(
       routePrefill.appliedSource = true
       if (match) return
     }
-    if (
-      !isCreatingSource.value &&
-      !list.find((item) => item.id === dataSource.value)
-    ) {
-      dataSource.value = list[0].id
+    if (!isCreatingSource.value) {
+      const available = selectableSources.value
+      if (!available.find((item) => item.id === dataSource.value)) {
+        dataSource.value = available[0]?.id || ''
+      }
     }
   },
   { immediate: true },
+)
+
+watch(
+  () => routeActions.createSource,
+  (next) => {
+    if (!next) return
+    startCreatingSource()
+    clearCreationFlags()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => routeActions.createConfig,
+  (next) => {
+    if (!next) return
+    pendingConfigCreation.value = true
+    clearCreationFlags()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => pendingConfigCreation.value && hasPlanData.value && isPivotSource.value,
+  (ready) => {
+    if (!ready) return
+    pendingConfigCreation.value = false
+    layoutDetailsVisible.value = true
+    scrollToConfigStep()
+  },
 )
 
 watch(
@@ -1754,7 +2368,7 @@ watch(
       pendingNewSourceName.value = ''
       return
     }
-    const match = dataSources.value.find(
+    const match = selectableSources.value.find(
       (source) => source.name.toLowerCase() === trimmed.toLowerCase(),
     )
     if (match && !isCreatingSource.value) {
@@ -1807,6 +2421,7 @@ watch(visualizationTypes, () => {
 
 let syncingFromBody = false
 let syncingFromEditors = false
+let syncingFromEditorsTimer = null
 
 watch(
   () => sourceDraft.rawBody,
@@ -1816,12 +2431,15 @@ watch(
     if (!value) {
       rawBodyError.value = ''
       structuredBodyAvailable.value = false
+      multiParamsAvailable.value = false
       syncingFromBody = true
       rpcMethod.value = ''
       paramContainerType.value = 'array'
       syncReactiveObject(bodyParams, {})
       syncReactiveObject(bodyParamTypes, {})
       primitiveParams.value = []
+      multiParamColumns.value = []
+      multiParamRows.value = []
       syncingFromBody = false
       return
     }
@@ -1829,30 +2447,39 @@ watch(
       const parsed = JSON.parse(value)
       rawBodyError.value = ''
       const methodValue = typeof parsed.method === 'string' ? parsed.method : ''
+      const tableEntries = extractMultiParamEntries(parsed)
+      const isTableBody =
+        tableEntries.length > 0 || isEmptyMultiParamTable(parsed)
       let paramPayload = null
       let container = 'array'
-      if (Array.isArray(parsed.params)) {
-        const firstEntry = parsed.params[0]
-        if (
-          firstEntry &&
-          typeof firstEntry === 'object' &&
-          !Array.isArray(firstEntry)
-        ) {
-          paramPayload = firstEntry
-        } else if (parsed.params.length) {
-          primitiveParams.value = parsed.params.map((item) =>
-            formatPrimitiveParam(item),
-          )
+      if (!isTableBody) {
+        if (Array.isArray(parsed.params)) {
+          const firstEntry = parsed.params[0]
+          if (
+            firstEntry &&
+            typeof firstEntry === 'object' &&
+            !Array.isArray(firstEntry)
+          ) {
+            paramPayload = firstEntry
+          } else if (parsed.params.length) {
+            primitiveParams.value = parsed.params.map((item) =>
+              formatPrimitiveParam(item),
+            )
+          }
+        } else if (parsed.params && typeof parsed.params === 'object') {
+          paramPayload = parsed.params
+          container = 'object'
         }
-      } else if (parsed.params && typeof parsed.params === 'object') {
-        paramPayload = parsed.params
-        container = 'object'
       }
       syncingFromBody = true
       rpcMethod.value = methodValue
       paramContainerType.value = container
+      multiParamsAvailable.value = isTableBody
       structuredBodyAvailable.value = Boolean(paramPayload)
-      if (!paramPayload) {
+      if (isTableBody) {
+        primitiveParams.value = []
+        syncMultiParamTable(tableEntries)
+      } else if (!paramPayload) {
         if (!Array.isArray(parsed.params) || !parsed.params.length) {
           primitiveParams.value = []
         }
@@ -1870,11 +2497,14 @@ watch(
     } catch (err) {
       rawBodyError.value = err.message
       structuredBodyAvailable.value = false
+      multiParamsAvailable.value = false
       syncingFromBody = true
       paramContainerType.value = 'array'
       syncReactiveObject(bodyParams, {})
       syncReactiveObject(bodyParamTypes, {})
       primitiveParams.value = []
+      multiParamColumns.value = []
+      multiParamRows.value = []
       syncingFromBody = false
     }
   },
@@ -1905,9 +2535,7 @@ watch(
           ? normalizedParams
           : [normalizedParams]
     }
-    syncingFromEditors = true
-    sourceDraft.rawBody = JSON.stringify(parsed, null, 2)
-    syncingFromEditors = false
+    setRawBodyFromEditors(parsed)
   },
   { deep: true },
 )
@@ -1929,42 +2557,55 @@ watch(
     }
     parsed.method = method || parsed.method || ''
     parsed.params = params.map((value) => normalizePrimitiveValue(value))
-    syncingFromEditors = true
-    sourceDraft.rawBody = JSON.stringify(parsed, null, 2)
-    syncingFromEditors = false
+    setRawBodyFromEditors(parsed)
   },
   { deep: true },
 )
 
 watch(
-  dimensionFieldKeys,
-  (validKeys) => {
-    ;['filters', 'rows', 'columns'].forEach((section) => {
-      pivotConfig[section] = pivotConfig[section].filter((key) =>
-        validKeys.includes(key),
-      )
-      syncSortStore(pivotSortState[section], pivotConfig[section])
-    })
-    pivotMetrics.forEach((metric) => {
-      if (metric.type === 'formula') return
-      if (metric.fieldKey && !validKeys.includes(metric.fieldKey)) {
-        metric.fieldKey = ''
-      }
-    })
-    pivotMetricsVersion.value += 1
+  () => ({
+    method: rpcMethod.value,
+    columns: multiParamColumns.value.map((column) => column.key),
+    rows: multiParamRows.value.map((row) => ({ ...row.values })),
+  }),
+  ({ method }) => {
+    if (syncingFromBody) return
+    if (!multiParamsAvailable.value) return
+    syncMultiParamBody(method)
   },
+  { deep: true },
 )
+
+watch(dimensionFieldKeys, (validKeys) => {
+  ;['filters', 'rows', 'columns'].forEach((section) => {
+    pivotConfig[section] = pivotConfig[section].filter((key) =>
+      validKeys.includes(key),
+    )
+    syncSortStore(pivotSortState[section], pivotConfig[section])
+  })
+  pivotMetrics.forEach((metric) => {
+    if (metric.type === 'formula') return
+    if (metric.fieldKey && !validKeys.includes(metric.fieldKey)) {
+      metric.fieldKey = ''
+    }
+  })
+  pivotMetricsVersion.value += 1
+})
 
 watch(
   () => [...pivotConfig.filters],
   (next, prev) => {
     next.forEach((key) => {
       if (!filterValues[key]) filterValues[key] = []
+      if (!(key in filterVisibilityStore)) {
+        filterVisibilityStore[key] = false
+      }
     })
     prev.forEach((key) => {
       if (!next.includes(key)) {
         delete filterValues[key]
         delete filterRangeValues[key]
+        delete filterVisibilityStore[key]
       }
     })
     cleanupRangeEntries(filterRangeValues, next)
@@ -2099,9 +2740,7 @@ function resolveDimensionDescriptor(key) {
     type: 'string',
     datePart: meta.part,
     dateSourceKey: meta.fieldKey,
-    values:
-      (base.datePartValues && base.datePartValues[meta.part]) ||
-      [],
+    values: (base.datePartValues && base.datePartValues[meta.part]) || [],
   }
 }
 
@@ -2326,7 +2965,7 @@ const filteredPlanRecords = computed(() => {
 
 const pivotWarnings = computed(() => {
   const messages = []
-  if (!records.value.length) {
+  if (!records.value.length && !pivotBackendActive.value) {
     messages.push('Загрузите данные плана, чтобы построить сводную таблицу.')
   }
   if (!pivotConfig.rows.length && !pivotConfig.columns.length) {
@@ -2390,8 +3029,212 @@ function sanitizeFormulaExpression(value = '') {
     .replace(FORMULA_STRING_LITERAL_PATTERN, '')
 }
 
+const backendPivotState = reactive({
+  view: null,
+  chart: null,
+  error: '',
+  loading: false,
+  signature: '',
+  inFlightSignature: '',
+})
+
+function resolveBackendTemplateId() {
+  const raw =
+    currentPresentationMeta.value?.id ??
+    currentPresentationMeta.value?.Id ??
+    currentPresentationMeta.value?.ID ??
+    selectedPresentationId.value ??
+    currentConfigRemoteId.value ??
+    selectedConfigId.value ??
+    sourceDraft.id ??
+    ''
+  return raw ? String(raw) : ''
+}
+
+function buildBackendRemoteSource() {
+  if (!sourceDraft?.url) return null
+  const method = String(
+    sourceDraft.httpMethod || sourceDraft.method || 'POST',
+  ).toUpperCase()
+  const parsed = sourceDraft.rawBody ? safeJsonParse(sourceDraft.rawBody) : null
+  const body = parsed?.ok ? parsed.value : sourceDraft.rawBody || ''
+  const remoteId =
+    sourceDraft.remoteId ||
+    sourceDraft.remoteMeta?.id ||
+    sourceDraft.remoteMeta?.Id ||
+    sourceDraft.remoteMeta?.ID ||
+    ''
+  const pushdownPayload = buildPushdownPayload(sourceDraft.pushdown)
+  return {
+    id: sourceDraft.id || '',
+    remoteId,
+    name: sourceDraft.name || '',
+    description: sourceDraft.description || '',
+    method,
+    url: sourceDraft.url || '',
+    body,
+    headers: sourceDraft.headers || {},
+    joins: normalizeJoinList(sourceDraft.joins || []),
+    rawBody: sourceDraft.rawBody || '',
+    remoteMeta: sourceDraft.remoteMeta || {},
+    ...(pushdownPayload ? { pushdown: pushdownPayload } : {}),
+  }
+}
+
+function buildBackendSnapshot() {
+  return {
+    pivot: {
+      filters: [...pivotConfig.filters],
+      rows: [...pivotConfig.rows],
+      columns: [...pivotConfig.columns],
+    },
+    metrics: pivotMetrics.map((metric) => ({
+      ...metric,
+      conditionalFormatting: normalizeConditionalFormatting(
+        metric.conditionalFormatting,
+      ),
+    })),
+    filterValues: copyFilterStore(filterValues),
+    filterRanges: copyRangeStore(filterRangeValues),
+    dimensionValues: {
+      rows: copyFilterStore(dimensionValueFilters.rows),
+      columns: copyFilterStore(dimensionValueFilters.columns),
+    },
+    dimensionRanges: {
+      rows: copyRangeStore(dimensionRangeFilters.rows),
+      columns: copyRangeStore(dimensionRangeFilters.columns),
+    },
+    options: {
+      headerOverrides: { ...headerOverrides },
+      sorts: {
+        filters: cloneSortState(pivotSortState.filters),
+        rows: cloneSortState(pivotSortState.rows),
+        columns: cloneSortState(pivotSortState.columns),
+      },
+    },
+    filtersMeta: buildFiltersMetaSnapshot(),
+    fieldMeta: buildFieldMetaSnapshot(),
+    filterModes: copyModeStore(filterModeSelections),
+    chartSettings: {},
+    conditionalFormatting: [],
+  }
+}
+
+function buildBackendFilters() {
+  return {
+    globalFilters: {
+      values: copyFilterStore(filterValues),
+      ranges: copyRangeStore(filterRangeValues),
+    },
+    containerFilters: {
+      values: {},
+      ranges: {},
+    },
+  }
+}
+
+const backendPayload = computed(() => {
+  if (!pivotBackendActive.value) return null
+  if (pivotWarnings.value.length) return null
+  if (!computationBaseMetrics.value.length) return null
+  const remoteSource = buildBackendRemoteSource()
+  if (!remoteSource) return null
+  return {
+    templateId: resolveBackendTemplateId(),
+    remoteSource,
+    snapshot: buildBackendSnapshot(),
+    filters: buildBackendFilters(),
+  }
+})
+
+const suppressBackendErrors = computed(
+  () => batchStatus.value === 'done' && records.value.length > 0,
+)
+
+const backendSignature = computed(() =>
+  backendPayload.value ? JSON.stringify(backendPayload.value) : '',
+)
+
+watch(
+  () => backendSignature.value,
+  async (signature) => {
+    if (!signature) {
+      backendPivotState.view = null
+      backendPivotState.chart = null
+      backendPivotState.error = ''
+      backendPivotState.loading = false
+      backendPivotState.signature = ''
+      backendPivotState.inFlightSignature = ''
+      return
+    }
+    if (backendPivotState.signature === signature) return
+    if (
+      backendPivotState.loading &&
+      backendPivotState.inFlightSignature === signature
+    ) {
+      return
+    }
+    backendPivotState.signature = signature
+    backendPivotState.inFlightSignature = signature
+    backendPivotState.loading = true
+    backendPivotState.error = ''
+    backendPivotState.view = null
+    backendPivotState.chart = null
+    // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
+    // Локальный buildPivotView оставлен как fallback до полной миграции.
+    try {
+      const { view, chart } = await fetchBackendView({
+        ...backendPayload.value,
+        silent: suppressBackendErrors.value,
+      })
+      if (
+        !view ||
+        (!Array.isArray(view.rows) && !Array.isArray(view.columns))
+      ) {
+        throw new Error('Backend view payload is empty.')
+      }
+      const normalized = normalizeBackendView(
+        view,
+        computationBaseMetrics.value,
+      )
+      if (!normalized?.rows?.length && filteredPlanRecords.value.length) {
+        throw new Error('Backend view has no rows.')
+      }
+      backendPivotState.view = normalized
+      backendPivotState.chart = chart || null
+    } catch (err) {
+      if (!suppressBackendErrors.value) {
+        console.warn('Failed to build backend pivot view', err)
+      }
+      backendPivotState.error =
+        err?.message || 'Не удалось построить сводную таблицу.'
+      backendPivotState.view = null
+      backendPivotState.chart = null
+    } finally {
+      backendPivotState.loading = false
+      if (backendPivotState.inFlightSignature === signature) {
+        backendPivotState.inFlightSignature = ''
+      }
+    }
+  },
+  { immediate: true },
+)
+
 const basePivotResult = computed(() => {
   if (pivotWarnings.value.length) return { view: null, errorMetricId: null }
+  if (pivotBackendActive.value) {
+    if (backendPivotState.view) {
+      const backendRows = backendPivotState.view.rows || []
+      if (!backendRows.length && filteredPlanRecords.value.length) {
+        // fallback to local pivot if backend view is empty but we have data
+      } else {
+        return { view: backendPivotState.view, errorMetricId: null }
+      }
+    }
+    if (!backendPivotState.error) {
+      return { view: null, errorMetricId: null }
+    }
+  }
   if (!filteredPlanRecords.value.length)
     return { view: null, errorMetricId: null }
   if (!computationBaseMetrics.value.length)
@@ -2439,11 +3282,31 @@ const canLoadPresentation = computed(
 const canCreatePresentationFromSearch = computed(
   () => Boolean(pendingPresentationName.value) && canManagePresentations.value,
 )
+const batchIsActive = computed(() =>
+  ['queued', 'running'].includes(batchStatus.value),
+)
+const batchHasBlockingIssue = computed(
+  () =>
+    Boolean(batchResultsFileRef.value) ||
+    batchStatus.value === 'failed' ||
+    batchStatus.value === 'cancelled',
+)
+const batchStatusLabel = computed(() => {
+  const map = {
+    queued: 'в очереди',
+    running: 'выполняется',
+    done: 'готово',
+    failed: 'ошибка',
+    cancelled: 'отменено',
+  }
+  return map[batchStatus.value] || batchStatus.value
+})
 const canSavePresentation = computed(() => {
   if (!canManagePresentations.value) return false
   if (!presentationDetailsVisible.value) return false
   if (!presentationName.value.trim()) return false
   if (!selectedVisualization.value) return false
+  if (batchIsActive.value || batchHasBlockingIssue.value) return false
   return !presentationSaving.value
 })
 const hasSelectedFilterValues = computed(
@@ -2457,6 +3320,18 @@ const rowHeaderTitle = computed(() => {
     .map((key) => getFieldDisplayNameByKey(key))
     .join(' › ')
 })
+const rowHeaderFields = computed(() => {
+  if (!pivotConfig.rows.length) return ['Строки']
+  return pivotConfig.rows.map((key) => getFieldDisplayNameByKey(key))
+})
+const hasRowTree = computed(() => Boolean(pivotView.value?.rowTree?.length))
+const useRowHeaderColumns = computed(
+  () => !hasRowTree.value && rowHeaderFields.value.length > 1,
+)
+const rowHeaderColumns = computed(() =>
+  useRowHeaderColumns.value ? rowHeaderFields.value : [rowHeaderTitle.value],
+)
+const rowHeaderCellCount = computed(() => rowHeaderFields.value.length)
 const metricColumnGroups = computed(() => {
   const view = pivotView.value
   if (!view) return []
@@ -2527,11 +3402,58 @@ const tableRows = computed(() => {
     key: row.key,
     label: row.label,
     fieldLabel: '',
-    depth: 0,
+    depth: Array.isArray(row.levels) ? Math.max(row.levels.length - 1, 0) : 0,
     hasChildren: false,
     cells: row.cells,
     totals: row.totals,
+    levels: row.levels || [],
+    values: row.values || [],
   }))
+})
+const rowHeaderMatrix = computed(() => {
+  if (!useRowHeaderColumns.value) return []
+  const rows = tableRows.value
+  if (!rows.length) return []
+  const levelCount = rowHeaderFields.value.length
+  if (!levelCount) return []
+  const valuesList = rows.map((row) => resolveRowLevelValues(row, levelCount))
+  const matrix = valuesList.map((values) =>
+    values.map((value) => ({
+      value,
+      rowspan: 1,
+      show: true,
+    })),
+  )
+  const hasSamePrefix = (left, right, depth) => {
+    for (let index = 0; index < depth; index += 1) {
+      if (left[index] !== right[index]) return false
+    }
+    return true
+  }
+  for (let level = 0; level < levelCount; level += 1) {
+    let start = 0
+    while (start < rows.length) {
+      const current = valuesList[start]
+      const value = current[level]
+      let span = 1
+      let next = start + 1
+      while (
+        next < rows.length &&
+        valuesList[next][level] === value &&
+        hasSamePrefix(current, valuesList[next], level)
+      ) {
+        span += 1
+        next += 1
+      }
+      matrix[start][level].rowspan = span
+      for (let index = start + 1; index < start + span; index += 1) {
+        matrix[index][level].show = false
+        matrix[index][level].rowspan = 0
+      }
+      start += span
+    }
+  }
+  return matrix
 })
 
 const rowTotalMetricIds = computed(() =>
@@ -2628,7 +3550,7 @@ const chartConfig = computed(() => {
   if (!supportedChartTypes.includes(vizType.value)) return null
   const view = pivotView.value
   if (!view || !view.rows.length) return null
-  const labels = view.rows.map((row) => row.label || '—')
+  const labels = view.rows.map((row) => resolveRowHeaderLabel(row) || '—')
   let datasets = []
 
   if (view.columns.length) {
@@ -2639,7 +3561,7 @@ const chartConfig = computed(() => {
         return typeof cell?.value === 'number' ? Number(cell.value) : 0
       })
       return {
-        label: column.label,
+        label: formatColumnEntryLabel(column),
         data,
         backgroundColor: color,
         borderColor: color,
@@ -2740,6 +3662,32 @@ function toggleDetails() {
   detailsVisible.value = !detailsVisible.value
 }
 
+function scrollToStep(target) {
+  if (!target || typeof target.scrollIntoView !== 'function') return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function scrollToSourceStep() {
+  scrollToStep(sourceStepRef.value)
+}
+
+function scrollToConfigStep() {
+  scrollToStep(configStepRef.value)
+}
+
+function jumpToSource() {
+  scrollToSourceStep()
+}
+
+function jumpToConfig() {
+  scrollToConfigStep()
+}
+
+function quickEditConfig() {
+  layoutDetailsVisible.value = true
+  scrollToConfigStep()
+}
+
 function openDictionary() {
   showDictionaryModal.value = true
 }
@@ -2758,20 +3706,34 @@ async function saveCurrentSource() {
     },
     supportsPivot: sourceDraft.supportsPivot !== false,
     joins: normalizeJoinList(sourceDraft.joins || []),
+    pushdown: sourceDraft.pushdown,
   }
   try {
     const result = await dataSourcesStore.saveSource(payload)
     const savedId = result?.id || payload.id
-    dataSource.value = savedId
+    trackEvent('source_saved', { id: String(savedId || '') })
+    dataSource.value = String(savedId)
     isCreatingSource.value = false
     pendingNewSourceName.value = ''
     if (result?.syncPromise?.then) {
       result.syncPromise
-        .then((remoteId) => {
+        .then(async (remoteId) => {
           if (!remoteId) return
           const normalized = String(remoteId)
-          if (normalized && dataSource.value !== normalized) {
-            dataSource.value = normalized
+          const match =
+            dataSources.value.find(
+              (source) => String(source.remoteMeta?.id) === normalized,
+            ) || dataSources.value.find((source) => source.id === normalized)
+          const nextId = match?.id || normalized
+          if (nextId && dataSource.value !== nextId) {
+            dataSource.value = nextId
+          }
+          if (match?.remoteMeta?.id) {
+            try {
+              await executeCurrentSource()
+            } catch (err) {
+              console.warn('Failed to auto execute source', err)
+            }
           }
         })
         .catch(() => {
@@ -2781,9 +3743,65 @@ async function saveCurrentSource() {
         })
     }
   } catch (err) {
+    trackEvent('source_save_error', {
+      message: String(err?.message || err),
+    })
     alert(
       'Не удалось сохранить источник. Проверьте соединение или попробуйте позже.',
     )
+  }
+}
+
+async function countPresentationsForSource(sourceId) {
+  const numericId = Number(sourceId)
+  if (!Number.isFinite(numericId)) return 0
+  try {
+    const [configRecords, presentationRecords] = await Promise.all([
+      loadReportConfigurations(),
+      loadReportPresentations(),
+    ])
+    const configIds = new Set()
+    configRecords.forEach((entry) => {
+      const parentId = toNumericValue(
+        entry?.parent ?? entry?.parentId ?? entry?.Parent,
+      )
+      if (parentId !== numericId) return
+      const configId = toNumericValue(entry?.id ?? entry?.Id ?? entry?.ID)
+      if (Number.isFinite(configId)) {
+        configIds.add(configId)
+      }
+    })
+    if (!configIds.size) return 0
+    return presentationRecords.reduce((count, entry) => {
+      const parent = toNumericValue(
+        entry?.parent ?? entry?.parentId ?? entry?.Parent,
+      )
+      if (Number.isFinite(parent) && configIds.has(parent)) {
+        return count + 1
+      }
+      return count
+    }, 0)
+  } catch (err) {
+    console.warn('Failed to resolve source usage', err)
+    return 0
+  }
+}
+
+async function countPresentationsForConfig(configId) {
+  const numericId = Number(configId)
+  if (!Number.isFinite(numericId)) return 0
+  try {
+    const presentationRecords = await loadReportPresentations()
+    return presentationRecords.reduce((count, entry) => {
+      const parent = toNumericValue(
+        entry?.parent ?? entry?.parentId ?? entry?.Parent,
+      )
+      if (parent === numericId) return count + 1
+      return count
+    }, 0)
+  } catch (err) {
+    console.warn('Failed to resolve config usage', err)
+    return 0
   }
 }
 
@@ -2797,6 +3815,17 @@ async function deleteCurrentSource() {
     alert('Удалить можно только источник, сохранённый на сервере.')
     return
   }
+  const usageCount = await countPresentationsForSource(remoteId)
+  if (usageCount > 0) {
+    alert(
+      `Нельзя удалить источник: используется в ${usageCount} представлениях. Используйте архивирование.`,
+    )
+    trackEvent('source_delete_blocked', {
+      id: String(remoteId),
+      usageCount,
+    })
+    return
+  }
   if (
     !confirm(
       `Удалить источник «${source.name || 'Без названия'}»? Это действие нельзя отменить.`,
@@ -2807,6 +3836,8 @@ async function deleteCurrentSource() {
   try {
     await deleteObjectWithProperties(remoteId)
     dataSourcesStore.removeSource(source.id)
+    archiveStore.restoreEntity('source', sourceArchiveKey(source))
+    trackEvent('source_deleted', { id: String(remoteId) })
     if (dataSource.value === source.id) {
       dataSource.value = ''
       resetSourceDraft()
@@ -2816,6 +3847,10 @@ async function deleteCurrentSource() {
     }
   } catch (err) {
     console.warn('Failed to delete data source', err)
+    trackEvent('source_delete_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось удалить источник. Попробуйте позже.')
   }
 }
@@ -2844,16 +3879,53 @@ async function resolveUserContext() {
 
 async function loadFields() {
   if (planLoading.value) return
-  const requestPayload = resolveCurrentRequestPayload()
-  if (!requestPayload) return
+  const batchCandidate = buildBatchPayloadFromConfig(sourceDraft)
+  const batchEligible =
+    String(sourceDraft.httpMethod || '').toUpperCase() !== 'GET'
+  const shouldUseBatch =
+    batchEligible &&
+    batchCandidate?.paramsList &&
+    batchCandidate.paramsList.length > BATCH_THRESHOLD
+
+  const requestPayloads = shouldUseBatch ? [] : resolveCurrentRequestPayload()
+  if (!shouldUseBatch && !requestPayloads) return
 
   const joins = normalizeJoinList(sourceDraft.joins || [])
   configsReady.value = false
   planLoading.value = true
   planError.value = ''
+  resetBatchState()
   try {
-    const response = await sendDataSourceRequest(requestPayload)
-    const baseRecords = extractRecordsFromResponse(response)
+    let baseRecords = []
+    if (shouldUseBatch) {
+      if (batchCandidate.error) {
+        planError.value = batchCandidate.error
+        return
+      }
+      const batchStatusResult = await runBatchJob(batchCandidate.payload, {
+        paramsList: batchCandidate.paramsList,
+        trackUI: true,
+      })
+      if (!batchStatusResult) return
+      const batchRecords = buildRecordsFromBatchStatus(
+        batchStatusResult,
+        batchCandidate.paramsList,
+        { reportErrors: true },
+      )
+      if (!batchRecords) {
+        records.value = []
+        fields.value = []
+        result.value = null
+        return
+      }
+      baseRecords = batchRecords
+    } else {
+      const responses = await executeSourceRequests(requestPayloads)
+      baseRecords = responses.flatMap((response, index) => {
+        const rows = extractRecordsFromResponse(response)
+        return applyRequestFields(rows, requestPayloads[index]?.meta?.fields)
+      })
+    }
     let mergedRecords = baseRecords
     let joinErrors = []
     if (joins.length && baseRecords.length) {
@@ -2896,12 +3968,174 @@ async function loadFields() {
         err?.message ||
         'Не удалось загрузить данные источника.'
     }
+    trackEvent('source_request_error', {
+      message: String(err?.message || err),
+      totalRequests: requestPayloads?.length || 0,
+    })
     records.value = []
     fields.value = []
     result.value = null
   } finally {
     planLoading.value = false
   }
+}
+
+async function executeRequestBatches(entries = [], executor) {
+  const limit = Math.max(1, MAX_CONCURRENT_REQUESTS)
+  const responses = []
+  for (let index = 0; index < entries.length; index += limit) {
+    const batch = entries.slice(index, index + limit)
+    const batchResponses = await Promise.all(batch.map(executor))
+    responses.push(...batchResponses)
+  }
+  return responses
+}
+
+async function executeSourceRequests(requestPayloads = []) {
+  return executeRequestBatches(requestPayloads, (entry) =>
+    sendDataSourceRequest(entry.request),
+  )
+}
+
+function resetBatchState() {
+  batchPollToken += 1
+  batchJobId.value = ''
+  batchStatus.value = ''
+  batchTotals.total = 0
+  batchTotals.done = 0
+  batchProgress.value = 0
+  batchResultsSummary.value = null
+  batchResultsFileRef.value = ''
+  batchCancelRequested.value = false
+}
+
+function updateBatchState(status = {}) {
+  batchJobId.value = status.job_id || batchJobId.value
+  batchStatus.value = status.status || batchStatus.value
+  batchTotals.total = Number(status.total) || batchTotals.total
+  batchTotals.done = Number(status.done) || batchTotals.done
+  batchProgress.value =
+    typeof status.progress === 'number'
+      ? status.progress
+      : batchTotals.total
+        ? batchTotals.done / batchTotals.total
+        : 0
+  batchResultsSummary.value = status.resultsSummary || null
+  batchResultsFileRef.value = status.resultsFileRef || ''
+  batchCancelRequested.value = Boolean(status.cancelRequested)
+}
+
+async function runBatchJob(payload, { paramsList = [], trackUI = false } = {}) {
+  const token = trackUI ? batchPollToken + 1 : 0
+  if (trackUI) {
+    batchPollToken = token
+  }
+  const created = await createBatch(payload)
+  const jobId = created?.job_id
+  if (!jobId) {
+    if (trackUI) {
+      planError.value = 'Не удалось запустить пакетную обработку.'
+    }
+    return null
+  }
+  if (trackUI) {
+    updateBatchState({
+      job_id: jobId,
+      status: 'queued',
+      total: paramsList.length,
+      done: 0,
+      progress: 0,
+    })
+  }
+  while (true) {
+    const status = await getBatchStatus(jobId)
+    if (trackUI && batchPollToken === token) {
+      updateBatchState(status)
+    }
+    if (!status || !status.status) {
+      return null
+    }
+    if (['queued', 'running'].includes(status.status)) {
+      await waitFor(BATCH_POLL_MS)
+      if (trackUI && batchPollToken !== token) {
+        return null
+      }
+      continue
+    }
+    return status
+  }
+}
+
+function waitFor(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function buildRecordsFromBatchStatus(
+  status,
+  paramsList = [],
+  { reportErrors } = {},
+) {
+  if (!status || !status.status) return null
+  if (status.status === 'failed') {
+    if (reportErrors) {
+      planError.value =
+        'Часть параметров завершилась с ошибкой. Уточните фильтры и повторите запрос.'
+    }
+    return null
+  }
+  if (status.status === 'cancelled') {
+    if (reportErrors) {
+      planError.value = 'Пакетная загрузка отменена.'
+    }
+    return null
+  }
+  if (status.resultsFileRef) {
+    if (reportErrors) {
+      planError.value =
+        'Результат слишком большой. Разбейте параметры на партии или добавьте фильтры. Для выгрузки нужен отдельный endpoint.'
+    }
+    return null
+  }
+  if (!Array.isArray(status.results)) {
+    if (reportErrors && status.status === 'done') {
+      planError.value = 'Результат пакетной загрузки недоступен.'
+      return null
+    }
+    return []
+  }
+  const fieldMaps = paramsList.map((params) =>
+    buildRequestFieldsFromParams(params),
+  )
+  return status.results.flatMap((item, index) => {
+    if (!item || item.ok === false) return []
+    const rows = extractRecordsFromResponse(item.data)
+    const fields = fieldMaps[index] || {}
+    return applyRequestFields(rows, fields)
+  })
+}
+
+async function cancelBatchJob() {
+  if (!batchJobId.value || !batchIsActive.value) return
+  batchCancelRequested.value = true
+  try {
+    await cancelBatch(batchJobId.value)
+  } catch (err) {
+    console.warn('Failed to cancel batch job', err)
+  }
+}
+
+function formatBatchError(status) {
+  if (!status) return 'Пакетная загрузка не удалась.'
+  if (status.resultsFileRef) {
+    return 'Результат слишком большой. Разбейте параметры на партии или добавьте фильтры.'
+  }
+  if (status.status === 'failed') {
+    return 'Часть параметров завершилась с ошибкой.'
+  }
+  if (status.status === 'cancelled') {
+    return 'Пакетная загрузка отменена.'
+  }
+  return status.error || 'Пакетная загрузка не удалась.'
 }
 
 async function fetchJoinResults(joins = []) {
@@ -2919,8 +4153,63 @@ async function fetchJoinResults(joins = []) {
         error: `Источник для связи «${label}» не найден.`,
       }
     }
+    const batchCandidate = buildBatchPayloadFromConfig(targetSource)
+    const batchEligible =
+      String(targetSource.httpMethod || '').toUpperCase() !== 'GET'
+    const shouldUseBatch =
+      batchEligible &&
+      batchCandidate?.paramsList &&
+      batchCandidate.paramsList.length > BATCH_THRESHOLD
+    if (shouldUseBatch) {
+      if (batchCandidate.error) {
+        return {
+          index,
+          join,
+          records: [],
+          error: batchCandidate.error,
+        }
+      }
+      try {
+        const status = await runBatchJob(batchCandidate.payload, {
+          paramsList: batchCandidate.paramsList,
+          trackUI: false,
+        })
+        if (!status) {
+          return {
+            index,
+            join,
+            records: [],
+            error: `Не удалось загрузить связь «${label}».`,
+          }
+        }
+        const records = buildRecordsFromBatchStatus(
+          status,
+          batchCandidate.paramsList,
+          { reportErrors: false },
+        )
+        if (!records) {
+          return {
+            index,
+            join,
+            records: [],
+            error: `${formatBatchError(status)} (${label})`,
+          }
+        }
+        return { index, join, records }
+      } catch (err) {
+        return {
+          index,
+          join,
+          records: [],
+          error:
+            err?.response?.data?.message ||
+            err?.message ||
+            `Не удалось загрузить связь «${label}».`,
+        }
+      }
+    }
     const { payload, error } = buildRequestPayloadFromConfig(targetSource)
-    if (!payload || error) {
+    if (!payload || !payload.length || error) {
       return {
         index,
         join,
@@ -2931,8 +4220,13 @@ async function fetchJoinResults(joins = []) {
       }
     }
     try {
-      const response = await fetchJoinPayload(payload, { cache: true })
-      const rows = extractRecordsFromResponse(response)
+      const responses = await executeRequestBatches(payload, (entry) =>
+        fetchJoinPayload(entry.request, { cache: true }),
+      )
+      const rows = responses.flatMap((response, responseIndex) => {
+        const records = extractRecordsFromResponse(response)
+        return applyRequestFields(records, payload[responseIndex]?.meta?.fields)
+      })
       return { index, join, records: rows }
     } catch (err) {
       return {
@@ -2963,11 +4257,87 @@ function resolveCurrentRequestPayload() {
     return null
   }
   const { payload, error } = buildRequestPayloadFromConfig(sourceDraft)
-  if (error || !payload) {
+  if (error || !payload || !payload.length) {
     planError.value = error || 'Не удалось подготовить запрос.'
     return null
   }
   return payload
+}
+
+function normalizeBatchEndpoint(rawUrl = '') {
+  const trimmed = String(rawUrl || '').trim()
+  if (!trimmed) {
+    return { endpoint: '', error: 'Укажите URL источника.' }
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed)
+      if (parsed.origin !== window.location.origin) {
+        return {
+          endpoint: '',
+          error:
+            'Внешние URL запрещены. Используйте относительный путь или добавьте домен в allowlist на сервере.',
+        }
+      }
+      const next = `${parsed.pathname}${parsed.search || ''}` || '/'
+      return { endpoint: next.startsWith('/') ? next : `/${next}` }
+    } catch {
+      return { endpoint: '', error: 'Некорректный URL источника.' }
+    }
+  }
+  return {
+    endpoint: trimmed.startsWith('/') ? trimmed : `/${trimmed}`,
+    error: '',
+  }
+}
+
+function resolveSourceRemoteId(source) {
+  const raw =
+    source?.remoteMeta?.id ??
+    source?.remoteMeta?.Id ??
+    source?.remoteMeta?.ID ??
+    source?.remoteId
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : null
+}
+
+function buildBatchPayloadFromConfig(config = {}) {
+  if (rawBodyError.value) {
+    return { payload: null, error: 'Исправьте JSON в поле Raw body.' }
+  }
+  const rawBody = config.rawBody?.trim() || ''
+  if (!rawBody) {
+    return { payload: null, error: 'Добавьте тело запроса.' }
+  }
+  const parsed = safeJsonParse(rawBody)
+  if (!parsed.ok || !parsed.value || !isPlainObject(parsed.value)) {
+    return {
+      payload: null,
+      error: 'Тело запроса должно быть валидным JSON-объектом.',
+    }
+  }
+  const paramsList = extractMultiParamEntries(parsed.value)
+  if (!paramsList.length) {
+    return {
+      payload: null,
+      error: 'Для пакетной отправки нужен массив params.',
+    }
+  }
+  const endpointInfo = normalizeBatchEndpoint(config.url)
+  if (endpointInfo.error) {
+    return { payload: null, error: endpointInfo.error }
+  }
+  const payload = {
+    endpoint: endpointInfo.endpoint,
+    method: parsed.value.method || rpcMethod.value || '',
+    sourceId: resolveSourceRemoteId(config),
+    params: paramsList,
+    meta:
+      parsed.value.meta && isPlainObject(parsed.value.meta)
+        ? parsed.value.meta
+        : null,
+  }
+  return { payload, paramsList, error: '' }
 }
 
 function buildRequestPayloadFromConfig(config = {}) {
@@ -2982,7 +4352,12 @@ function buildRequestPayloadFromConfig(config = {}) {
       : { 'Content-Type': 'application/json' }
   const rawBody = config.rawBody?.trim() || ''
   if (method === 'GET') {
-    if (!rawBody) return { payload: { url, method, headers }, error: null }
+    if (!rawBody) {
+      return {
+        payload: [{ request: { url, method, headers }, meta: { fields: {} } }],
+        error: null,
+      }
+    }
     const parsed = safeJsonParse(rawBody)
     if (!parsed.ok) {
       return {
@@ -2990,22 +4365,175 @@ function buildRequestPayloadFromConfig(config = {}) {
         error: 'Параметры GET-запроса должны быть корректным JSON.',
       }
     }
-    return {
-      payload: { url, method, headers, body: parsed.value },
-      error: null,
-    }
+    const requests = buildRequestEntries(parsed.value, { url, method, headers })
+    return { payload: requests, error: null }
   }
   if (!rawBody) {
     return { payload: null, error: 'Добавьте тело запроса.' }
   }
   const parsed = safeJsonParse(rawBody)
-  if (!parsed.ok || !parsed.value) {
+  if (!parsed.ok || !parsed.value || !isPlainObject(parsed.value)) {
     return {
       payload: null,
       error: 'Тело запроса должно быть валидным JSON-объектом.',
     }
   }
-  return { payload: { url, method, headers, body: parsed.value }, error: null }
+  const requests = buildRequestEntries(parsed.value, { url, method, headers })
+  return { payload: requests, error: null }
+}
+
+function buildRequestEntries(body, baseRequest) {
+  if (!isPlainObject(body)) {
+    return [buildRequestEntry(baseRequest, body)]
+  }
+  // Multi-request format: { requests: [{ params: {...} }, ...] } or params: [{...}, {...}].
+  if (Array.isArray(body.requests) && body.requests.length) {
+    return buildRequestEntriesFromRequests(body, baseRequest)
+  }
+  if (shouldSplitParamsIntoRequests(body.params)) {
+    return buildRequestEntriesFromParams(body, baseRequest)
+  }
+  const paramsSource = extractParamsForFields(body)
+  return [buildRequestEntry(baseRequest, body, paramsSource)]
+}
+
+function buildRequestEntriesFromRequests(body, baseRequest) {
+  const baseBody = { ...body }
+  delete baseBody.requests
+  return body.requests
+    .map((entry) => buildRequestBodyFromEntry(baseBody, entry))
+    .filter(Boolean)
+    .map((item) => buildRequestEntry(baseRequest, item.body, item.paramsSource))
+}
+
+function buildRequestEntriesFromParams(body, baseRequest) {
+  const baseBody = { ...body }
+  delete baseBody.params
+  return body.params.map((paramsEntry) =>
+    buildRequestEntry(
+      baseRequest,
+      { ...baseBody, params: [paramsEntry] },
+      paramsEntry,
+    ),
+  )
+}
+
+function buildRequestBodyFromEntry(baseBody, entry) {
+  if (
+    isPlainObject(entry) &&
+    Object.prototype.hasOwnProperty.call(entry, 'body')
+  ) {
+    const mergedBody = { ...baseBody, ...entry.body }
+    return {
+      body: mergedBody,
+      paramsSource: extractParamsForFields(mergedBody),
+    }
+  }
+  if (
+    isPlainObject(entry) &&
+    Object.prototype.hasOwnProperty.call(entry, 'params')
+  ) {
+    return {
+      body: { ...baseBody, params: entry.params },
+      paramsSource: entry.params,
+    }
+  }
+  if (isPlainObject(entry)) {
+    return {
+      body: { ...baseBody, params: entry },
+      paramsSource: entry,
+    }
+  }
+  if (typeof entry !== 'undefined') {
+    return {
+      body: { ...baseBody, params: entry },
+      paramsSource: entry,
+    }
+  }
+  return null
+}
+
+function buildRequestEntry(baseRequest, body, paramsSource = null) {
+  const fields = buildRequestFieldsFromParams(paramsSource)
+  return {
+    request: {
+      url: baseRequest.url,
+      method: baseRequest.method,
+      headers: baseRequest.headers,
+      body,
+    },
+    meta: { fields },
+  }
+}
+
+function buildRequestFieldsFromParams(paramsSource) {
+  const paramsObject = resolveParamsObject(paramsSource)
+  if (!paramsObject) return {}
+  return Object.entries(paramsObject).reduce((acc, [key, value]) => {
+    const fieldKey = buildRequestFieldKey(key)
+    if (!fieldKey) return acc
+    acc[fieldKey] = value
+    return acc
+  }, {})
+}
+
+function buildRequestFieldKey(key) {
+  const raw = String(key ?? '').trim()
+  if (!raw) return ''
+  const tokens = raw.split(/[^a-zA-Z0-9]+/).filter(Boolean)
+  if (!tokens.length) return ''
+  const suffix = tokens
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')
+  return `${REQUEST_FIELD_PREFIX}${suffix}`
+}
+
+function extractParamsForFields(body) {
+  if (!isPlainObject(body)) return null
+  return resolveParamsObject(body.params)
+}
+
+function resolveParamsObject(params) {
+  if (isPlainObject(params)) return params
+  if (
+    Array.isArray(params) &&
+    params.length === 1 &&
+    isPlainObject(params[0])
+  ) {
+    return params[0]
+  }
+  return null
+}
+
+function shouldSplitParamsIntoRequests(params) {
+  if (!Array.isArray(params) || params.length < 2) return false
+  return params.every((item) => isPlainObject(item))
+}
+
+function isMultiRequestBody(body) {
+  if (!isPlainObject(body)) return false
+  if (Array.isArray(body.requests) && body.requests.length) return true
+  return shouldSplitParamsIntoRequests(body.params)
+}
+
+function applyRequestFields(records, fields = {}) {
+  if (!Array.isArray(records) || !records.length) return records || []
+  const entries = Object.entries(fields || {})
+  if (!entries.length) return records
+  return records.map((record) => {
+    if (!record || typeof record !== 'object') return record
+    const next = { ...record }
+    entries.forEach(([key, value]) => {
+      if (!(key in next)) {
+        next[key] = value
+      }
+    })
+    return next
+  })
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function safeJsonParse(value = '') {
@@ -3022,6 +4550,7 @@ function resetPlanState() {
   planError.value = ''
   result.value = null
   activeResultTab.value = 'preview'
+  resetBatchState()
   primitiveParams.value = []
   layoutDetailsVisible.value = false
   replaceArray(pivotConfig.filters, [])
@@ -3031,6 +4560,9 @@ function resetPlanState() {
   pivotMetricsVersion.value += 1
   Object.keys(filterValues).forEach((key) => delete filterValues[key])
   Object.keys(filterRangeValues).forEach((key) => delete filterRangeValues[key])
+  Object.keys(filterVisibilityStore).forEach(
+    (key) => delete filterVisibilityStore[key],
+  )
   Object.keys(dimensionValueFilters.rows).forEach(
     (key) => delete dimensionValueFilters.rows[key],
   )
@@ -3061,6 +4593,9 @@ function resetFilterValues() {
   })
   Object.keys(filterRangeValues).forEach((key) => {
     delete filterRangeValues[key]
+  })
+  Object.keys(filterVisibilityStore).forEach((key) => {
+    filterVisibilityStore[key] = false
   })
 }
 
@@ -3108,8 +4643,7 @@ function extractFieldDescriptors(records) {
             descriptor.datePartValues[part.key] = new Set()
           }
           if (
-            descriptor.datePartValues[part.key].size <
-            DATE_PART_VALUE_LIMIT
+            descriptor.datePartValues[part.key].size < DATE_PART_VALUE_LIMIT
           ) {
             descriptor.datePartValues[part.key].add(resolved)
           }
@@ -3163,7 +4697,9 @@ function isLikelyDateValue(value) {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()
   if (!trimmed) return false
-  if (/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?$/.test(trimmed)) {
+  if (
+    /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?$/.test(trimmed)
+  ) {
     return true
   }
   if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
@@ -3189,6 +4725,9 @@ function formatSample(value) {
 function aggregatorLabel(aggregator, field) {
   const meta = getAggregatorMeta(aggregator)
   const aggName = meta?.label || aggregator
+  if (String(aggregator || '').toLowerCase() === 'count') {
+    return aggName
+  }
   const override = headerOverrides[field?.key]
   const fieldLabel = override?.trim() || field?.label || field?.key || 'поле'
   return `${aggName}: ${fieldLabel}`
@@ -3362,6 +4901,29 @@ function extractRouteParam(value) {
   return str
 }
 
+function extractRouteFlag(value) {
+  if (Array.isArray(value)) {
+    return value.some((item) => extractRouteFlag(item))
+  }
+  if (value === null || typeof value === 'undefined') return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes'
+}
+
+function clearCreationFlags() {
+  const nextQuery = { ...route.query }
+  const hadFlags =
+    'createSource' in route.query || 'createConfig' in route.query
+  delete nextQuery.createSource
+  delete nextQuery.createConfig
+  if (hadFlags) {
+    navigationStore.allowDataAccess()
+    router.replace({ query: nextQuery })
+  }
+  routeActions.createSource = false
+  routeActions.createConfig = false
+}
+
 function clearRoutePrefill() {
   const nextQuery = { ...route.query }
   delete nextQuery.sourceId
@@ -3461,7 +5023,155 @@ function createBlankSource(overrides = {}) {
     },
     supportsPivot: overrides.supportsPivot !== false,
     joins: normalizeJoinList(overrides.joins || []),
+    pushdown: createBlankPushdown(overrides.pushdown),
   }
+}
+
+function createBlankPushdown(overrides = {}) {
+  const safe = overrides && typeof overrides === 'object' ? overrides : {}
+  const paging = safe.paging && typeof safe.paging === 'object' ? safe.paging : {}
+  const normalizedFilters = Array.isArray(safe.filters)
+    ? safe.filters.map((item) => normalizePushdownFilter(item))
+    : []
+  return {
+    enabled: Boolean(safe.enabled),
+    mode: safe.mode === 'rest_query' ? 'rest_query' : 'jsonrpc_params',
+    paging: {
+      strategy: paging.strategy === 'cursor' ? 'cursor' : 'offset',
+      limitPath: typeof paging.limitPath === 'string' ? paging.limitPath : '',
+      offsetPath: typeof paging.offsetPath === 'string' ? paging.offsetPath : '',
+      cursorPath: typeof paging.cursorPath === 'string' ? paging.cursorPath : '',
+    },
+    filters: normalizedFilters,
+    notes: typeof safe.notes === 'string' ? safe.notes : '',
+  }
+}
+
+function normalizePushdownFilter(entry = {}) {
+  const safe = entry && typeof entry === 'object' ? entry : {}
+  const op = pushdownOperatorOptions.some((option) => option.value === safe.op)
+    ? safe.op
+    : 'eq'
+  return {
+    filterKey: typeof safe.filterKey === 'string' ? safe.filterKey : '',
+    op,
+    targetPath: typeof safe.targetPath === 'string' ? safe.targetPath : '',
+  }
+}
+
+function buildPushdownPayload(pushdown) {
+  if (!pushdown || !pushdown.enabled) return null
+  const payload = {
+    enabled: true,
+    mode: pushdown.mode === 'rest_query' ? 'rest_query' : 'jsonrpc_params',
+    paging: {
+      ...(pushdown.paging || {}),
+    },
+  }
+  if (Array.isArray(pushdown.filters)) {
+    payload.filters = pushdown.filters.map((item) => ({
+      filterKey: item?.filterKey || '',
+      op: item?.op || 'eq',
+      targetPath: item?.targetPath || '',
+    }))
+  }
+  if (typeof pushdown.notes === 'string' && pushdown.notes.trim()) {
+    payload.notes = pushdown.notes.trim()
+  }
+  return payload
+}
+
+function addPushdownFilter() {
+  if (!sourceDraft.pushdown) {
+    sourceDraft.pushdown = createBlankPushdown()
+  }
+  sourceDraft.pushdown.filters.push({
+    filterKey: '',
+    op: 'eq',
+    targetPath: '',
+  })
+}
+
+function removePushdownFilter(index) {
+  if (!Array.isArray(sourceDraft.pushdown?.filters)) return
+  sourceDraft.pushdown.filters.splice(index, 1)
+}
+
+function isPushdownFilterInvalid(mapping) {
+  if (!mapping) return false
+  const key = typeof mapping.filterKey === 'string' ? mapping.filterKey.trim() : ''
+  const target = typeof mapping.targetPath === 'string' ? mapping.targetPath.trim() : ''
+  return !key || !target
+}
+
+const pushdownFilterHasErrors = computed(() => {
+  if (!sourceDraft.pushdown?.enabled) return false
+  return (sourceDraft.pushdown.filters || []).some((mapping) =>
+    isPushdownFilterInvalid(mapping),
+  )
+})
+
+function runPushdownTest() {
+  const warnings = []
+  const preview = []
+  const pushdown = sourceDraft.pushdown
+  if (!pushdown?.enabled) {
+    warnings.push('Pushdown выключен.')
+  } else {
+    const paging = pushdown.paging || {}
+    if (paging.strategy === 'cursor') {
+      if (paging.cursorPath) {
+        preview.push(paging.cursorPath)
+        if (isSuspiciousPath(paging.cursorPath)) {
+          warnings.push(`cursorPath выглядит подозрительно: ${paging.cursorPath}`)
+        }
+      } else {
+        warnings.push('cursorPath не заполнен для cursor-стратегии.')
+      }
+    } else {
+      if (paging.limitPath) {
+        preview.push(paging.limitPath)
+        if (isSuspiciousPath(paging.limitPath)) {
+          warnings.push(`limitPath выглядит подозрительно: ${paging.limitPath}`)
+        }
+      } else {
+        warnings.push('limitPath не заполнен для offset-стратегии.')
+      }
+      if (paging.offsetPath) {
+        preview.push(paging.offsetPath)
+        if (isSuspiciousPath(paging.offsetPath)) {
+          warnings.push(`offsetPath выглядит подозрительно: ${paging.offsetPath}`)
+        }
+      } else {
+        warnings.push('offsetPath не заполнен для offset-стратегии.')
+      }
+    }
+
+    const filters = Array.isArray(pushdown.filters) ? pushdown.filters : []
+    filters.forEach((mapping, index) => {
+      const target = mapping?.targetPath || ''
+      if (target) {
+        preview.push(target)
+        if (isSuspiciousPath(target)) {
+          warnings.push(`filters[${index}] путь выглядит подозрительно: ${target}`)
+        }
+      } else if (mapping?.filterKey) {
+        warnings.push(`filters[${index}] задан filterKey без targetPath.`)
+      }
+    })
+  }
+
+  pushdownTest.executed = true
+  pushdownTest.preview = Array.from(new Set(preview))
+  pushdownTest.warnings = warnings
+}
+
+function isSuspiciousPath(value = '') {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return true
+  if (!trimmed.startsWith('body.')) return true
+  if (trimmed.includes(' ') || trimmed.includes('..')) return true
+  return false
 }
 
 function resetSourceDraft(overrides = {}) {
@@ -3486,10 +5196,7 @@ function loadDraftFromSource(source) {
   resetSourceDraft({
     ...source,
     rawBody:
-      parsedBody.cleanedBody ||
-      sourceBody ||
-      remoteBody ||
-      EMPTY_BODY_TEMPLATE,
+      parsedBody.cleanedBody || sourceBody || remoteBody || EMPTY_BODY_TEMPLATE,
     joins: normalizeJoinList(
       parsedBody.joins || source.joins || remoteJoins || [],
     ),
@@ -3571,6 +5278,465 @@ function normalizeParamValues(values) {
     acc[key] = formatParamValueForBody(key, value)
     return acc
   }, {})
+}
+
+function setRawBodyFromEditors(payload) {
+  syncingFromEditors = true
+  sourceDraft.rawBody = JSON.stringify(payload, null, 2)
+  deferSyncingFromEditorsReset()
+}
+
+function deferSyncingFromEditorsReset() {
+  if (syncingFromEditorsTimer) {
+    clearTimeout(syncingFromEditorsTimer)
+  }
+  syncingFromEditorsTimer = setTimeout(() => {
+    syncingFromEditors = false
+    syncingFromEditorsTimer = null
+  }, 0)
+}
+
+function enableMultiParamTable() {
+  if (rawBodyError.value) return
+  const rawValue = sourceDraft.rawBody?.trim()
+  let parsed = {}
+  if (rawValue) {
+    const parsedBody = safeJsonParse(rawValue)
+    if (parsedBody.ok && isPlainObject(parsedBody.value)) {
+      parsed = parsedBody.value
+    }
+  }
+  const method = rpcMethod.value || parsed.method || ''
+  const params = structuredBodyAvailable.value
+    ? normalizeParamValues(snapshotParams(bodyParams))
+    : null
+  parsed.method = method
+  parsed.params = params ? [params] : []
+  if ('requests' in parsed) {
+    delete parsed.requests
+  }
+  setRawBodyFromEditors(parsed)
+}
+
+function extractMultiParamEntries(body) {
+  if (!isPlainObject(body)) return []
+  if (Array.isArray(body.requests) && body.requests.length) {
+    return body.requests
+      .map((entry) => resolveMultiParamEntry(entry))
+      .filter((entry) => entry && isPlainObject(entry))
+  }
+  if (Array.isArray(body.params) && body.params.length) {
+    const entries = body.params.filter((entry) => isPlainObject(entry))
+    if (entries.length === body.params.length) {
+      return entries
+    }
+  }
+  return []
+}
+
+function isEmptyMultiParamTable(body) {
+  if (!isPlainObject(body)) return false
+  if (Array.isArray(body.requests) && body.requests.length === 0) {
+    return true
+  }
+  if (Array.isArray(body.params) && body.params.length === 0) {
+    return true
+  }
+  return false
+}
+
+function resolveMultiParamEntry(entry) {
+  if (!entry || !isPlainObject(entry)) return null
+  if (Object.prototype.hasOwnProperty.call(entry, 'params')) {
+    const params = resolveParamsObject(entry.params)
+    if (params && isPlainObject(params)) return params
+    if (isPlainObject(entry.params)) return entry.params
+  }
+  if (Object.prototype.hasOwnProperty.call(entry, 'body')) {
+    const body = entry.body
+    if (
+      isPlainObject(body) &&
+      Object.prototype.hasOwnProperty.call(body, 'params')
+    ) {
+      const params = resolveParamsObject(body.params)
+      if (params && isPlainObject(params)) return params
+      if (isPlainObject(body.params)) return body.params
+    }
+  }
+  return entry
+}
+
+function syncMultiParamTable(entries = []) {
+  const columns = buildMultiParamColumns(entries)
+  const rows = buildMultiParamRows(entries, columns)
+  multiParamColumns.value = columns
+  multiParamRows.value = rows.length ? rows : [createMultiParamRow(columns)]
+  if (!multiParamColumns.value.length) {
+    multiParamColumns.value = [createMultiParamColumn('')]
+    multiParamRows.value = [createMultiParamRow(multiParamColumns.value)]
+  }
+  if (!activeMultiParamCell.rowId && multiParamRows.value[0]) {
+    activeMultiParamCell.rowId = multiParamRows.value[0].id
+  }
+  if (!activeMultiParamCell.columnId && multiParamColumns.value[0]) {
+    activeMultiParamCell.columnId = multiParamColumns.value[0].id
+  }
+}
+
+function buildMultiParamColumns(entries = []) {
+  const keys = []
+  const seen = new Set()
+  entries.forEach((entry) => {
+    Object.keys(entry || {}).forEach((key) => {
+      if (!seen.has(key)) {
+        seen.add(key)
+        keys.push(key)
+      }
+    })
+  })
+  return keys.map((key) => createMultiParamColumn(key))
+}
+
+function buildMultiParamRows(entries = [], columns = []) {
+  return entries.map((entry) => {
+    const values = {}
+    columns.forEach((column) => {
+      values[column.id] = formatMultiParamValue(entry?.[column.key])
+    })
+    return {
+      id: createId(),
+      values,
+    }
+  })
+}
+
+function createMultiParamColumn(key) {
+  return {
+    id: createId(),
+    key: key || '',
+  }
+}
+
+function buildAutoColumnKey(existingKeys) {
+  let index = 1
+  while (existingKeys.has(`param${index}`)) {
+    index += 1
+  }
+  return `param${index}`
+}
+
+function createMultiParamRow(columns = [], values = {}) {
+  const rowValues = {}
+  columns.forEach((column) => {
+    rowValues[column.id] = values[column.id] ?? ''
+  })
+  return {
+    id: createId(),
+    values: rowValues,
+  }
+}
+
+function formatMultiParamValue(value) {
+  if (value === null || typeof value === 'undefined') return ''
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+  return String(value)
+}
+
+function resolveMultiParamColumns() {
+  const seen = new Set()
+  return multiParamColumns.value
+    .map((column) => ({
+      id: column.id,
+      key: String(column.key || '').trim(),
+    }))
+    .filter((column) => {
+      if (!column.key || seen.has(column.key)) return false
+      seen.add(column.key)
+      return true
+    })
+}
+
+function syncMultiParamBody(method = '') {
+  let parsed = {}
+  const rawValue = sourceDraft.rawBody?.trim()
+  if (rawValue) {
+    const parsedBody = safeJsonParse(rawValue)
+    if (parsedBody.ok && isPlainObject(parsedBody.value)) {
+      parsed = parsedBody.value
+    }
+  }
+  const columns = resolveMultiParamColumns()
+  const paramsList = multiParamRows.value
+    .map((row) => buildMultiParamRowPayload(row, columns))
+    .filter((row) => Object.keys(row).length)
+  parsed.method = method || parsed.method || ''
+  if (Array.isArray(parsed.requests)) {
+    parsed.requests = paramsList.map((params, index) =>
+      mergeMultiParamRequest(parsed.requests[index], params),
+    )
+  } else {
+    parsed.params = paramsList
+  }
+  setRawBodyFromEditors(parsed)
+}
+
+function buildMultiParamRowPayload(row, columns) {
+  return columns.reduce((acc, column) => {
+    const raw = row.values?.[column.id]
+    if (raw === '' || raw === null || typeof raw === 'undefined') {
+      return acc
+    }
+    acc[column.key] = normalizePrimitiveValue(raw)
+    return acc
+  }, {})
+}
+
+function mergeMultiParamRequest(existing, params) {
+  if (isPlainObject(existing)) {
+    if (Object.prototype.hasOwnProperty.call(existing, 'body')) {
+      const body = isPlainObject(existing.body) ? existing.body : {}
+      return { ...existing, body: { ...body, params } }
+    }
+    return { ...existing, params }
+  }
+  return { params }
+}
+
+function resolveMultiParamColumnStatus(columnId) {
+  const meta = multiParamColumnMeta.value[columnId]
+  if (!meta) return undefined
+  if (meta.duplicate) return 'error'
+  if (meta.empty) return 'warning'
+  return undefined
+}
+
+function resolveMultiParamColumnClass(columnId) {
+  const meta = multiParamColumnMeta.value[columnId]
+  if (!meta) return ''
+  if (meta.duplicate) return 'params-table__cell--error'
+  if (meta.empty) return 'params-table__cell--warning'
+  return ''
+}
+
+function setActiveMultiParamCell(rowId, columnId) {
+  activeMultiParamCell.rowId = rowId
+  activeMultiParamCell.columnId = columnId
+}
+
+function addMultiParamColumn() {
+  const column = createMultiParamColumn('')
+  multiParamColumns.value.push(column)
+  multiParamRows.value.forEach((row) => {
+    row.values[column.id] = ''
+  })
+}
+
+function removeMultiParamColumn(columnId) {
+  const index = multiParamColumns.value.findIndex(
+    (column) => column.id === columnId,
+  )
+  if (index < 0) return
+  multiParamColumns.value.splice(index, 1)
+  multiParamRows.value.forEach((row) => {
+    delete row.values[columnId]
+  })
+  if (activeMultiParamCell.columnId === columnId) {
+    activeMultiParamCell.columnId = ''
+  }
+}
+
+function addMultiParamRow() {
+  multiParamRows.value.push(createMultiParamRow(multiParamColumns.value))
+}
+
+function duplicateMultiParamRow(rowIndex) {
+  const existing = multiParamRows.value[rowIndex]
+  if (!existing) return
+  multiParamRows.value.splice(
+    rowIndex + 1,
+    0,
+    createMultiParamRow(multiParamColumns.value, { ...existing.values }),
+  )
+}
+
+function removeMultiParamRow(rowIndex) {
+  const existing = multiParamRows.value[rowIndex]
+  if (!existing) return
+  multiParamRows.value.splice(rowIndex, 1)
+  if (activeMultiParamCell.rowId === existing.id) {
+    activeMultiParamCell.rowId = ''
+  }
+}
+
+function fillDownMultiParam() {
+  if (!activeMultiParamCell.rowId || !activeMultiParamCell.columnId) return
+  const rowIndex = multiParamRows.value.findIndex(
+    (row) => row.id === activeMultiParamCell.rowId,
+  )
+  if (rowIndex < 0) return
+  const value =
+    multiParamRows.value[rowIndex]?.values?.[activeMultiParamCell.columnId]
+  for (
+    let index = rowIndex + 1;
+    index < multiParamRows.value.length;
+    index += 1
+  ) {
+    multiParamRows.value[index].values[activeMultiParamCell.columnId] = value
+  }
+}
+
+function handleMultiParamPaste(event, rowId, columnId) {
+  const text = event?.clipboardData?.getData('text')
+  if (!text) return
+  const grid = parseMultiParamGrid(text)
+  if (!grid.length) return
+  event.preventDefault()
+  const startRowIndex = multiParamRows.value.findIndex(
+    (row) => row.id === rowId,
+  )
+  const startColumnIndex = multiParamColumns.value.findIndex(
+    (column) => column.id === columnId,
+  )
+  if (startRowIndex < 0 || startColumnIndex < 0) return
+  if (shouldUseHeaderRow(grid, startRowIndex)) {
+    const headerRow = grid[0] || []
+    ensureMultiParamColumns(startColumnIndex + headerRow.length)
+    headerRow.forEach((cell, colOffset) => {
+      const column = multiParamColumns.value[startColumnIndex + colOffset]
+      if (!column) return
+      column.key = String(cell ?? '').trim()
+    })
+    const bodyRows = grid.slice(1)
+    if (!bodyRows.length) return
+    applyMultiParamGrid(bodyRows, startRowIndex, startColumnIndex)
+    return
+  }
+  applyMultiParamGrid(grid, startRowIndex, startColumnIndex)
+}
+
+function handleMultiParamHeaderPaste(event, columnId) {
+  const text = event?.clipboardData?.getData('text')
+  if (!text) return
+  const grid = parseMultiParamGrid(text)
+  if (!grid.length) return
+  event.preventDefault()
+  const startColumnIndex = multiParamColumns.value.findIndex(
+    (column) => column.id === columnId,
+  )
+  if (startColumnIndex < 0) return
+  const headerRow = grid[0] || []
+  ensureMultiParamColumns(startColumnIndex + headerRow.length)
+  headerRow.forEach((cell, colOffset) => {
+    const column = multiParamColumns.value[startColumnIndex + colOffset]
+    if (!column) return
+    column.key = String(cell ?? '').trim()
+  })
+  const bodyRows = grid.slice(1)
+  if (!bodyRows.length) return
+  applyMultiParamGrid(bodyRows, 0, startColumnIndex)
+}
+
+function shouldUseHeaderRow(grid, startRowIndex) {
+  if (!Array.isArray(grid) || grid.length < 2) return false
+  const header = grid[0] || []
+  const hasLetters = header.some((cell) =>
+    /[A-Za-zА-Яа-я_]/.test(String(cell || '').trim()),
+  )
+  if (!hasLetters) return false
+  if (startRowIndex === 0) return true
+  if (columnsAreAutoGenerated()) return true
+  if (headerRowMatchesColumns(header)) return true
+  return false
+}
+
+function columnsAreAutoGenerated() {
+  return multiParamColumns.value.every((column) => {
+    const key = String(column.key || '').trim()
+    if (!key) return true
+    return /^param\d+$/i.test(key)
+  })
+}
+
+function headerRowMatchesColumns(header = []) {
+  const keys = new Set(
+    multiParamColumns.value.map((column) =>
+      String(column.key || '')
+        .trim()
+        .toLowerCase(),
+    ),
+  )
+  return header.some((cell) =>
+    keys.has(
+      String(cell || '')
+        .trim()
+        .toLowerCase(),
+    ),
+  )
+}
+
+function parseMultiParamGrid(raw = '') {
+  const normalized = String(raw || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+  const lines = normalized.split('\n')
+  if (!lines.length) return []
+  const trimmed = lines.filter(
+    (line, index) => line !== '' || index !== lines.length - 1,
+  )
+  if (!trimmed.length) return []
+  const delimiter = trimmed.some((line) => line.includes('\t')) ? '\t' : ','
+  return trimmed.map((line) => line.split(delimiter))
+}
+
+function applyMultiParamGrid(grid, startRowIndex, startColumnIndex) {
+  const maxColumns = grid.reduce((acc, row) => Math.max(acc, row.length), 0)
+  ensureMultiParamColumns(startColumnIndex + maxColumns)
+  const requiredRows = startRowIndex + grid.length
+  while (multiParamRows.value.length < requiredRows) {
+    addMultiParamRow()
+  }
+  grid.forEach((cells, rowOffset) => {
+    const row = multiParamRows.value[startRowIndex + rowOffset]
+    if (!row) return
+    cells.forEach((cell, colOffset) => {
+      const column = multiParamColumns.value[startColumnIndex + colOffset]
+      if (!column) return
+      row.values[column.id] = String(cell ?? '')
+    })
+  })
+}
+
+function ensureMultiParamColumns(requiredCount) {
+  const existingKeys = new Set(
+    multiParamColumns.value.map((column) => String(column.key || '').trim()),
+  )
+  while (multiParamColumns.value.length < requiredCount) {
+    const key = buildAutoColumnKey(existingKeys)
+    existingKeys.add(key)
+    const column = createMultiParamColumn(key)
+    multiParamColumns.value.push(column)
+    multiParamRows.value.forEach((row) => {
+      row.values[column.id] = ''
+    })
+  }
+}
+
+function handleMultiParamKeydown(event, rowIndex, columnId) {
+  if (!event) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+    event.preventDefault()
+    duplicateMultiParamRow(rowIndex)
+    const nextRow = multiParamRows.value[rowIndex + 1]
+    if (nextRow) {
+      setActiveMultiParamCell(nextRow.id, columnId)
+    }
+  }
 }
 
 function formatParamValueForBody(key, value) {
@@ -3765,10 +5931,9 @@ function normalizeRemoteConfig(entry = {}) {
     headerOverrides: combinedOverrides,
     filterValues: filterPayload.values || {},
     filterRanges: filterPayload.ranges || {},
-    filterModes:
-      Object.keys(filterPayload.modes || {}).length
-        ? sanitizeModeSnapshot(filterPayload.modes)
-        : extractModesFromMeta(filterPayload.filtersMeta),
+    filterModes: Object.keys(filterPayload.modes || {}).length
+      ? sanitizeModeSnapshot(filterPayload.modes)
+      : extractModesFromMeta(filterPayload.filtersMeta),
     rowFilters: rowPayload.values || {},
     rowRanges: rowPayload.ranges || {},
     columnFilters: colPayload.values || {},
@@ -3868,7 +6033,9 @@ function attemptJoinHeuristic(tokens, start) {
 
 function encodeFieldSequence(list = []) {
   const filtered = (list || [])
-    .map((item) => (typeof item === 'string' ? item.trim() : String(item || '').trim()))
+    .map((item) =>
+      typeof item === 'string' ? item.trim() : String(item || '').trim(),
+    )
     .filter(Boolean)
   if (!filtered.length) return ''
   try {
@@ -4001,6 +6168,7 @@ function buildFiltersMetaSnapshot() {
     mode:
       normalizeFilterMode(filterModeSelections[key]) ||
       (hasActiveRange(filterRangeValues[key]) ? 'range' : ''),
+    hidden: hasFilterSelection(key) ? Boolean(filterVisibilityStore[key]) : false,
   }))
 }
 
@@ -4020,9 +6188,7 @@ function buildFieldMetaSnapshot(limit = 20) {
     meta[key] = {
       label,
       sample: field.sample || '—',
-      values: Array.isArray(field.values)
-        ? field.values.slice(0, limit)
-        : [],
+      values: Array.isArray(field.values) ? field.values.slice(0, limit) : [],
       type: field.type || 'string',
     }
     if (field.type === 'date' && Array.isArray(field.dateParts)) {
@@ -4031,9 +6197,7 @@ function buildFieldMetaSnapshot(limit = 20) {
         meta[part.key] = {
           label: getFieldDisplayNameByKey(part.key),
           sample: part.values?.[0] || label,
-          values: Array.isArray(part.values)
-            ? part.values.slice(0, limit)
-            : [],
+          values: Array.isArray(part.values) ? part.values.slice(0, limit) : [],
           type: 'string',
         }
       })
@@ -4298,7 +6462,9 @@ function applyConfigRecord(record) {
       filterRangeValues[key] = sanitized
     }
   })
-  Object.keys(filterModeSelections).forEach((key) => delete filterModeSelections[key])
+  Object.keys(filterModeSelections).forEach(
+    (key) => delete filterModeSelections[key],
+  )
   Object.entries(record.filterModes || {}).forEach(([key, mode]) => {
     const normalized = normalizeFilterMode(mode)
     if (normalized) {
@@ -4306,6 +6472,13 @@ function applyConfigRecord(record) {
     }
   })
   pruneFilterModes()
+  Object.keys(filterVisibilityStore).forEach(
+    (key) => delete filterVisibilityStore[key],
+  )
+  ;(record.filtersMeta || []).forEach((meta) => {
+    if (!meta?.key) return
+    filterVisibilityStore[meta.key] = Boolean(meta.hidden)
+  })
   applyFilterSnapshot(
     dimensionValueFilters.rows,
     pivotConfig.rows,
@@ -4380,11 +6553,30 @@ function handleFilterModePreference({ key, mode }) {
   }
 }
 
+function hasFilterSelection(key) {
+  if (!key) return false
+  const values = filterValues[key]
+  if (Array.isArray(values) && values.length) return true
+  return hasActiveRange(filterRangeValues[key])
+}
+
+function handleFilterVisibilityChange({ key, hidden }) {
+  if (!key) return
+  if (!hasFilterSelection(key)) {
+    filterVisibilityStore[key] = false
+    return
+  }
+  filterVisibilityStore[key] = Boolean(hidden)
+}
+
 function handleFilterValuesChange({ key, values }) {
   if (!key) return
   filterValues[key] = [...(values || [])]
   delete filterRangeValues[key]
   handleFilterModePreference({ key, mode: 'values' })
+  if (!hasFilterSelection(key)) {
+    filterVisibilityStore[key] = false
+  }
 }
 
 function handleRowValueFiltersChange({ key, values }) {
@@ -4411,6 +6603,9 @@ function handleFilterRangeChange({ key, range }) {
     filterValues[key] = []
   }
   handleFilterModePreference({ key, mode: 'range' })
+  if (!hasFilterSelection(key)) {
+    filterVisibilityStore[key] = false
+  }
 }
 
 function handleRowRangeFiltersChange({ key, range }) {
@@ -4470,6 +6665,12 @@ function moveMetric({ index, delta }) {
 }
 
 async function saveCurrentConfig() {
+  if (batchIsActive.value || batchHasBlockingIssue.value) {
+    alert(
+      'Сначала завершите пакетную загрузку и убедитесь, что результат не превышает лимиты.',
+    )
+    return
+  }
   if (!configName.value.trim()) {
     alert('Укажите название конфигурации')
     return
@@ -4538,9 +6739,12 @@ async function saveCurrentConfig() {
         applyConfigRecord(refreshed)
       }
     }
-    await pageBuilderStore.fetchTemplates(true)
+    await pageBuilderStore.fetchTemplates({ force: true, skipCooldown: true })
   } catch (err) {
     console.warn('Failed to save configuration', err)
+    trackEvent('config_save_error', {
+      message: String(err?.message || err),
+    })
   } finally {
     configSaving.value = false
   }
@@ -4548,6 +6752,12 @@ async function saveCurrentConfig() {
 
 async function savePresentation() {
   if (!canManagePresentations.value) return
+  if (batchIsActive.value || batchHasBlockingIssue.value) {
+    alert(
+      'Нельзя сохранить представление, пока пакетная загрузка не завершена или результат слишком большой.',
+    )
+    return
+  }
   const parentId = currentConfigRemoteId.value
   if (!parentId) {
     alert('Сохраните и выберите конфигурацию перед сохранением представления.')
@@ -4610,10 +6820,21 @@ async function savePresentation() {
         applyPresentationRecord(refreshed)
       }
     }
-    await pageBuilderStore.fetchTemplates(true)
+    await pageBuilderStore.fetchTemplates({ force: true, skipCooldown: true })
     alert('Представление сохранено.')
+    const duration = navigationStore.finishViewCreation()
+    trackEvent('presentation_saved', { id: String(savedId || '') })
+    if (duration !== null) {
+      trackEvent('view_creation_complete', {
+        id: String(savedId || ''),
+        durationMs: duration,
+      })
+    }
   } catch (err) {
     console.warn('Failed to save report presentation', err)
+    trackEvent('presentation_save_error', {
+      message: String(err?.message || err),
+    })
     alert('Не удалось сохранить представление. Попробуйте позже.')
   } finally {
     presentationSaving.value = false
@@ -4736,6 +6957,17 @@ async function deleteSelectedConfig() {
     alert('Не удалось определить идентификатор конфигурации.')
     return
   }
+  const usageCount = await countPresentationsForConfig(remoteId)
+  if (usageCount > 0) {
+    alert(
+      `Нельзя удалить конфигурацию: используется в ${usageCount} представлениях. Используйте архивирование.`,
+    )
+    trackEvent('config_delete_blocked', {
+      id: String(remoteId),
+      usageCount,
+    })
+    return
+  }
   if (
     !confirm(
       `Удалить конфигурацию «${entry.name || 'Без названия'}»? Это действие нельзя отменить.`,
@@ -4748,8 +6980,14 @@ async function deleteSelectedConfig() {
     selectedConfigId.value = ''
     currentConfigMeta.value = null
     await fetchReportConfigs(getCurrentParentId())
+    archiveStore.restoreEntity('config', configArchiveKey(entry))
+    trackEvent('config_deleted', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to delete configuration', err)
+    trackEvent('config_delete_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось удалить конфигурацию. Попробуйте позже.')
   }
 }
@@ -4896,12 +7134,18 @@ function buildCsvFromPivot(
     ? view.rowTotalHeaders.filter((header) => rowAllowed.has(header.metricId))
     : []
 
-  const header = ['Строки', ...view.columns.map((col) => col.label)]
+  const header = [
+    'Строки',
+    ...view.columns.map((col) => formatColumnEntryLabel(col)),
+  ]
   if (rowHeaders.length) {
     header.push(...rowHeaders.map((total) => total.label))
   }
   const rows = view.rows.map((row) => {
-    const cells = [row.label, ...row.cells.map((cell) => cell.display)]
+    const cells = [
+      resolveRowHeaderLabel(row),
+      ...row.cells.map((cell) => cell.display),
+    ]
     if (rowHeaders.length) {
       cells.push(
         ...row.totals
@@ -4994,8 +7238,7 @@ function getFieldDisplayNameByKey(key = '') {
       return formatDatePartFieldLabel(baseDictionary, dateMeta.part)
     }
     const baseDescriptor = baseFieldDescriptor(dateMeta.fieldKey)
-    const baseLabel =
-      baseDescriptor?.label || humanizeKey(dateMeta.fieldKey)
+    const baseLabel = baseDescriptor?.label || humanizeKey(dateMeta.fieldKey)
     return formatDatePartFieldLabel(baseLabel, dateMeta.part)
   }
   const field = baseFieldDescriptor(key)
@@ -5085,9 +7328,126 @@ function groupColumnsByLevel(columns, levelIndex) {
 }
 
 function getColumnLevelValue(column, levelIndex) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length && levelIndex < values.length) {
+    const raw = values[levelIndex]
+    if (raw !== null && typeof raw !== 'undefined' && raw !== '') {
+      return formatValue(raw)
+    }
+  }
   const level = column.levels?.[levelIndex]
   if (!level) return 'Итого'
   return level.value || '—'
+}
+
+function splitRowLabel(label = '') {
+  const value = String(label || '').trim()
+  if (!value) return []
+  const separators = [' / ', ' • ', ' › ']
+  for (const separator of separators) {
+    if (value.includes(separator)) {
+      return value.split(separator).map((part) => part.trim())
+    }
+  }
+  return [value]
+}
+
+function resolveRowLevelValues(row, levelCount = 0) {
+  const levels = Array.isArray(row?.levels) ? row.levels : []
+  let values = []
+  if (levels.length) {
+    values = levels.map((level) => formatValue(level?.value))
+  } else if (Array.isArray(row?.values) && row.values.length) {
+    values = row.values.map((value) => formatValue(value))
+  } else if (row?.label) {
+    values = splitRowLabel(row.label).map((value) => formatValue(value))
+  }
+  if (!levelCount) return values
+  const normalized = values.slice(0, levelCount)
+  while (normalized.length < levelCount) {
+    normalized.push('—')
+  }
+  return normalized
+}
+
+function resolveRowHeaderLabel(row) {
+  const parts = resolveRowLevelValues(row).filter(
+    (value) => value && value !== '—',
+  )
+  if (parts.length) {
+    if (debugLogsEnabled) {
+      console.debug('pivot row header', row?.key, row?.values, row?.label)
+    }
+    return parts[parts.length - 1]
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot row header', row?.key, row?.values, row?.label)
+  }
+  return row?.label || row?.key || ''
+}
+
+function resolveColumnHeaderLabel(column) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug(
+          'pivot col header',
+          column?.key,
+          column?.values,
+          column?.label,
+        )
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug(
+      'pivot col header',
+      column?.key,
+      column?.values,
+      column?.label,
+    )
+  }
+  return column?.label || column?.key || ''
+}
+
+function resolveColumnLeafLabel(column) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const raw = values[index]
+    if (raw !== null && typeof raw !== 'undefined' && raw !== '') {
+      return formatValue(raw)
+    }
+  }
+  const levels = Array.isArray(column?.levels) ? column.levels : []
+  for (let index = levels.length - 1; index >= 0; index -= 1) {
+    const value = levels[index]?.value
+    if (value !== null && typeof value !== 'undefined' && value !== '') {
+      return formatValue(value)
+    }
+  }
+  return ''
+}
+
+function findMetricLabel(metricId) {
+  if (!metricId) return ''
+  const match =
+    visibleMetrics.value.find((metric) => metric.id === metricId) ||
+    preparedMetrics.value.find((metric) => metric.id === metricId)
+  return match?.label || ''
+}
+
+function formatColumnEntryLabel(column) {
+  const leaf = resolveColumnLeafLabel(column)
+  const metricLabel = findMetricLabel(column?.metricId)
+  if (leaf && metricLabel && leaf !== metricLabel) {
+    return `${leaf} • ${metricLabel}`
+  }
+  return leaf || metricLabel || column?.label || column?.key || '—'
 }
 
 function getRawFieldLabel(key) {
@@ -5170,6 +7530,59 @@ function resolveMetricLabelById(metricId) {
 }
 .page-heading button {
   white-space: nowrap;
+}
+.wizard-card {
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--s360-color-surface, #fff);
+}
+.wizard-card__title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.presentation-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px dashed #cbd5f5;
+  background: #f8fafc;
+  margin-bottom: 16px;
+}
+.context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.context-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+.context-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-weight: 500;
+}
+.link-btn:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.link-btn--muted {
+  color: #4b5563;
+  font-size: 12px;
 }
 .step {
   border: 1px solid var(--s360-color-border-subtle, #ebe8e5);
@@ -5310,6 +7723,107 @@ function resolveMetricLabelById(metricId) {
 .params-grid--compact {
   grid-template-columns: repeat(auto-fit, minmax(160px, 200px));
 }
+.params-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.params-table__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.params-table__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--s360-text-muted, #6b7280);
+}
+.params-table__grid {
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  border-radius: 12px;
+  overflow: auto;
+  max-height: 360px;
+}
+.params-table__row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+}
+.params-table__row:last-child {
+  border-bottom: none;
+}
+.params-table__row--header {
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.params-table__cell {
+  padding: 8px;
+  min-width: 160px;
+  flex: 1 0 160px;
+  border-right: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  box-sizing: border-box;
+}
+.params-table__cell--header {
+  font-weight: 600;
+}
+.params-table__cell--index {
+  flex: 0 0 36px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--s360-text-muted, #6b7280);
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+}
+.params-table__cell--actions {
+  flex: 0 0 96px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--s360-text-muted, #6b7280);
+}
+.params-table__row--header .params-table__cell--actions {
+  font-weight: 600;
+}
+.params-table__row--header .params-table__cell--index {
+  background: #f8fafc;
+  z-index: 3;
+}
+.params-table__cell:last-child {
+  border-right: none;
+}
+.params-table__header-input {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.params-table__cell--error .n-input__border {
+  border-color: #ef4444;
+}
+.params-table__cell--warning .n-input__border {
+  border-color: #f59e0b;
+}
+.params-table__starter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.icon-columns {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Crect x='3' y='4' width='6' height='16' rx='1'/%3E%3Crect x='15' y='4' width='6' height='16' rx='1'/%3E%3C/svg%3E");
+}
+.icon-rows {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='16' height='6' rx='1'/%3E%3Crect x='4' y='15' width='16' height='6' rx='1'/%3E%3C/svg%3E");
+}
+.icon-down {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='M12 5v14'/%3E%3Cpath d='m6 13 6 6 6-6'/%3E%3C/svg%3E");
+}
+.icon-duplicate {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Crect x='7' y='7' width='10' height='10' rx='1'/%3E%3Crect x='3' y='3' width='10' height='10' rx='1'/%3E%3C/svg%3E");
+}
 .raw-body {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   min-height: 160px;
@@ -5335,6 +7849,75 @@ function resolveMetricLabelById(metricId) {
 }
 .joins-section__header .muted {
   margin: 4px 0 0;
+}
+.pushdown-section {
+  margin-top: 16px;
+  border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: var(--s360-color-surface, #fff);
+}
+.pushdown-section__summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.pushdown-section__summary .muted {
+  font-size: 12px;
+}
+.pushdown-section__body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pushdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pushdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.pushdown-filters {
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pushdown-filters__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pushdown-filter-row {
+  display: grid;
+  grid-template-columns: 1.2fr 120px 1.6fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.pushdown-test__result {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pushdown-warning {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
 }
 .join-card {
   border: 1px solid var(--s360-color-border-subtle, #e5e7eb);
@@ -5557,6 +8140,30 @@ function resolveMetricLabelById(metricId) {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
+}
+.batch-status {
+  border: 1px dashed #c7d2fe;
+  background: #eef2ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.batch-status__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.batch-status__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #4b5563;
 }
 .muted {
   color: var(--s360-text-muted, #6b7280);
@@ -5907,9 +8514,17 @@ function resolveMetricLabelById(metricId) {
   color: #94a3b8;
 }
 .column-field-value {
-  display: block;
-  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
   color: #111827;
+  line-height: 1.15;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-height: 3.45em;
 }
 .resize-handle {
   position: absolute;
@@ -5940,6 +8555,30 @@ function resolveMetricLabelById(metricId) {
 .row-label {
   font-weight: 500;
   position: relative;
+  text-align: left !important;
+  direction: ltr !important;
+  unicode-bidi: plaintext;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.pivot-preview td.row-label,
+.pivot-preview td.row-header-cell {
+  text-align: left !important;
+  direction: ltr !important;
+  white-space: normal !important;
+  unicode-bidi: plaintext;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.row-header-cell {
+  text-align: left !important;
+  direction: ltr !important;
+  vertical-align: top;
 }
 .row-tree {
   display: flex;
@@ -5962,6 +8601,20 @@ function resolveMetricLabelById(metricId) {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+}
+.row-content span {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .row-field {
   color: #6b7280;
@@ -5973,6 +8626,15 @@ function resolveMetricLabelById(metricId) {
 .total,
 .grand-total {
   font-weight: 600;
+}
+.pivot-preview th.row-total-header,
+.pivot-preview td.total,
+.pivot-preview td.grand-total {
+  width: 140px;
+  max-width: 140px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .error {
   color: var(--s360-text-critical, #dc2626);

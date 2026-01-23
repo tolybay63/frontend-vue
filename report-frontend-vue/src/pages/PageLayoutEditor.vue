@@ -105,10 +105,10 @@
         <label>
           <span>Вкладки</span>
           <input
+            v-model.number="draft.layout.settings.tabs"
             type="number"
             min="1"
             :max="MAX_TABS"
-            v-model.number="draft.layout.settings.tabs"
           />
         </label>
       </div>
@@ -214,7 +214,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, onMounted, watch } from 'vue'
+import { computed, reactive, ref, onMounted, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePageBuilderStore, resolveCommonContainerFieldKeys } from '@/shared/stores/pageBuilder'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
@@ -263,6 +263,15 @@ const draft = reactive({
   },
 })
 
+watchEffect(() => {
+  if (!draft.layout.settings) {
+    draft.layout.settings = defaultLayoutSettings()
+  }
+  if (!Array.isArray(draft.layout.settings.tabNames)) {
+    draft.layout.settings.tabNames = [...defaultLayoutSettings().tabNames]
+  }
+})
+
 const templates = computed(() => store.templates)
 const templatesLoading = computed(() => store.templatesLoading)
 const templatesError = computed(() => store.templatesError)
@@ -294,13 +303,14 @@ const globalFilterSelectOptions = computed(() =>
   })),
 )
 const layoutSettings = computed(() => {
-  if (!draft.layout.settings) {
-    draft.layout.settings = defaultLayoutSettings()
+  const settings = draft.layout.settings || defaultLayoutSettings()
+  const tabNames = Array.isArray(settings.tabNames)
+    ? settings.tabNames
+    : [...defaultLayoutSettings().tabNames]
+  return {
+    ...settings,
+    tabNames,
   }
-  if (!Array.isArray(draft.layout.settings.tabNames)) {
-    draft.layout.settings.tabNames = [...defaultLayoutSettings().tabNames]
-  }
-  return draft.layout.settings
 })
 const tabLabelEntries = computed(() => {
   const count = Number(layoutSettings.value.tabs) || 1
@@ -550,12 +560,8 @@ watch(isPrivateSelection, (next) => {
 onMounted(async () => {
   try {
     await Promise.all([
-      store.fetchLayoutOptions(),
-      store.fetchWidthOptions(),
-      store.fetchHeightOptions(),
-      store.fetchTemplates(true),
-      store.fetchPages(true),
-      store.fetchPrivacyOptions(),
+      store.ensureReferences(),
+      store.fetchPages(),
       store.fetchPageUsers(),
       fieldDictionaryStore.fetchDictionary(),
     ])
@@ -576,9 +582,11 @@ onMounted(async () => {
   }
 })
 
-async function loadExistingPage() {
+async function loadExistingPage(targetId = pageId.value, { force = false } = {}) {
+  loadError.value = ''
   deletedContainerIds.value = []
-  const existing = store.getPageById(pageId.value)
+  const resolvedId = String(targetId || '')
+  const existing = store.getPageById(resolvedId)
   if (!existing) {
     loadError.value = 'Страница не найдена или удалена.'
     return
@@ -608,7 +616,9 @@ async function loadExistingPage() {
     : defaultLayoutSettings()
   draft.layout.containerTabs = { ...(existing.layout?.containerTabs || {}) }
   syncTabNames(draft.layout.settings?.tabs || 1)
-  const containers = await store.fetchPageContainers(existing.id, true)
+  const containers = force
+    ? await store.fetchPageContainers(existing.id, true)
+    : store.getContainers(existing.id)
   draft.layout.containers.splice(0, draft.layout.containers.length)
   containers.forEach((container, index) => {
     draft.layout.containers.push({
@@ -647,7 +657,7 @@ function templateMeta(templateId) {
 }
 
 function refreshTemplates() {
-  store.fetchTemplates(true)
+  store.fetchTemplates({ force: true, skipCooldown: true })
 }
 
 function resolveFieldLabel(key) {
@@ -719,9 +729,12 @@ async function save() {
   try {
     const payload = JSON.parse(JSON.stringify(draft))
     payload.layout.preset = draft.layout.preset
-    const pageId = await store.savePageDraft(payload, deletedContainerIds.value)
+    const savedId = await store.savePageDraft(payload, deletedContainerIds.value)
     deletedContainerIds.value = []
-    router.push(`/pages/${pageId}/edit`)
+    if (route.params.pageId !== String(savedId)) {
+      await router.push(`/pages/${savedId}/edit`)
+    }
+    await loadExistingPage(savedId, { force: false })
   } catch (err) {
     console.warn('Failed to save page', err)
     alert('Не удалось сохранить страницу. Попробуйте позже.')

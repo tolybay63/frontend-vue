@@ -32,7 +32,10 @@
       </div>
     </header>
 
-    <div v-if="activePageFilters.length" class="page-filters">
+    <div
+      v-if="hasResolvedPageFilters && activePageFilters.length"
+      class="page-filters"
+    >
       <div class="page-filters__fields">
         <div
           v-for="filter in activePageFilters"
@@ -142,7 +145,7 @@
               <FilterRangeControl
                 :model-value="containerFilterValues[container.id][filter.key]"
                 :range="containerFilterRanges[container.id]?.[filter.key]"
-                :options="fieldOptions(filter)"
+                :options="containerFilterOptions(container.id, filter)"
                 :supports-range="
                   filterSupportsRange(filter) && !isValuesOnlyFilter(filter)
                 "
@@ -186,13 +189,18 @@
                 <thead>
                   <tr v-if="hasMetricGroups(container)" class="metric-header">
                     <th
+                      v-for="(label, index) in containerRowHeaderColumns(container)"
+                      :key="`row-header-${container.id}-${index}`"
                       :rowspan="containerRowHeaderRowSpan(container)"
-                      :style="rowHeaderStyle(container.id)"
+                      :style="
+                        rowHeaderStyle(container.id, containerRowHeaderColumnCount(container))
+                      "
                       class="row-header-title"
                     >
                       <div class="th-content">
-                        {{ containerRowHeaderTitle(container) }}
+                        {{ label }}
                         <span
+                          v-if="index === containerRowHeaderColumnCount(container) - 1"
                           class="resize-handle"
                           @mousedown.prevent="
                             startRowHeaderResize(container.id, $event)
@@ -205,9 +213,13 @@
                       :key="`metric-${container.id}-${group.metric.id}`"
                       :colspan="group.span || 1"
                       class="column-field-group"
+                      :title="group.label || ''"
                     >
                       <div class="th-content">
-                        <span class="column-field-value">
+                        <span
+                          class="column-field-value"
+                          :title="group.label || ''"
+                        >
                           {{ group.label }}
                         </span>
                       </div>
@@ -215,6 +227,7 @@
                     <th
                       v-if="shouldShowRowTotals(container)"
                       :rowspan="containerRowHeaderRowSpan(container)"
+                      :colspan="containerRowTotalHeaders(container).length || 1"
                       class="column-field-group"
                     >
                       <span class="column-field-value">Итоги</span>
@@ -228,22 +241,30 @@
                       :key="`column-header-${container.id}-${rowIndex}`"
                       class="column-header-row"
                     >
-                      <th
+                      <template
                         v-if="!hasMetricGroups(container) && rowIndex === 0"
-                        :rowspan="containerColumnFieldRows(container).length"
-                        :style="rowHeaderStyle(container.id)"
-                        class="row-header-title"
                       >
-                        <div class="th-content">
-                          {{ containerRowHeaderTitle(container) }}
-                          <span
-                            class="resize-handle"
-                            @mousedown.prevent="
-                              startRowHeaderResize(container.id, $event)
-                            "
-                          ></span>
-                        </div>
-                      </th>
+                        <th
+                          v-for="(label, index) in containerRowHeaderColumns(container)"
+                          :key="`row-header-${container.id}-${rowIndex}-${index}`"
+                          :rowspan="containerColumnFieldRows(container).length"
+                          :style="
+                            rowHeaderStyle(container.id, containerRowHeaderColumnCount(container))
+                          "
+                          class="row-header-title"
+                        >
+                          <div class="th-content">
+                            {{ label }}
+                            <span
+                              v-if="index === containerRowHeaderColumnCount(container) - 1"
+                              class="resize-handle"
+                              @mousedown.prevent="
+                                startRowHeaderResize(container.id, $event)
+                              "
+                            ></span>
+                          </div>
+                        </th>
+                      </template>
                       <template
                         v-for="segment in headerRow.segments"
                         :key="`segment-${container.id}-${rowIndex}-${segment.metricId}`"
@@ -258,9 +279,13 @@
                               tableColumnStyle(container.id, cell.styleKey)
                             "
                             class="column-field-group"
+                            :title="cell.label || ''"
                           >
                             <div class="th-content">
-                              <span class="column-field-value">
+                              <span
+                                class="column-field-value"
+                                :title="cell.label || ''"
+                              >
                                 {{ cell.label }}
                               </span>
                               <span
@@ -279,8 +304,12 @@
                             v-else
                             :colspan="cell.colspan"
                             class="column-field-group"
+                            :title="cell.label || ''"
                           >
-                            <span class="column-field-value">
+                            <span
+                              class="column-field-value"
+                              :title="cell.label || ''"
+                            >
                               {{ cell.label }}
                             </span>
                           </th>
@@ -299,15 +328,19 @@
                       </th>
                     </tr>
                   </template>
-                  <tr v-else>
+                  <tr v-else-if="!hasMetricGroups(container)">
                     <th
-                      v-if="!hasMetricGroups(container)"
-                      :style="rowHeaderStyle(container.id)"
+                      v-for="(label, index) in containerRowHeaderColumns(container)"
+                      :key="`row-header-${container.id}-${index}`"
+                      :style="
+                        rowHeaderStyle(container.id, containerRowHeaderColumnCount(container))
+                      "
                       class="row-header-title"
                     >
                       <div class="th-content">
-                        {{ containerRowHeaderTitle(container) }}
+                        {{ label }}
                         <span
+                          v-if="index === containerRowHeaderColumnCount(container) - 1"
                           class="resize-handle"
                           @mousedown.prevent="
                             startRowHeaderResize(container.id, $event)
@@ -320,11 +353,15 @@
                         .columns"
                       :key="column.key"
                       :style="tableColumnStyle(container.id, column.key)"
+                      :title="resolveColumnHeaderLabel(column)"
                     >
                       <div class="th-content">
-                        <span class="column-field-value">{{
-                          column.label
-                        }}</span>
+                        <span
+                          class="column-field-value"
+                          :title="resolveColumnHeaderLabel(column)"
+                        >
+                          {{ resolveColumnHeaderLabel(column) }}
+                        </span>
                         <span
                           class="resize-handle"
                           @mousedown.prevent="
@@ -350,11 +387,52 @@
                 </thead>
                 <tbody>
                   <tr
-                    v-for="row in containerRowData(container)"
+                    v-for="(row, rowIndex) in containerRowData(container)"
                     :key="row.key"
                     :style="tableRowStyle(container.id, row.key)"
                   >
-                    <td class="row-label" :style="rowHeaderStyle(container.id)">
+                    <template v-if="containerUseRowHeaderColumns(container)">
+                      <template
+                        v-for="(cell, levelIndex) in containerRowHeaderMatrix(container)[rowIndex] || []"
+                        :key="`row-${row.key}-${levelIndex}`"
+                      >
+                        <td
+                          v-if="cell.show"
+                          :rowspan="cell.rowspan"
+                          class="row-label row-header-cell"
+                          :style="
+                            rowHeaderStyle(
+                              container.id,
+                              containerRowHeaderColumnCount(container),
+                            )
+                          "
+                        >
+                          <div class="row-content">
+                            <span>{{ cell.value }}</span>
+                          </div>
+                          <span
+                            v-if="
+                              levelIndex ===
+                              containerRowHeaderColumnCount(container) - 1
+                            "
+                            class="row-resize-handle"
+                            @mousedown.prevent="
+                              startTableRowResize(container.id, row.key, $event)
+                            "
+                          ></span>
+                        </td>
+                      </template>
+                    </template>
+                    <td
+                      v-else
+                      class="row-label"
+                      :style="
+                        rowHeaderStyle(
+                          container.id,
+                          containerRowHeaderColumnCount(container),
+                        )
+                      "
+                    >
                       <div
                         class="row-tree"
                         :style="{ paddingLeft: `${row.depth * 18}px` }"
@@ -372,7 +450,7 @@
                           }}
                         </button>
                         <div class="row-content">
-                          <span>{{ row.label }}</span>
+                          <span>{{ resolveRowHeaderLabel(row) }}</span>
                         </div>
                       </div>
                       <span
@@ -426,9 +504,16 @@
                   "
                 >
                   <tr>
-                    <td v-if="shouldShowColumnTotals(container)">
+                    <td
+                      v-if="shouldShowColumnTotals(container)"
+                      :colspan="containerRowHeaderColumnCount(container)"
+                    >
                       ИТОГО
                     </td>
+                    <td
+                      v-else
+                      :colspan="containerRowHeaderColumnCount(container)"
+                    ></td>
                     <template v-if="shouldShowColumnTotals(container)">
                       <td
                         v-for="column in containerState(container.id).view
@@ -521,6 +606,13 @@
               • {{ detailDialog.columnLabel }}
             </span>
           </p>
+          <p
+            v-if="detailDialog.filtersSummary"
+            class="detail-panel__filters"
+            :title="detailDialog.filtersSummary"
+          >
+            Фильтры: {{ detailDialog.filtersSummary }}
+          </p>
         </div>
         <div class="detail-panel__actions">
           <button
@@ -601,10 +693,14 @@ import {
   resolveCommonContainerFieldKeys,
 } from '@/shared/stores/pageBuilder'
 import { useAuthStore } from '@/shared/stores/auth'
-import { fetchPlanRecords } from '@/shared/api/plan'
-import { fetchParameterRecords } from '@/shared/api/parameter'
-import { sendDataSourceRequest } from '@/shared/api/dataSource'
-import { loadReportSources } from '@/shared/api/report'
+import { fetchRemoteRecords } from '@/shared/services/dataSources'
+import {
+  fetchBackendFilters,
+  fetchBackendDetails,
+  fetchBackendView,
+  isPivotBackendEnabled,
+  normalizeBackendView,
+} from '@/shared/services/reportViewBackend'
 import ReportChart from '@/components/ReportChart.vue'
 import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import {
@@ -624,26 +720,28 @@ import {
 } from '@/shared/lib/conditionalFormatting'
 import FilterRangeControl from '@/components/FilterRangeControl.vue'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
-import {
-  normalizeJoinList,
-  mergeJoinedRecords,
-  fetchJoinPayload,
-  parseJoinConfig,
-} from '@/shared/lib/sourceJoins.js'
 import { defaultLayoutSettings } from '@/shared/lib/layoutMeta'
-import {
-  canUserAccessPage,
-  isPagePrivate,
-  matchUserAccess,
-  readStoredUserMeta,
-  resolveUserMeta,
-} from '@/shared/lib/pageAccess'
+import { canUserAccessPage, readStoredUserMeta, resolveUserMeta } from '@/shared/lib/pageAccess'
 const route = useRoute()
 const router = useRouter()
 const store = usePageBuilderStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
 const authStore = useAuthStore()
-const pageId = computed(() => route.params.pageId)
+const props = defineProps({
+  pageId: {
+    type: [String, Number],
+    default: '',
+  },
+})
+const pageId = computed(() => {
+  const propValue = props.pageId
+  if (propValue !== null && typeof propValue !== 'undefined') {
+    const normalized = String(propValue).trim()
+    if (normalized) return normalized
+  }
+  const routeValue = route.params.pageId
+  return routeValue != null ? String(routeValue) : ''
+})
 const page = computed(() => store.getPageById(pageId.value))
 const pageContainers = computed(
   () => store.pageContainers[pageId.value]?.items || [],
@@ -652,32 +750,27 @@ const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
 const dictionaryLabelsLower = computed(
   () => fieldDictionaryStore.labelMapLower || {},
 )
-const remoteSourceCatalog = reactive(new Map())
-const remoteSourcesLoaded = ref(false)
-const remoteSourcesLoading = ref(false)
+const pivotBackendEnabled = isPivotBackendEnabled()
+const debugLogsEnabled =
+  String(import.meta.env.VITE_DEBUG_LOGS || '').toLowerCase() === 'true'
 
 onMounted(async () => {
-  await Promise.all([
-    store.fetchTemplates(true),
-    store.fetchPages(true),
-    store.fetchPrivacyOptions(),
-    fieldDictionaryStore.fetchDictionary(),
-  ])
+  await Promise.all([store.fetchPages(), fieldDictionaryStore.fetchDictionary()])
   if (pageId.value) {
-    await store.fetchPageContainers(pageId.value, true)
+    await store.fetchPageContainers(pageId.value)
   }
+  resetTabFilterState()
+  refreshContainers()
 })
 
 watch(
   () => pageId.value,
   async (next) => {
     if (next) {
-      await Promise.all([
-        store.fetchPages(true),
-        store.fetchTemplates(true),
-        store.fetchPrivacyOptions(),
-      ])
-      await store.fetchPageContainers(next, true)
+      resetTabFilterState()
+      await store.fetchPages()
+      await store.fetchPageContainers(next)
+      refreshContainers()
     }
   },
 )
@@ -714,6 +807,7 @@ const visibleContainers = computed(() => {
     (container) => (container.tabIndex || 1) === current,
   )
 })
+const pivotBackendActive = computed(() => pivotBackendEnabled)
 watch(
   tabOptions,
   (options) => {
@@ -728,6 +822,23 @@ watch(
   },
   { immediate: true },
 )
+watch(
+  () => activeTab.value,
+  (next, prev) => {
+    if (prev != null && prev !== next) {
+      persistTabFilterState(prev)
+    }
+    restoreTabFilterState(next)
+    ensurePageFilters(resolvedPageFilterKeys.value)
+    if (pivotBackendActive.value) {
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
+    refreshVisibleContainers()
+  },
+)
 const layoutStyle = computed(() => {
   const template = `repeat(${layoutSettings.value.columns}, minmax(0, 1fr))`
   return {
@@ -738,6 +849,8 @@ const layoutStyle = computed(() => {
 const containerStates = reactive({})
 const containerFilterValues = reactive({})
 const containerFilterRanges = reactive({})
+const availablePageFilterValues = reactive({})
+const availableContainerFilterValues = reactive({})
 const containerRefreshTimers = reactive({})
 const containerTableSizing = reactive({})
 const containerRowCollapse = reactive({})
@@ -753,11 +866,15 @@ const detailDialog = reactive({
   rowLabel: '',
   columnLabel: '',
   metricLabel: '',
+  filtersSummary: '',
 })
-const dataCache = reactive({})
+let detailDialogRequestId = 0
+let detailDialogAbortController = null
 const defaultColumnWidth = 150
 const defaultRowHeight = 48
 const defaultRowHeaderWidth = 200
+const numericColumnWidth = 120
+const textColumnWidth = 200
 const supportedCharts = ['bar', 'line', 'pie']
 const chartPalette = [
   '#2b6cb0',
@@ -768,28 +885,66 @@ const chartPalette = [
   '#8b5cf6',
 ]
 const FILTER_META_VALUE_LIMIT = 20
+const FILTER_SUMMARY_VALUE_LIMIT = 3
+const BACKEND_FILTERS_DEBOUNCE_MS = 200
 const EMPTY_SET = new Set()
+let backendFiltersTimer = null
+let backendFiltersAbortController = null
+let backendFiltersInFlightSignature = ''
+let backendFiltersInFlightScope = ''
+let lastTabFilterKeysSignature = ''
+const backendFiltersInFlightContainers = new Map()
+let backendFiltersPendingScope = ''
+let backendFiltersPageSignature = ''
+const backendFiltersPendingContainers = new Set()
+const backendFiltersContainerSignatures = new Map()
+const backendFiltersByContainer = {}
+const backendFilterMetaOverrides = reactive({})
 const pageFilterValues = reactive({})
 const pageFilterRanges = reactive({})
+const pageFilterValuesByTab = reactive({})
+const pageFilterRangesByTab = reactive({})
 const commonFilterKeys = computed(() =>
-  resolveCommonContainerFieldKeys(pageContainers.value, store.templates),
+  resolveCommonContainerFieldKeys(visibleContainers.value, store.templates),
+)
+const resolvedPageFilterKeys = computed(() => resolvePageFilterKeys())
+const hasResolvedPageFilters = computed(
+  () => resolvedPageFilterKeys.value.length > 0,
 )
 const globalFieldMetaMap = computed(() => buildGlobalFieldMetaMap())
 const pageFilterOptions = computed(() =>
-  commonFilterKeys.value.map((key) => {
+  resolvedPageFilterKeys.value.map((key) => {
     const descriptor = globalFieldMetaMap.value.get(key) || {}
+    const metaOverride = backendFilterMetaOverrides[key] || {}
+    const backendOptions = availablePageFilterValues[key]
+    const hasOptions =
+      pivotBackendActive.value &&
+      Array.isArray(backendOptions) &&
+      backendOptions.length > 0
     const hasRange = globalFilterRangeDefaults.value.has(key)
-    const modePreference = normalizePreferredMode(
-      globalFilterModeMap.value.get(key),
-    )
-    const preferredMode = modePreference || (hasRange ? 'range' : '')
+    const modePreference = hasOptions
+      ? 'values'
+      : normalizePreferredMode(metaOverride.mode) ||
+        normalizePreferredMode(globalFilterModeMap.value.get(key))
+    const preferredMode = modePreference || (!hasOptions && hasRange ? 'range' : '')
     const dateMeta = parseDatePartKey(key)
+    const metaType =
+      metaOverride.type || descriptor.type || (dateMeta ? 'string' : '')
+    const rangeAllowed = !hasOptions && (modePreference === 'range' || hasRange)
+    if (debugLogsEnabled && pivotBackendActive.value) {
+      console.debug('filter ui mode', key, {
+        metaType,
+        hasOptions,
+        mode: preferredMode || (rangeAllowed ? 'range' : 'values'),
+      })
+    }
     return {
       key,
       label: resolveGlobalFilterLabel(key, descriptor),
-      type: descriptor.type || (dateMeta ? 'string' : ''),
-      rangeOnly: preferredMode === 'range',
+      type: metaType,
+      rangeOnly: !hasOptions && preferredMode === 'range',
       preferredMode,
+      rangeAllowed,
     }
   }),
 )
@@ -829,7 +984,7 @@ const hasActivePageFilters = computed(() =>
   }),
 )
 const activePageFilterKeySet = computed(
-  () => new Set((page.value?.filters || []).filter(Boolean)),
+  () => new Set(activePageFilters.value.map((filter) => filter.key)),
 )
 const globalFilterValueMap = computed(() => buildGlobalFilterValueMap())
 const globalFilterRangeDefaults = computed(() => buildGlobalFilterRangeMap())
@@ -838,29 +993,6 @@ const currentUserMeta = computed(() => {
   const personal = resolveUserMeta(authStore.personalInfo)
   if (personal) return personal
   return readStoredUserMeta()
-})
-const currentObjUser = computed(() => currentUserMeta.value?.objUser ?? null)
-const currentPvUser = computed(() => currentUserMeta.value?.pvUser ?? null)
-const isPrivatePage = computed(() => isPagePrivate(page.value))
-const isPageAuthor = computed(() =>
-  matchUserAccess(
-    currentObjUser.value,
-    currentPvUser.value,
-    page.value?.objUser,
-    page.value?.pvUser,
-  ),
-)
-const isWhitelistedUser = computed(() => {
-  const list = page.value?.privacy?.users
-  if (!Array.isArray(list)) return false
-  return list.some((user) =>
-    matchUserAccess(
-      currentObjUser.value,
-      currentPvUser.value,
-      user?.id,
-      user?.pv,
-    ),
-  )
 })
 const canViewPage = computed(() => canUserAccessPage(page.value, currentUserMeta.value))
 let refreshTimer = null
@@ -879,6 +1011,7 @@ function dataSourceLabel(tpl) {
   if (!value) return 'Не задан'
   return value
 }
+
 function containerState(id) {
 if (!containerStates[id]) {
   containerStates[id] = {
@@ -887,6 +1020,8 @@ if (!containerStates[id]) {
     view: null,
     chart: null,
     signature: '',
+    inFlightSignature: '',
+    viewAbortController: null,
     meta: {
       rowTotalsAllowed: new Set(),
       columnTotalsAllowed: new Set(),
@@ -983,21 +1118,110 @@ function ensurePageFilters(keys = []) {
   })
 }
 
+function normalizeTabKey(tabId) {
+  return String(tabId || 1)
+}
+
+function cloneFilterValuesStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, values]) => {
+    acc[key] = Array.isArray(values) ? [...values] : []
+    return acc
+  }, {})
+}
+
+function cloneFilterRangesStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      acc[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
+    }
+    return acc
+  }, {})
+}
+
+function replaceFilterValuesStore(next = {}) {
+  Object.keys(pageFilterValues).forEach((key) => {
+    delete pageFilterValues[key]
+  })
+  Object.entries(next || {}).forEach(([key, values]) => {
+    pageFilterValues[key] = Array.isArray(values) ? [...values] : []
+  })
+}
+
+function replaceFilterRangesStore(next = {}) {
+  Object.keys(pageFilterRanges).forEach((key) => {
+    delete pageFilterRanges[key]
+  })
+  Object.entries(next || {}).forEach(([key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      pageFilterRanges[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
+    }
+  })
+}
+
+function persistTabFilterState(tabId) {
+  const key = normalizeTabKey(tabId)
+  pageFilterValuesByTab[key] = cloneFilterValuesStore(pageFilterValues)
+  pageFilterRangesByTab[key] = cloneFilterRangesStore(pageFilterRanges)
+}
+
+function restoreTabFilterState(tabId) {
+  const key = normalizeTabKey(tabId)
+  replaceFilterValuesStore(pageFilterValuesByTab[key] || {})
+  replaceFilterRangesStore(pageFilterRangesByTab[key] || {})
+}
+
+function resetTabFilterState() {
+  Object.keys(pageFilterValuesByTab).forEach((key) => {
+    delete pageFilterValuesByTab[key]
+  })
+  Object.keys(pageFilterRangesByTab).forEach((key) => {
+    delete pageFilterRangesByTab[key]
+  })
+  replaceFilterValuesStore({})
+  replaceFilterRangesStore({})
+  lastTabFilterKeysSignature = ''
+}
+
 function templateFilters(container) {
   const tpl = template(container.templateId)
   if (!tpl) return []
   ensureContainerFilters(container.id, tpl)
   const fieldMeta = tpl.snapshot?.fieldMeta || {}
   const rangeStore = tpl.snapshot?.filterRanges || {}
-  const filtersMeta = (tpl.snapshot?.filtersMeta || []).map((meta) => {
+  const filtersMeta = (tpl.snapshot?.filtersMeta || [])
+    .filter((meta) => !meta?.hidden)
+    .map((meta) => {
     const range = sanitizeRange(rangeStore?.[meta.key])
-    const preferredMode =
-      normalizePreferredMode(meta?.mode) || (range ? 'range' : '')
+    const metaOverride = backendFilterMetaOverrides[meta.key] || {}
+    const availableOptions =
+      availableContainerFilterValues[container.id]?.[meta.key]
+    const hasOptions =
+      pivotBackendActive.value &&
+      Array.isArray(availableOptions) &&
+      availableOptions.length > 0
+    const preferredMode = hasOptions
+      ? 'values'
+      : normalizePreferredMode(metaOverride.mode) ||
+        normalizePreferredMode(meta?.mode) ||
+        (range ? 'range' : '')
+    const rangeAllowed =
+      !hasOptions && (preferredMode === 'range' || Boolean(range))
+    const metaType = metaOverride.type || fieldMeta?.[meta.key]?.type || ''
+    if (debugLogsEnabled && pivotBackendActive.value) {
+      console.debug('filter ui mode', meta.key, {
+        metaType,
+        hasOptions,
+        mode: preferredMode || (rangeAllowed ? 'range' : 'values'),
+      })
+    }
     return {
       ...meta,
-      type: fieldMeta?.[meta.key]?.type || '',
-      rangeOnly: preferredMode === 'range',
+      type: metaType,
+      rangeOnly: !hasOptions && preferredMode === 'range',
       preferredMode,
+      rangeAllowed,
     }
   })
   const excluded = activePageFilterKeySet.value
@@ -1033,16 +1257,96 @@ function ensureContainerFilters(containerId, tpl) {
   })
 }
 
-function fieldOptions(filter) {
-  return (filter.values || []).map((value) => ({
+function fieldOptionsFromValues(values = []) {
+  return (values || []).map((value) => ({
     value,
     label: value || 'пусто',
   }))
 }
 
+function normalizeBackendFilterOption(option) {
+  if (option && typeof option === 'object' && 'value' in option) {
+    const value = option.value
+    const label =
+      typeof option.label === 'string' && option.label.trim()
+        ? option.label
+        : value || 'пусто'
+    const normalized = { value, label }
+    if (typeof option.count === 'number') {
+      normalized.count = option.count
+    }
+    return normalized
+  }
+  return {
+    value: option,
+    label: option || 'пусто',
+  }
+}
+
+function extractBackendOptionsMap(payload) {
+  const options = payload?.options
+  if (options && typeof options === 'object') {
+    return Object.entries(options).reduce((acc, [key, list]) => {
+      if (Array.isArray(list)) {
+        acc[key] = list.map((option) => normalizeBackendFilterOption(option))
+      }
+      return acc
+    }, {})
+  }
+  const values = payload?.values
+  if (values && typeof values === 'object') {
+    return Object.entries(values).reduce((acc, [key, list]) => {
+      if (Array.isArray(list)) {
+        acc[key] = fieldOptionsFromValues(list)
+      }
+      return acc
+    }, {})
+  }
+  return {}
+}
+
+function shouldForceStringType(metaType, options = []) {
+  if (metaType !== 'date') return false
+  if (!Array.isArray(options) || !options.length) return false
+  const values = options.map((option) => option?.value ?? option)
+  const hasString = values.some((value) => typeof value === 'string')
+  if (!hasString) return false
+  return values.some(
+    (value) => typeof value === 'string' && parseDateValue(value) === null,
+  )
+}
+
+function applyBackendMetaOverrides(meta = {}, optionsMap = {}) {
+  if (!meta || typeof meta !== 'object') return
+  Object.entries(meta).forEach(([key, descriptor]) => {
+    if (!key) return
+    const metaType = descriptor?.type || ''
+    const metaMode = normalizePreferredMode(descriptor?.mode)
+    const options = optionsMap[key] || []
+    let type = metaType
+    if (type && shouldForceStringType(type, options)) {
+      type = 'string'
+    }
+    const mode =
+      Array.isArray(options) && options.length ? 'values' : metaMode || ''
+    if (type || mode) {
+      backendFilterMetaOverrides[key] = { type, mode }
+    } else if (backendFilterMetaOverrides[key]) {
+      delete backendFilterMetaOverrides[key]
+    }
+  })
+}
+
 function templateOptions(container) {
   const tpl = template(container.templateId)
   return tpl?.snapshot?.options || {}
+}
+
+function containerFilterOptions(containerId, filter) {
+  const available = availableContainerFilterValues[containerId]?.[filter.key]
+  if (pivotBackendActive.value && Array.isArray(available)) return available
+  if (Array.isArray(available) && available.length) return available
+  return fieldOptionsFromValues(filter.values)
 }
 
 function rowTotalsAllowed(container) {
@@ -1123,14 +1427,38 @@ function containerRowHeaderTitle(container) {
   return containerState(container.id).meta?.rowHeaderTitle || 'Строки'
 }
 
+function containerRowHeaderFields(container) {
+  return containerState(container.id).meta?.rowHeaderFields || ['Строки']
+}
+
+function containerUseRowHeaderColumns(container) {
+  return Boolean(containerState(container.id).meta?.useRowHeaderColumns)
+}
+
+function containerRowHeaderColumns(container) {
+  if (containerUseRowHeaderColumns(container)) {
+    return containerRowHeaderFields(container)
+  }
+  return [containerRowHeaderTitle(container)]
+}
+
+function containerRowHeaderColumnCount(container) {
+  return containerRowHeaderColumns(container).length || 1
+}
+
+function containerRowHeaderMatrix(container) {
+  return containerState(container.id).meta?.rowHeaderMatrix || []
+}
+
 function containerColumnFieldRows(container) {
   return containerState(container.id).meta?.columnFieldRows || []
 }
 
 function containerRowHeaderRowSpan(container) {
   const metricRows = hasMetricGroups(container) ? 1 : 0
-  const columnRows = containerColumnFieldRows(container).length || 1
-  return metricRows + columnRows
+  const columnRows = containerColumnFieldRows(container).length
+  if (metricRows && !columnRows) return 1
+  return metricRows + (columnRows || 1)
 }
 
 function flattenRowTree(nodes = [], collapseState = {}) {
@@ -1161,9 +1489,21 @@ function tableSizing(containerId) {
     containerTableSizing[containerId] = {
       columnWidths: reactive({}),
       rowHeights: reactive({}),
+      rowHeaderAuto: true,
     }
   }
   return containerTableSizing[containerId]
+}
+
+function isTextColumn(column = {}) {
+  const format =
+    column?.metric?.outputFormat || column?.format || column?.outputFormat || ''
+  const aggregator = column?.metric?.aggregator || column?.aggregator || ''
+  return format === 'text' || aggregator === 'value'
+}
+
+function preferredColumnWidth(column = {}) {
+  return isTextColumn(column) ? textColumnWidth : numericColumnWidth
 }
 
 function tableColumnStyle(containerId, columnKey) {
@@ -1178,10 +1518,12 @@ function tableRowStyle(containerId, rowKey) {
   return { height: `${height}px` }
 }
 
-function rowHeaderStyle(containerId) {
+function rowHeaderStyle(containerId, columnCount = 1) {
   const sizing = tableSizing(containerId)
   const width = sizing.rowHeaderWidth || defaultRowHeaderWidth
-  return { width: `${width}px` }
+  const count = Math.max(Number(columnCount) || 1, 1)
+  const normalized = Math.max(120, Math.round(width / count))
+  return { width: `${normalized}px` }
 }
 
 function startTableColumnResize(containerId, columnKey, event) {
@@ -1222,6 +1564,7 @@ function startTableRowResize(containerId, rowKey, event) {
 
 function startRowHeaderResize(containerId, event) {
   const sizing = tableSizing(containerId)
+  sizing.rowHeaderAuto = false
   const startX = event.clientX
   const th = event.currentTarget.closest('th')
   const initial =
@@ -1238,12 +1581,17 @@ function startRowHeaderResize(containerId, event) {
   window.addEventListener('mouseup', onUp)
 }
 
-function syncTableSizing(containerId, view) {
+function syncTableSizing(containerId, view, rowHeaderColumns = 1) {
   const sizing = tableSizing(containerId)
   const columnKeys = new Set(view.columns.map((column) => column.key))
   Object.keys(sizing.columnWidths).forEach((key) => {
     if (!columnKeys.has(key) && key !== '__rows__') {
       delete sizing.columnWidths[key]
+    }
+  })
+  view.columns.forEach((column) => {
+    if (!Number.isFinite(sizing.columnWidths[column.key])) {
+      sizing.columnWidths[column.key] = preferredColumnWidth(column)
     }
   })
   const rowKeys =
@@ -1255,6 +1603,20 @@ function syncTableSizing(containerId, view) {
       delete sizing.rowHeights[key]
     }
   })
+  const headerColumns = Math.max(Number(rowHeaderColumns) || 1, 1)
+  const desiredRowHeaderWidth = Math.max(
+    defaultRowHeaderWidth,
+    headerColumns * textColumnWidth,
+  )
+  if (sizing.rowHeaderAuto !== false) {
+    if (
+      !Number.isFinite(sizing.rowHeaderWidth) ||
+      sizing.rowHeaderWidth < desiredRowHeaderWidth
+    ) {
+      sizing.rowHeaderWidth = desiredRowHeaderWidth
+      sizing.rowHeaderAuto = true
+    }
+  }
 }
 
 function collectTreeKeys(tree = []) {
@@ -1288,9 +1650,125 @@ function groupColumnsByLevel(columns, levelIndex) {
 }
 
 function getColumnLevelValue(column, levelIndex) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length && levelIndex < values.length) {
+    const raw = values[levelIndex]
+    if (raw !== null && typeof raw !== 'undefined' && raw !== '') {
+      return formatValue(raw)
+    }
+  }
   const level = column.levels?.[levelIndex]
   if (!level) return 'Итого'
   return level.value || '—'
+}
+
+function splitRowLabel(label = '') {
+  const value = String(label || '').trim()
+  if (!value) return []
+  const separators = [' / ', ' • ', ' › ']
+  for (const separator of separators) {
+    if (value.includes(separator)) {
+      return value.split(separator).map((part) => part.trim())
+    }
+  }
+  return [value]
+}
+
+function resolveRowLevelValues(row, levelCount = 0) {
+  const levels = Array.isArray(row?.levels) ? row.levels : []
+  let values = []
+  if (levels.length) {
+    values = levels.map((level) => formatValue(level?.value))
+  } else if (Array.isArray(row?.values) && row.values.length) {
+    values = row.values.map((value) => formatValue(value))
+  } else if (row?.label) {
+    values = splitRowLabel(row.label).map((value) => formatValue(value))
+  }
+  if (!levelCount) return values
+  const normalized = values.slice(0, levelCount)
+  while (normalized.length < levelCount) {
+    normalized.push('—')
+  }
+  return normalized
+}
+
+function buildRowHeaderMatrix(rows = [], levelCount = 0) {
+  if (!rows.length || !levelCount) return []
+  const valuesList = rows.map((row) =>
+    resolveRowLevelValues(row, levelCount),
+  )
+  const matrix = valuesList.map((values) =>
+    values.map((value) => ({
+      value,
+      rowspan: 1,
+      show: true,
+    })),
+  )
+  const hasSamePrefix = (left, right, depth) => {
+    for (let index = 0; index < depth; index += 1) {
+      if (left[index] !== right[index]) return false
+    }
+    return true
+  }
+  for (let level = 0; level < levelCount; level += 1) {
+    let start = 0
+    while (start < rows.length) {
+      const current = valuesList[start]
+      const value = current[level]
+      let span = 1
+      let next = start + 1
+      while (
+        next < rows.length &&
+        valuesList[next][level] === value &&
+        hasSamePrefix(current, valuesList[next], level)
+      ) {
+        span += 1
+        next += 1
+      }
+      matrix[start][level].rowspan = span
+      for (let index = start + 1; index < start + span; index += 1) {
+        matrix[index][level].show = false
+        matrix[index][level].rowspan = 0
+      }
+      start += span
+    }
+  }
+  return matrix
+}
+
+function resolveRowHeaderLabel(row) {
+  const parts = resolveRowLevelValues(row).filter(
+    (value) => value && value !== '—',
+  )
+  if (parts.length) {
+    if (debugLogsEnabled) {
+      console.debug('pivot row header', row?.key, row?.values, row?.label)
+    }
+    return parts[parts.length - 1]
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot row header', row?.key, row?.values, row?.label)
+  }
+  return row?.label || row?.key || ''
+}
+
+function resolveColumnHeaderLabel(column) {
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values
+      .map((value) => formatValue(value))
+      .filter((value) => value && value !== '—')
+    if (parts.length) {
+      if (debugLogsEnabled) {
+        console.debug('pivot col header', column?.key, column?.values, column?.label)
+      }
+      return parts.join(' • ')
+    }
+  }
+  if (debugLogsEnabled) {
+    console.debug('pivot col header', column?.key, column?.values, column?.label)
+  }
+  return column?.label || column?.key || ''
 }
 
 function containerRowData(container) {
@@ -1307,10 +1785,12 @@ function flattenContainerRows(containerId, view) {
     key: row.key,
     label: row.label,
     fieldLabel: '',
-    depth: 0,
+    depth: Array.isArray(row.levels) ? Math.max(row.levels.length - 1, 0) : 0,
     hasChildren: false,
     cells: row.cells,
     totals: row.totals,
+    levels: row.levels || [],
+    values: row.values || [],
   }))
 }
 
@@ -1330,6 +1810,10 @@ function canShowCellDetails(container, columnEntry) {
 }
 
 function closeDetailDialog() {
+  if (detailDialogAbortController) {
+    detailDialogAbortController.abort()
+    detailDialogAbortController = null
+  }
   detailDialog.visible = false
   detailDialog.containerId = ''
   detailDialog.loading = false
@@ -1337,9 +1821,10 @@ function closeDetailDialog() {
   detailDialog.entries = []
   detailDialog.fields = []
   detailDialog.total = 0
+  detailDialog.filtersSummary = ''
 }
 
-function handleCellDetails(container, row, columnEntry) {
+async function handleCellDetails(container, row, columnEntry) {
   if (!columnEntry || !canShowCellDetails(container, columnEntry)) return
   const tpl = template(container.templateId)
   if (!tpl) return
@@ -1355,15 +1840,99 @@ function handleCellDetails(container, row, columnEntry) {
   detailDialog.total = 0
   detailDialog.containerLabel =
     container.title || tpl.name || 'Контейнер'
-  detailDialog.rowLabel = row.label || 'Все записи'
-  detailDialog.columnLabel = columnEntry.label || tpl.snapshot?.pivot?.columns?.join(' • ') || ''
+  detailDialog.rowLabel = resolveRowHeaderLabel(row) || 'Все записи'
+  detailDialog.columnLabel =
+    resolveColumnHeaderLabel(columnEntry) ||
+    tpl.snapshot?.pivot?.columns?.join(' • ') ||
+    ''
   detailDialog.metricLabel =
     metric.label || metric.title || metric.fieldKey || 'Метрика'
+  detailDialog.filtersSummary = buildDetailFilterSummary(tpl, container.id)
   detailDialog.fields = resolveDetailFieldDescriptors(tpl, metric)
   const rowsPivot = tpl.snapshot?.pivot?.rows || []
   const columnsPivot = tpl.snapshot?.pivot?.columns || []
   const rowKey = row.key || '__all__'
   const columnKey = columnEntry.baseKey || '__all__'
+  if (pivotBackendActive.value) {
+    if (detailDialogAbortController) {
+      detailDialogAbortController.abort()
+    }
+    detailDialogRequestId += 1
+    const requestId = detailDialogRequestId
+    const controller = new AbortController()
+    detailDialogAbortController = controller
+    try {
+      const response = await fetchBackendDetails({
+        templateId: tpl.id,
+        remoteSource: tpl.remoteSource,
+        snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+        filters: buildBackendFilters(container.id),
+        rowKey,
+        columnKey,
+        metric: {
+          id: metric.id,
+          fieldKey: metric.fieldKey,
+          aggregator: metric.aggregator,
+          type: metric.type,
+        },
+        detailFields: detailDialog.fields.map((field) => field.key),
+        limit: 200,
+        offset: 0,
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted || requestId !== detailDialogRequestId) {
+        return
+      }
+      const entries = Array.isArray(response?.entries) ? response.entries : []
+      detailDialog.entries = entries
+      detailDialog.total = Number(response?.total) || entries.length
+      detailDialog.loading = false
+      detailDialog.error = entries.length
+        ? ''
+        : 'Нет подробностей для этой ячейки.'
+    } catch (err) {
+      if (err?.name === 'AbortError') return
+      if (controller.signal.aborted || requestId !== detailDialogRequestId) {
+        return
+      }
+      try {
+        let filtered = state.records || []
+        if (!filtered.length) {
+          const raw = state.rawRecords?.length
+            ? state.rawRecords
+            : await ensureTemplateData(tpl)
+          state.rawRecords = Array.isArray(raw) ? raw : []
+          filtered = filterRecords(
+            state.rawRecords,
+            tpl.snapshot,
+            tpl.dataSource,
+            container.id,
+          )
+          state.records = filtered
+        }
+        const matched = (filtered || []).filter(
+          (record) =>
+            matchesDimensionPath(record, rowsPivot, rowKey) &&
+            matchesDimensionPath(record, columnsPivot, columnKey),
+        )
+        detailDialog.total = matched.length
+        detailDialog.entries = matched.slice(0, 200)
+        detailDialog.loading = false
+        detailDialog.error = matched.length
+          ? ''
+          : 'Нет подробностей для этой ячейки.'
+      } catch (fallbackError) {
+        detailDialog.error =
+          err?.message || 'Не удалось получить детализацию.'
+        detailDialog.loading = false
+      }
+    } finally {
+      if (detailDialogAbortController === controller) {
+        detailDialogAbortController = null
+      }
+    }
+    return
+  }
   requestAnimationFrame(() => {
     try {
       const matched = (state.records || []).filter(
@@ -1482,298 +2051,10 @@ async function ensureTemplateData(tpl, options = {}) {
   if (!tpl) {
     throw new Error('Привяжите представление для отображения данных.')
   }
-  if (tpl.remoteSource) {
-    return ensureRemoteSourceData(tpl.remoteSource, options)
+  if (!tpl.remoteSource) {
+    throw new Error('В представлении не выбран источник данных.')
   }
-  return ensureFallbackData(tpl.dataSource, options)
-}
-
-async function ensureFallbackData(source, { force = false } = {}) {
-  if (!source) throw new Error('В представлении не выбран источник данных.')
-  if (!force && dataCache[source]) return dataCache[source]
-  let records = []
-  if (source === 'plans') {
-    records = await fetchPlanRecords()
-  } else if (source === 'parameters') {
-    records = await fetchParameterRecords()
-  } else {
-    throw new Error(`Источник «${source}» не поддерживается.`)
-  }
-  dataCache[source] = records
-  return records
-}
-
-async function ensureRemoteSourceData(source, { force = false } = {}) {
-  const cacheKey =
-    source?.remoteId ||
-    source?.id ||
-    `${source?.method || 'POST'}:${source?.url || source?.remoteMeta?.URL || ''}`
-  if (!force && cacheKey && dataCache[cacheKey]) {
-    return dataCache[cacheKey]
-  }
-  const request = buildRemoteRequest(source)
-  const response = await sendDataSourceRequest(request)
-  let records = extractRecords(response)
-  const joins = resolveSourceJoins(source)
-  if (records?.length && joins.length) {
-    try {
-      const joinResults = await fetchRemoteJoinRecords(joins)
-      const successful = joinResults.filter((item) => !item.error)
-      if (successful.length) {
-        const joinRecordsList = successful.map((item) => item.records || [])
-        const appliedJoins = successful.map((item) => joins[item.index])
-        const { records: enriched } = mergeJoinedRecords(
-          records,
-          appliedJoins,
-          joinRecordsList,
-        )
-        records = enriched
-      }
-    } catch (err) {
-      console.warn('Failed to merge remote joins', err)
-    }
-  }
-  if (cacheKey) {
-    dataCache[cacheKey] = records
-  }
-  return records
-}
-
-function buildRemoteRequest(source = {}) {
-  const url = source?.url || source?.remoteMeta?.URL || ''
-  if (!url) {
-    throw new Error('У источника данных отсутствует URL.')
-  }
-  const method = String(
-    source?.method || source?.remoteMeta?.Method || 'POST',
-  ).toUpperCase()
-  const headers = normalizeRemoteHeaders(
-    source?.headers || source?.remoteMeta?.Headers,
-  )
-  const body = normalizeRemoteBody(
-    source?.body ?? source?.remoteMeta?.MethodBody,
-  )
-  return { url, method, headers, body }
-}
-
-function normalizeRemoteHeaders(raw) {
-  if (!raw) return { 'Content-Type': 'application/json' }
-  if (typeof raw === 'object') return raw
-  try {
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') return parsed
-  } catch {
-    // ignore
-  }
-  return { 'Content-Type': 'application/json' }
-}
-
-function normalizeRemoteBody(raw) {
-  if (raw == null || raw === '') return undefined
-  if (typeof raw === 'object') return raw
-  if (typeof raw !== 'string') return raw
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return raw
-  }
-}
-
-function extractRecords(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return Array.isArray(payload) ? payload : []
-  }
-  if (Array.isArray(payload.result?.records)) return payload.result.records
-  if (Array.isArray(payload.result)) return payload.result
-  if (Array.isArray(payload.records)) return payload.records
-  return []
-}
-
-async function fetchRemoteJoinRecords(joins = []) {
-  if (!joins.length) return []
-  await ensureRemoteSourceCatalog()
-  const tasks = joins.map(async (join, index) => {
-    const target = getRemoteSourceFromCatalog(join.targetSourceId)
-    if (!target) {
-      return {
-        index,
-        join,
-        records: [],
-        error: `Источник связи «${join.targetSourceId}» не найден.`,
-      }
-    }
-    const { payload, error } = buildJoinRequestPayload(target)
-    if (!payload || error) {
-      return {
-        index,
-        join,
-        records: [],
-        error:
-          error ||
-          `Источник связи «${join.targetSourceId}» содержит некорректный запрос.`,
-      }
-    }
-    try {
-      const response = await fetchJoinPayload(payload, { cache: true })
-      return {
-        index,
-        join,
-        records: extractRecords(response),
-      }
-    } catch (err) {
-      return {
-        index,
-        join,
-        records: [],
-        error:
-          err?.response?.data?.message ||
-          err?.message ||
-          `Не удалось выполнить связь «${join.targetSourceId}».`,
-      }
-    }
-  })
-  const results = await Promise.all(tasks)
-  return results.sort((a, b) => a.index - b.index)
-}
-
-async function ensureRemoteSourceCatalog(force = false) {
-  if (remoteSourcesLoaded.value && !force && remoteSourceCatalog.size) {
-    return remoteSourceCatalog
-  }
-  if (remoteSourcesLoading.value && !force) {
-    return remoteSourceCatalog
-  }
-  remoteSourcesLoading.value = true
-  try {
-    remoteSourceCatalog.clear()
-    const records = await loadReportSources()
-    ;(records || []).forEach((entry, index) => {
-      const normalized = normalizeRemoteSourceRecord(entry, index)
-      const key = normalized.remoteId || normalized.id
-      if (key) {
-        remoteSourceCatalog.set(String(key), normalized)
-      }
-      if (normalized.name && !remoteSourceCatalog.has(normalized.name)) {
-        remoteSourceCatalog.set(normalized.name, normalized)
-      }
-    })
-    remoteSourcesLoaded.value = true
-  } catch (err) {
-    console.warn('Failed to load remote sources for joins', err)
-  } finally {
-    remoteSourcesLoading.value = false
-  }
-  return remoteSourceCatalog
-}
-
-function getRemoteSourceFromCatalog(id) {
-  if (id == null) return null
-  const direct = remoteSourceCatalog.get(String(id))
-  if (direct) return direct
-  return remoteSourceCatalog.get(id)
-}
-
-function normalizeRemoteSourceRecord(entry = {}, index = 0) {
-  const remoteId = entry?.id ?? entry?.Id ?? entry?.ID
-  const normalizedId =
-    remoteId !== undefined && remoteId !== null
-      ? String(remoteId)
-      : `remote-${index}`
-  const method =
-    entry?.nameMethodTyp ||
-    entry?.Method ||
-    entry?.method ||
-    entry?.httpMethod ||
-    'POST'
-  const headers = entry?.headers || entry?.Headers || {}
-  const body =
-    entry?.MethodBody ||
-    entry?.body ||
-    entry?.payload ||
-    entry?.requestBody ||
-    entry?.rawBody ||
-    ''
-  return {
-    id: normalizedId,
-    remoteId: normalizedId,
-    name: entry?.name || entry?.Name || '',
-    url: entry?.URL || entry?.url || entry?.requestUrl || '',
-    httpMethod: String(method || 'POST').toUpperCase(),
-    rawBody: formatRawBody(body),
-    headers,
-    joins: parseJoinConfig(entry?.joinConfig || entry?.JoinConfig),
-    remoteMeta: entry || {},
-  }
-}
-
-function formatRawBody(body) {
-  if (!body) return ''
-  if (typeof body === 'string') {
-    try {
-      const parsed = JSON.parse(body)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return body
-    }
-  }
-  try {
-    return JSON.stringify(body, null, 2)
-  } catch {
-    return ''
-  }
-}
-
-function buildJoinRequestPayload(source = {}) {
-  const url = source.url?.trim()
-  if (!url) {
-    return { payload: null, error: 'У источника нет URL.' }
-  }
-  const method = String(source.httpMethod || 'POST').toUpperCase()
-  const headers = normalizeRemoteHeaders(
-    source.headers || source.remoteMeta?.Headers,
-  )
-  const rawBody = source.rawBody?.trim() || ''
-  if (method === 'GET') {
-    if (!rawBody) {
-      return { payload: { url, method, headers }, error: null }
-    }
-    const parsed = safeJsonParse(rawBody)
-    if (!parsed.ok) {
-      return {
-        payload: null,
-        error: 'Параметры GET-запроса должны быть корректным JSON.',
-      }
-    }
-    return { payload: { url, method, headers, body: parsed.value }, error: null }
-  }
-  if (!rawBody) {
-    return { payload: null, error: 'Тело запроса не заполнено.' }
-  }
-  const parsed = safeJsonParse(rawBody)
-  if (!parsed.ok || typeof parsed.value !== 'object') {
-    return {
-      payload: null,
-      error: 'Тело запроса должно быть валидным JSON-объектом.',
-    }
-  }
-  return { payload: { url, method, headers, body: parsed.value }, error: null }
-}
-
-function safeJsonParse(value = '') {
-  try {
-    return { ok: true, value: JSON.parse(value) }
-  } catch {
-    return { ok: false, value: null }
-  }
-}
-
-function resolveSourceJoins(source = {}) {
-  if (!source) return []
-  if (Array.isArray(source.joins) && source.joins.length) {
-    return normalizeJoinList(source.joins)
-  }
-  const parsed = parseJoinConfig(source?.remoteMeta?.joinConfig)
-  return normalizeJoinList(parsed)
+  return fetchRemoteRecords(tpl.remoteSource, options)
 }
 
 function resolveFieldMetaEntry(store, key) {
@@ -1836,6 +2117,18 @@ function sanitizeRange(range) {
 function hasActiveRange(range) {
   if (!range || typeof range !== 'object') return false
   return isDefinedRangeValue(range.start) || isDefinedRangeValue(range.end)
+}
+
+function rangesEqual(a, b) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return a.start === b.start && a.end === b.end
+}
+
+function areValueArraysEqual(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index])
 }
 
 function inferRangeType(range, descriptor = null) {
@@ -1915,29 +2208,33 @@ function valueSatisfiesRange(rawValue, range, descriptor = null) {
   return true
 }
 
-function matchesGlobalFilters(record, skipKey = null) {
+function matchesGlobalFilters(record, excludeKey = null) {
   if (!activePageFilters.value.length) return true
+
   return activePageFilters.value.every((filter) => {
-    if (filter.key === skipKey) return true
-    const values = pageFilterValues[filter.key]
+    const key = filter?.key
+    if (!key) return true
+    if (excludeKey && key === excludeKey) return true
+
+    const values = pageFilterValues[key]
     if (Array.isArray(values) && values.length) {
-      const recordValue = normalizeValue(
-        resolvePivotFieldValue(record, filter.key),
-      )
-      if (!recordValue && recordValue !== '') return false
+      const recordValue = normalizeValue(resolvePivotFieldValue(record, key))
       if (!values.includes(recordValue)) return false
     }
-    const range = pageFilterRanges[filter.key]
+
+    const range = pageFilterRanges[key]
     if (range && hasActiveRange(range)) {
-      const dateMeta = parseDatePartKey(filter.key)
+      const dateMeta = parseDatePartKey(key)
       const descriptor =
-        globalFieldMetaMap.value.get(filter.key) ||
+        globalFieldMetaMap.value.get(key) ||
         (dateMeta ? globalFieldMetaMap.value.get(dateMeta.fieldKey) : null)
-      const resolvedValue = resolvePivotFieldValue(record, filter.key)
+
+      const resolvedValue = resolvePivotFieldValue(record, key)
       if (!valueSatisfiesRange(resolvedValue, range, descriptor)) {
         return false
       }
     }
+
     return true
   })
 }
@@ -2004,6 +2301,226 @@ function filterRecords(records, snapshot, source, containerId) {
   })
 }
 
+function normalizeSelectedValues(values = []) {
+  if (!Array.isArray(values)) return []
+  return values.map((value) => {
+    if (value && typeof value === 'object' && 'value' in value) {
+      return value.value
+    }
+    return value
+  })
+}
+
+function buildBackendFilters(containerId) {
+  const pageKeys = resolvePageFilterKeys()
+  const globalValues = pageKeys.reduce((acc, key) => {
+    const values = normalizeSelectedValues(pageFilterValues[key])
+    if (values.length) {
+      acc[key] = values
+    }
+    return acc
+  }, {})
+  const globalRanges = pageKeys.reduce((acc, key) => {
+    const range = sanitizeRange(pageFilterRanges[key])
+    if (range) {
+      acc[key] = range
+    }
+    return acc
+  }, {})
+  const containerValues = Object.entries(
+    containerFilterValues[containerId] || {},
+  ).reduce((acc, [key, values]) => {
+    const list = normalizeSelectedValues(values)
+    if (list.length) {
+      acc[key] = list
+    }
+    return acc
+  }, {})
+  const containerRanges = Object.entries(
+    containerFilterRanges[containerId] || {},
+  ).reduce((acc, [key, range]) => {
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      acc[key] = sanitized
+    }
+    return acc
+  }, {})
+  return {
+    globalFilters: {
+      values: globalValues,
+      ranges: globalRanges,
+    },
+    containerFilters: {
+      values: containerValues,
+      ranges: containerRanges,
+    },
+  }
+}
+
+function buildDetailFilterSummary(tpl, containerId) {
+  if (!tpl) return ''
+  const snapshot = tpl.snapshot || {}
+  const overrides = snapshot?.options?.headerOverrides || {}
+  const fieldMeta = snapshot?.fieldMeta || {}
+  const summary = new Map()
+
+  const ensureEntry = (key) => {
+    if (!summary.has(key)) {
+      summary.set(key, {
+        label: resolveFieldLabel(key, overrides, fieldMeta),
+        values: new Map(),
+        range: null,
+      })
+    }
+    return summary.get(key)
+  }
+
+  const addValues = (key, values) => {
+    const list = normalizeSelectedValues(values)
+    if (!list.length) return
+    const entry = ensureEntry(key)
+    list.forEach((value) => {
+      const normalized = normalizeValue(value)
+      if (!entry.values.has(normalized)) {
+        const label = formatValue(value)
+        entry.values.set(
+          normalized,
+          label && label !== '—' ? label : normalized || 'пусто',
+        )
+      }
+    })
+  }
+
+  const addRange = (key, range) => {
+    const sanitized = sanitizeRange(range)
+    if (!sanitized) return
+    const entry = ensureEntry(key)
+    entry.range = sanitized
+  }
+
+  Object.entries(snapshot?.filterValues || {}).forEach(([key, values]) =>
+    addValues(key, values),
+  )
+  Object.entries(snapshot?.filterRanges || {}).forEach(([key, range]) =>
+    addRange(key, range),
+  )
+
+  activePageFilters.value.forEach((filter) => {
+    const key = filter?.key
+    if (!key) return
+    addValues(key, pageFilterValues[key])
+    addRange(key, pageFilterRanges[key])
+  })
+
+  Object.entries(containerFilterValues[containerId] || {}).forEach(
+    ([key, values]) => addValues(key, values),
+  )
+  Object.entries(containerFilterRanges[containerId] || {}).forEach(
+    ([key, range]) => addRange(key, range),
+  )
+
+  const parts = []
+  summary.forEach((entry) => {
+    const values = Array.from(entry.values.values())
+    let valueText = ''
+    if (values.length) {
+      const shown = values.slice(0, FILTER_SUMMARY_VALUE_LIMIT)
+      valueText = shown.join(', ')
+      if (values.length > FILTER_SUMMARY_VALUE_LIMIT) {
+        valueText += ` (+${values.length - FILTER_SUMMARY_VALUE_LIMIT})`
+      }
+    }
+    let rangeText = ''
+    if (entry.range) {
+      const start = isDefinedRangeValue(entry.range.start)
+        ? formatValue(entry.range.start)
+        : ''
+      const end = isDefinedRangeValue(entry.range.end)
+        ? formatValue(entry.range.end)
+        : ''
+      if (start && end) {
+        rangeText = `от ${start} до ${end}`
+      } else if (start) {
+        rangeText = `от ${start}`
+      } else if (end) {
+        rangeText = `до ${end}`
+      }
+    }
+    const detail = valueText || rangeText
+    if (detail) {
+      parts.push(`${entry.label}: ${detail}`)
+    }
+  })
+  return parts.join(' • ')
+}
+
+function resolvePageFilterKeys() {
+  const containers = visibleContainers.value || []
+  let keys = commonFilterKeys.value || []
+  if (!keys.length && containers.length) {
+    const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
+    const fallback = []
+    const seen = new Set()
+    containers.forEach((container) => {
+      const tpl = templateMap.get(container.templateId)
+      if (!tpl) return
+      ;(tpl.snapshot?.filtersMeta || []).forEach((meta) => {
+        const key = meta?.key
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        fallback.push(key)
+      })
+    })
+    keys = fallback
+  }
+  const resolved = [...new Set((keys || []).filter(Boolean))]
+  if (debugLogsEnabled) {
+    const signature = JSON.stringify({
+      tabId: activeTab.value,
+      visible: containers.length,
+      keys: resolved,
+    })
+    if (signature !== lastTabFilterKeysSignature) {
+      lastTabFilterKeysSignature = signature
+      console.debug('tab filter keys', {
+        tabId: activeTab.value,
+        visibleContainers: containers.length,
+        filterKeys: resolved,
+      })
+    }
+  }
+  return resolved
+}
+
+function buildBackendSnapshot(tpl, commonKeys = []) {
+  const snapshot = tpl?.snapshot || {}
+  const pivot = snapshot.pivot || {}
+  const normalizedCommon = Array.isArray(commonKeys)
+    ? commonKeys.filter(Boolean)
+    : []
+  const metaKeys = Array.isArray(snapshot.filtersMeta)
+    ? snapshot.filtersMeta
+        .map((meta) => meta?.key)
+        .filter(Boolean)
+    : []
+  const filterKeys = normalizedCommon.length ? normalizedCommon : metaKeys
+  if (!filterKeys.length && debugLogsEnabled) {
+    console.warn(
+      'Filter keys are empty; sending empty pivot.filters in backend payload.',
+    )
+  }
+  return {
+    ...snapshot,
+    pivot: {
+      ...pivot,
+      filters: [...filterKeys],
+    },
+  }
+}
+
+// Backend is the source of truth for cascading filters and allowed values
+// when backend pivot is enabled; frontend only submits current filters and
+// renders options returned by /api/report/filters.
 function prepareMetrics(list = []) {
   return (list || [])
     .filter((metric) =>
@@ -2049,10 +2566,12 @@ function metricDisplayLabel(metric = {}) {
   const title =
     (typeof metric.title === 'string' && metric.title.trim()) ||
     (typeof metric.fieldLabel === 'string' && metric.fieldLabel.trim())
-  if (title) return title
-  if (typeof metric.label === 'string' && metric.label.trim()) {
-    return metric.label.trim()
+  if (metric.aggregator === 'count') {
+    return title || 'Количество'
   }
+  if (title) return title
+  const rawLabel = typeof metric.label === 'string' ? metric.label.trim() : ''
+  if (rawLabel) return rawLabel
   return metric.fieldKey || ''
 }
 
@@ -2184,9 +2703,8 @@ function buildChartTitle(metrics = []) {
 }
 
 function displayRowLabel(row, index) {
-  if (Array.isArray(row?.values) && row.values.length) {
-    return row.values.filter(Boolean).join(' • ')
-  }
+  const label = resolveRowHeaderLabel(row)
+  if (label) return label
   if (row?.label) return row.label
   return `Строка ${index + 1}`
 }
@@ -2201,7 +2719,9 @@ function displayColumnLabel(column, index) {
     .map((value) => value.trim())
     .filter((value) => value && (!normalizedMetric || normalizeLabelValue(value) !== normalizedMetric))
   if (categories.length) {
-    return categories.join(' • ')
+    const leaf = categories[categories.length - 1]
+    if (metricLabel) return `${leaf} • ${metricLabel}`
+    return leaf
   }
   const rawLabel = typeof column?.label === 'string' ? column.label : ''
   const stripped = stripMetricFromLabel(rawLabel, metricLabel)
@@ -2257,6 +2777,8 @@ function stripMetricFromLabel(label, metricLabel) {
 async function hydrateContainer(container) {
   const tpl = template(container.templateId)
   const state = containerState(container.id)
+  const hadData = Boolean(state.rawRecords && state.rawRecords.length)
+  let viewAbortController = null
   if (!tpl) {
     state.loading = false
     state.error = 'Привяжите представление для отображения данных.'
@@ -2290,29 +2812,28 @@ async function hydrateContainer(container) {
   if (state.signature === signature && state.view) {
     return
   }
+  if (state.loading && state.inFlightSignature === signature) {
+    return
+  }
 
   state.signature = signature
+  state.inFlightSignature = signature
   state.loading = true
   state.error = ''
   state.view = null
   state.chart = null
   state.records = []
+  state.rawRecords = []
   state.meta.rowTotalsAllowed = new Set()
   state.meta.columnTotalsAllowed = new Set()
   state.meta.metricGroups = []
   state.meta.columnFieldRows = []
   state.meta.rowHeaderTitle = 'Строки'
+  state.meta.rowHeaderFields = ['Строки']
+  state.meta.useRowHeaderColumns = false
+  state.meta.rowHeaderMatrix = []
 
   try {
-    const records = await ensureTemplateData(tpl)
-    state.rawRecords = Array.isArray(records) ? records : []
-    const filtered = filterRecords(
-      records,
-      tpl.snapshot,
-      tpl.dataSource,
-      container.id,
-    )
-    state.records = filtered
     const metrics = prepareMetrics(tpl.snapshot?.metrics)
     const rowTotalsAllowed = new Set(
       metrics
@@ -2341,25 +2862,73 @@ async function hydrateContainer(container) {
     if (!hasBaseMetric) {
       throw new Error('Добавьте хотя бы одну базовую метрику в представлении.')
     }
-    let baseView
-    try {
-      const sortsToApply = tpl.snapshot?.options?.sorts || {}
-      baseView = buildPivotView({
-        records: filtered,
-        rows: tpl.snapshot?.pivot?.rows || [],
-        columns: tpl.snapshot?.pivot?.columns || [],
-        metrics: baseMetrics,
-        fieldMeta: templateFieldMetaMap(tpl),
-        headerOverrides: tpl.snapshot?.options?.headerOverrides || {},
-        sorts: sortsToApply,
-      })
-    } catch (err) {
-      if (err?.code === 'VALUE_AGGREGATION_COLLISION') {
-        throw new Error(
-          `Метрика с типом «Значение» использует несколько записей на одну ячейку. Скорректируйте конфигурацию на вкладке «Данные».`,
-        )
+    if (!tpl.remoteSource) {
+      throw new Error('В представлении не выбран источник данных.')
+    }
+
+    let baseView = null
+    let usedLocalFallback = false
+    if (pivotBackendActive.value) {
+      // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
+      // Локальный buildPivotView оставлен как fallback до полной миграции.
+      try {
+        if (state.viewAbortController) {
+          state.viewAbortController.abort()
+        }
+        viewAbortController = new AbortController()
+        state.viewAbortController = viewAbortController
+        const { view: backendView } = await fetchBackendView({
+          templateId: tpl.id,
+          remoteSource: tpl.remoteSource,
+          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+          filters: buildBackendFilters(container.id),
+          signal: viewAbortController.signal,
+          silent: hadData,
+        })
+        const normalized = normalizeBackendView(backendView, baseMetrics)
+        if (normalized?.rows?.length) {
+          baseView = normalized
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        if (!hadData) {
+          console.warn('Failed to build backend pivot view', err)
+        }
       }
-      throw err
+    }
+
+    if (!baseView) {
+      usedLocalFallback = true
+      const records = await ensureTemplateData(tpl)
+      state.rawRecords = Array.isArray(records) ? records : []
+      const filtered = filterRecords(
+        records,
+        tpl.snapshot,
+        tpl.dataSource,
+        container.id,
+      )
+      state.records = filtered
+      try {
+        const sortsToApply = tpl.snapshot?.options?.sorts || {}
+        baseView = buildPivotView({
+          records: filtered,
+          rows: tpl.snapshot?.pivot?.rows || [],
+          columns: tpl.snapshot?.pivot?.columns || [],
+          metrics: baseMetrics,
+          fieldMeta: templateFieldMetaMap(tpl),
+          headerOverrides: tpl.snapshot?.options?.headerOverrides || {},
+          sorts: sortsToApply,
+        })
+      } catch (err) {
+        if (err?.code === 'VALUE_AGGREGATION_COLLISION') {
+          throw new Error(
+            `Метрика с типом «Значение» использует несколько записей на одну ячейку. Скорректируйте конфигурацию на вкладке «Данные».`,
+          )
+        }
+        throw err
+      }
     }
     const augmented = augmentPivotViewWithFormulas(baseView, metrics)
     const visibleView = filterPivotViewByVisibility(augmented, metrics)
@@ -2383,7 +2952,14 @@ async function hydrateContainer(container) {
     state.meta.metricGroups = headerMeta.metricGroups
     state.meta.columnFieldRows = headerMeta.columnFieldRows
     state.meta.rowHeaderTitle = headerMeta.rowHeaderTitle
-    syncTableSizing(container.id, view)
+    state.meta.rowHeaderFields = headerMeta.rowHeaderFields || ['Строки']
+    const hasTree = Boolean(view.rowTree && view.rowTree.length)
+    state.meta.useRowHeaderColumns =
+      !hasTree && state.meta.rowHeaderFields.length > 1
+    state.meta.rowHeaderMatrix = state.meta.useRowHeaderColumns
+      ? buildRowHeaderMatrix(view.rows || [], state.meta.rowHeaderFields.length)
+      : []
+    syncTableSizing(container.id, view, headerMeta.rowHeaderFields?.length || 1)
     const collapseStore = rowCollapseStore(container.id)
     Object.keys(collapseStore).forEach((key) => {
       if (!(view.rowTree || []).some((node) => includesNodeKey(node, key))) {
@@ -2394,6 +2970,21 @@ async function hydrateContainer(container) {
     state.error = err?.message || 'Не удалось построить виджет.'
   } finally {
     state.loading = false
+    if (state.inFlightSignature === signature) {
+      state.inFlightSignature = ''
+    }
+    if (viewAbortController && state.viewAbortController === viewAbortController) {
+      state.viewAbortController = null
+    }
+    if (pivotBackendActive.value) {
+      if (usedLocalFallback && state.rawRecords.length) {
+        recalcContainerFilterOptions(container.id, true)
+        recalcPageFilterOptions(true, true)
+      }
+    } else {
+      recalcContainerFilterOptions(container.id)
+      recalcPageFilterOptions()
+    }
   }
 }
 
@@ -2418,13 +3009,31 @@ function refreshContainers() {
   Object.keys(containerRowCollapse).forEach((id) => {
     if (!ids.has(id)) delete containerRowCollapse[id]
   })
+  Object.keys(backendFiltersByContainer).forEach((id) => {
+    if (!ids.has(id)) {
+      delete backendFiltersByContainer[id]
+      backendFiltersContainerSignatures.delete(id)
+    }
+  })
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+}
+
+function refreshVisibleContainers() {
+  const list = visibleContainers.value || []
+  list.forEach((container) => {
+    hydrateContainer(container)
+  })
 }
 
 async function refreshPageData() {
   if (pageRefreshing.value) return
   pageRefreshing.value = true
   try {
-    await Promise.all([store.fetchTemplates(true), store.fetchPages(true)])
+    await Promise.all([
+      store.fetchTemplates({ force: true, skipCooldown: true }),
+      store.fetchPages({ force: true, skipCooldown: true }),
+    ])
     if (pageId.value) {
       await store.fetchPageContainers(pageId.value, true)
     }
@@ -2569,7 +3178,9 @@ function buildWorksheetRowsXml(container) {
   } else {
     const headerCells = []
     headerCells.push(metricGroups.length ? '' : headerMeta.rowHeaderTitle)
-    columns.forEach((column) => headerCells.push(column.label || ''))
+    columns.forEach((column, index) =>
+      headerCells.push(displayColumnLabel(column, index)),
+    )
     if (showRowTotals) {
       rowTotals.forEach((total) => headerCells.push(total.label || ''))
     }
@@ -2577,7 +3188,7 @@ function buildWorksheetRowsXml(container) {
   }
 
   rows.forEach((row) => {
-    const cells = [row.label || '']
+    const cells = [resolveRowHeaderLabel(row) || row.label || '']
     row.cells.forEach((cell) => cells.push(cell.display || ''))
     if (showRowTotals) {
       filterRowTotalsForExport(row.totals, rowTotalsSet).forEach((total) => {
@@ -2739,6 +3350,7 @@ function dictionaryLabelValue(key) {
 }
 
 function filterSupportsRange(filter = {}) {
+  if (filter?.rangeAllowed === false) return false
   const type = filter?.type
   return type === 'number' || type === 'date'
 }
@@ -2769,26 +3381,21 @@ function hasForcedFilterMode(filter) {
 }
 
 function globalFilterValueOptions(key) {
+  const available = availablePageFilterValues[key]
+  if (pivotBackendActive.value) {
+    if (Array.isArray(available)) return available
+    return globalFilterValueMap.value.get(key) || []
+  }
   const dynamic = computeFilteredGlobalOptions(key)
   if (dynamic.length) return dynamic
+  if (Array.isArray(available) && available.length) return available
   return globalFilterValueMap.value.get(key) || []
 }
 
-function hasActiveGlobalSelection(filterKey) {
-  const values = pageFilterValues[filterKey]
-  if (Array.isArray(values) && values.length) return true
-  const range = pageFilterRanges[filterKey]
-  if (range && hasActiveRange(range)) return true
-  return false
-}
-
 function computeFilteredGlobalOptions(targetKey) {
+  if (pivotBackendActive.value) return []
   if (!targetKey) return []
-  const hasOtherActive = activePageFilters.value.some(
-    (filter) => filter.key !== targetKey && hasActiveGlobalSelection(filter.key),
-  )
-  if (!hasOtherActive) return []
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   if (!containers.length) return []
   const values = new Map()
   containers.forEach((container) => {
@@ -2797,6 +3404,7 @@ function computeFilteredGlobalOptions(targetKey) {
     if (!records.length) return
     records.forEach((record) => {
       if (!matchesGlobalFilters(record, targetKey)) return
+      if (!matchesContainerFilters(record, container)) return
       const resolvedValue = resolvePivotFieldValue(record, targetKey)
       const normalized = normalizeValue(resolvedValue)
       if (!values.has(normalized)) {
@@ -2815,8 +3423,718 @@ function computeFilteredGlobalOptions(targetKey) {
   }))
 }
 
-function buildGlobalFilterValueMap() {
+function matchesContainerFilters(record, container, excludeKey = null) {
+  const tpl = template(container.templateId)
+  // Если шаблон или snapshot ещё не загружены, контейнер не должен отбрасывать записи
+  if (!tpl || !tpl.snapshot) return true
+  const snapshot = tpl.snapshot
+  const fieldMetaMap = new Map(Object.entries(snapshot.fieldMeta || {}))
+  const filterValues = { ...(snapshot.filterValues || {}) }
+  const filterRanges = { ...(snapshot.filterRanges || {}) }
+  if (excludeKey) {
+    delete filterValues[excludeKey]
+    delete filterRanges[excludeKey]
+  }
+  const overrides = containerFilterValues[container.id] || {}
+  Object.entries(overrides).forEach(([key, values]) => {
+    if (key === excludeKey) return
+    filterValues[key] = [...values]
+  })
+  const rangeOverrides = containerFilterRanges[container.id] || {}
+  Object.entries(rangeOverrides).forEach(([key, range]) => {
+    if (key === excludeKey) return
+    const sanitized = sanitizeRange(range)
+    if (sanitized) {
+      filterRanges[key] = sanitized
+    } else {
+      delete filterRanges[key]
+    }
+  })
+  const dimensionValues = snapshot.dimensionValues || {}
+  const dimensionRanges = snapshot.dimensionRanges || {}
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.filters,
+      filterValues,
+      filterRanges,
+      fieldMetaMap,
+    )
+  )
+    return false
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.rows,
+      dimensionValues.rows || {},
+      dimensionRanges.rows || {},
+      fieldMetaMap,
+    )
+  )
+    return false
+  if (
+    !matchFieldSet(
+      record,
+      snapshot.pivot?.columns,
+      dimensionValues.columns || {},
+      dimensionRanges.columns || {},
+      fieldMetaMap,
+    )
+  )
+    return false
+  return true
+}
+
+function collectAvailableValues(records = [], key) {
+  if (!Array.isArray(records) || !records.length) return new Map()
+  const values = new Map()
+  records.forEach((record) => {
+    const resolvedValue = resolvePivotFieldValue(record, key)
+    const normalized = normalizeValue(resolvedValue)
+    if (!values.has(normalized)) {
+      const display = formatValue(resolvedValue)
+      values.set(
+        normalized,
+        display && display !== '—' ? display : normalized || 'пусто',
+      )
+    }
+  })
+  return values
+}
+
+function normalizeFilterValueList(values = []) {
+  const list = Array.isArray(values) ? values : []
+  return list.map((value) => normalizeValue(value)).sort()
+}
+
+function normalizeFilterStore(store = {}, keys = null) {
+  const list = Array.isArray(keys) ? keys : Object.keys(store || {})
+  return list
+    .filter(Boolean)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = normalizeFilterValueList(store?.[key] || [])
+      return acc
+    }, {})
+}
+
+function normalizeRangeStore(store = {}, keys = null) {
+  const list = Array.isArray(keys) ? keys : Object.keys(store || {})
+  return list
+    .filter(Boolean)
+    .sort()
+    .reduce((acc, key) => {
+      const range = sanitizeRange(store?.[key])
+      if (range) {
+        acc[key] = { start: range.start ?? null, end: range.end ?? null }
+      }
+      return acc
+    }, {})
+}
+
+function buildPageFilterSignature() {
+  const keys = resolvePageFilterKeys().sort()
+  return JSON.stringify({
+    keys,
+    values: normalizeFilterStore(pageFilterValues, keys),
+    ranges: normalizeRangeStore(pageFilterRanges, keys),
+  })
+}
+
+function buildContainerFilterSignature(containerId, pageSignature) {
+  return JSON.stringify({
+    page: pageSignature,
+    values: normalizeFilterStore(containerFilterValues[containerId] || {}),
+    ranges: normalizeRangeStore(containerFilterRanges[containerId] || {}),
+  })
+}
+
+function queueBackendFilterRefresh(scope = 'page', containerId = '') {
+  if (!pivotBackendActive.value) return
+  const pageSignature = buildPageFilterSignature()
+  if (backendFiltersInFlightSignature === pageSignature) {
+    const isTabChange = scope === 'tab-change'
+    if (
+      !isTabChange &&
+      (backendFiltersInFlightScope === 'page' ||
+        backendFiltersInFlightScope === 'tab-change')
+    )
+      return
+    if (scope === 'container' && containerId) {
+      const containerSignature = buildContainerFilterSignature(
+        containerId,
+        pageSignature,
+      )
+      if (backendFiltersInFlightContainers.get(containerId) === containerSignature) {
+        return
+      }
+    }
+  }
+  if (scope === 'page' || scope === 'tab-change') {
+    if (scope === 'page' && pageSignature === backendFiltersPageSignature) return
+    backendFiltersPendingScope = scope
+    backendFiltersPendingContainers.clear()
+  } else if (containerId) {
+    if (
+      backendFiltersPendingScope === 'page' ||
+      backendFiltersPendingScope === 'tab-change'
+    )
+      return
+    const containerSignature = buildContainerFilterSignature(
+      containerId,
+      pageSignature,
+    )
+    if (containerSignature === backendFiltersContainerSignatures.get(containerId)) {
+      return
+    }
+    backendFiltersPendingScope = 'container'
+    backendFiltersPendingContainers.add(containerId)
+  } else {
+    return
+  }
+  if (backendFiltersTimer) {
+    clearTimeout(backendFiltersTimer)
+  }
+  backendFiltersTimer = setTimeout(
+    runBackendFilterRefresh,
+    BACKEND_FILTERS_DEBOUNCE_MS,
+  )
+}
+
+async function runBackendFilterRefresh() {
+  const scope = backendFiltersPendingScope || 'page'
+  const baseContainers =
+    scope === 'tab-change' ? visibleContainers.value : pageContainers.value || []
+  const containerIds =
+    scope === 'page' || scope === 'tab-change'
+      ? baseContainers.map((container) => container.id)
+      : Array.from(backendFiltersPendingContainers)
+  backendFiltersPendingScope = ''
+  backendFiltersPendingContainers.clear()
+  if (!containerIds.length) return
+  const pageSignature = buildPageFilterSignature()
+  if (scope === 'page' && pageSignature === backendFiltersPageSignature) {
+    return
+  }
+  if (backendFiltersAbortController) {
+    backendFiltersAbortController.abort()
+  }
+  const controller = new AbortController()
+  backendFiltersAbortController = controller
+  backendFiltersInFlightSignature = pageSignature
+  backendFiltersInFlightScope = scope
+  backendFiltersInFlightContainers.clear()
+  containerIds.forEach((id) => {
+    backendFiltersInFlightContainers.set(
+      id,
+      buildContainerFilterSignature(id, pageSignature),
+    )
+  })
+  const containerMap = new Map(
+    (pageContainers.value || []).map((container) => [container.id, container]),
+  )
+  try {
+    const tasks = containerIds.map(async (id) => {
+      const container = containerMap.get(id)
+      if (!container) return null
+      const tpl = template(container.templateId)
+      if (!tpl || !tpl.remoteSource) return null
+      const silent = Boolean(containerState(id).rawRecords?.length)
+      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys())
+      const signature = buildContainerFilterSignature(id, pageSignature)
+      if (
+        scope === 'container' &&
+        signature === backendFiltersContainerSignatures.get(id)
+      ) {
+        return null
+      }
+      const filters = buildBackendFilters(id)
+      const filterKeys = snapshot?.pivot?.filters || []
+      const selectedKeys = [
+        ...new Set([
+          ...Object.keys(filters?.globalFilters?.values || {}),
+          ...Object.keys(filters?.globalFilters?.ranges || {}),
+        ]),
+      ]
+      const selectedValuesKeys = {
+        global: Object.keys(filters?.globalFilters?.values || {}),
+        container: Object.keys(filters?.containerFilters?.values || {}),
+      }
+      const selectedRangesKeys = {
+        global: Object.keys(filters?.globalFilters?.ranges || {}),
+        container: Object.keys(filters?.containerFilters?.ranges || {}),
+      }
+      if (debugLogsEnabled) {
+        console.debug('filters request summary', {
+          tabId: activeTab.value,
+          filterKeys,
+          selectedKeys,
+        })
+        console.debug('backend filters request', {
+          templateId: tpl.id,
+          filterKeys,
+          selectedValuesKeys,
+          selectedRangesKeys,
+        })
+      }
+      try {
+        const data = await fetchBackendFilters({
+          templateId: tpl.id,
+          remoteSource: tpl.remoteSource,
+          snapshot,
+          filters,
+          signal: controller.signal,
+          silent,
+        })
+        const optionsMap = extractBackendOptionsMap(data)
+        const optionCounts = Object.entries(optionsMap).reduce(
+          (acc, [key, values]) => {
+            acc[key] = Array.isArray(values) ? values.length : 0
+            return acc
+          },
+          {},
+        )
+        if (debugLogsEnabled) {
+          const rawKeys = Object.keys(data?.options || data?.values || {})
+          console.debug('filters resp keys', rawKeys)
+          console.debug('selectedPruned', data?.selectedPruned)
+          console.debug('optionCounts', optionCounts)
+        }
+        return {
+          containerId: id,
+          container,
+          data,
+          signature,
+          optionCounts,
+          optionsMap,
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') return null
+        const hasRecords = Boolean(containerState(id).rawRecords?.length)
+        if (hasRecords) {
+          recalcContainerFilterOptions(id, true)
+          recalcPageFilterOptions(true)
+        }
+        if (!silent) {
+          console.warn('Failed to fetch backend filters', err)
+        } else if (hasRecords) {
+          console.warn('Backend filters failed, using local options', err)
+        }
+        return { containerId: id, error: err, fallbackUsed: hasRecords }
+      }
+    })
+    const results = await Promise.all(tasks)
+    if (controller.signal.aborted) return
+    const successful = results.filter((item) => item && !item.error)
+    const fallbackUsed = results.some((item) => item?.fallbackUsed)
+    let pagePruned = false
+    let containerPruned = false
+    const prunedContainers = new Set()
+    if (successful.length) {
+      successful.forEach((result) => {
+        backendFiltersContainerSignatures.set(
+          result.containerId,
+          result.signature,
+        )
+        backendFiltersByContainer[result.containerId] = result.data || {}
+        applyBackendFilterOptions(
+          result.containerId,
+          result.data,
+          result.container,
+        )
+      })
+      rebuildGlobalFilterOptions()
+      successful.forEach((result) => {
+        const pruned = applySelectedPrunedSelections(
+          result.data?.selectedPruned,
+          result.containerId,
+        )
+        if (pruned.pageChanged) {
+          pagePruned = true
+        }
+        if (pruned.containerChanged) {
+          containerPruned = true
+          prunedContainers.add(result.containerId)
+        }
+      })
+      if (prunePageFilterSelections()) {
+        pagePruned = true
+      }
+      successful.forEach((result) => {
+        if (pruneContainerFilterSelections(result.containerId)) {
+          containerPruned = true
+          prunedContainers.add(result.containerId)
+        }
+      })
+      if (debugLogsEnabled) {
+        successful.forEach((result) => {
+          console.debug('backend filters response', {
+            templateId:
+              template(result.container?.templateId)?.id ||
+              result.container?.templateId,
+            optionCounts: result.optionCounts || {},
+            selectedPruned: {
+              page: pagePruned,
+              container: prunedContainers.has(result.containerId),
+            },
+          })
+        })
+      }
+      backendFiltersPageSignature = buildPageFilterSignature()
+      successful.forEach((result) => {
+        backendFiltersContainerSignatures.set(
+          result.containerId,
+          buildContainerFilterSignature(
+            result.containerId,
+            backendFiltersPageSignature,
+          ),
+        )
+      })
+    }
+    if (!successful.length && fallbackUsed) {
+      recalcPageFilterOptions(true)
+      recalcVisibleContainerFilterOptions(true)
+    } else if (fallbackUsed) {
+      recalcPageFilterOptions(true, true)
+    }
+    if (scope === 'page') {
+      refreshContainers()
+      return
+    }
+    if (scope === 'tab-change') {
+      refreshVisibleContainers()
+      return
+    }
+    if (pagePruned) {
+      refreshContainers()
+      return
+    }
+    if (containerIds.length === 1) {
+      requestContainerRefresh(containerIds[0])
+      return
+    }
+    if (containerPruned) {
+      refreshContainers()
+    }
+  } finally {
+    if (backendFiltersAbortController === controller) {
+      backendFiltersAbortController = null
+    }
+    backendFiltersInFlightSignature = ''
+    backendFiltersInFlightScope = ''
+    backendFiltersInFlightContainers.clear()
+  }
+}
+
+function applyBackendFilterOptions(containerId, data, container) {
+  if (!container) return
+  const filters = templateFilters(container)
+  if (!filters.length) return
+  const optionsMap = extractBackendOptionsMap(data)
+  applyBackendMetaOverrides(data?.meta, optionsMap)
+  const existing = availableContainerFilterValues[containerId] || {}
+  const next = {}
+  filters.forEach((filter) => {
+    const options = optionsMap[filter.key]
+    if (Array.isArray(options)) {
+      next[filter.key] = options
+    } else if (Array.isArray(existing[filter.key])) {
+      next[filter.key] = existing[filter.key]
+    } else {
+      next[filter.key] = fieldOptionsFromValues(filter.values)
+    }
+  })
+  availableContainerFilterValues[containerId] = next
+}
+
+function rebuildGlobalFilterOptions() {
+  const keys = activePageFilters.value.map((filter) => filter.key)
+  const result = {}
+  keys.forEach((key) => {
+    result[key] = new Map()
+  })
+  const containerIds = (visibleContainers.value || []).map(
+    (container) => container.id,
+  )
+  containerIds.forEach((id) => {
+    const payload = backendFiltersByContainer[id]
+    if (!payload) return
+    const optionsMap = extractBackendOptionsMap(payload)
+    keys.forEach((key) => {
+      const options = optionsMap[key] || []
+      options.forEach((option) => {
+        const value = option?.value
+        if (!result[key].has(value)) {
+          result[key].set(value, option?.label || value || 'пусто')
+        }
+      })
+    })
+  })
+  Object.keys(availablePageFilterValues).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete availablePageFilterValues[key]
+    }
+  })
+  keys.forEach((key) => {
+    availablePageFilterValues[key] = Array.from(result[key].entries()).map(
+      ([value, label]) => ({
+        value,
+        label,
+      }),
+    )
+  })
+}
+
+function prunePageFilterSelections() {
+  let changed = false
+  activePageFilters.value.forEach((filter) => {
+    const key = filter.key
+    const options = availablePageFilterValues[key]
+    if (!Array.isArray(options)) return
+    const allowed = new Set(
+      options.map((option) => normalizeValue(option.value)),
+    )
+    const current = Array.isArray(pageFilterValues[key])
+      ? pageFilterValues[key]
+      : []
+    const next = current.filter((value) =>
+      allowed.has(normalizeValue(value)),
+    )
+    if (!areValueArraysEqual(current, next)) {
+      pageFilterValues[key] = next
+      changed = true
+    }
+  })
+  return changed
+}
+
+function pruneContainerFilterSelections(containerId) {
+  const store = containerFilterValues[containerId]
+  if (!store) return false
+  const optionsMap = availableContainerFilterValues[containerId] || {}
+  let changed = false
+  Object.keys(store).forEach((key) => {
+    const options = optionsMap[key]
+    if (!Array.isArray(options)) return
+    const allowed = new Set(
+      options.map((option) => normalizeValue(option.value)),
+    )
+    const current = Array.isArray(store[key]) ? store[key] : []
+    const next = current.filter((value) =>
+      allowed.has(normalizeValue(value)),
+    )
+    if (!areValueArraysEqual(current, next)) {
+      store[key] = next
+      changed = true
+    }
+  })
+  return changed
+}
+
+function normalizeSelectedPrunedPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { global: {}, container: {} }
+  }
+  if (payload.global || payload.container) {
+    return {
+      global: payload.global || {},
+      container: payload.container || {},
+    }
+  }
+  if (payload.globalFilters || payload.containerFilters) {
+    return {
+      global: payload.globalFilters || {},
+      container: payload.containerFilters || {},
+    }
+  }
+  return { global: payload, container: {} }
+}
+
+function pruneStoreBySelected(store, prunedMap, rangeStore = null) {
+  if (!store || !prunedMap || typeof prunedMap !== 'object') return false
+  let changed = false
+  Object.entries(prunedMap).forEach(([key, values]) => {
+    if (Array.isArray(values)) {
+      const remove = new Set(normalizeSelectedValues(values))
+      const current = Array.isArray(store[key]) ? store[key] : []
+      const next = current.filter((value) => !remove.has(value))
+      if (!areValueArraysEqual(current, next)) {
+        store[key] = next
+        changed = true
+      }
+      return
+    }
+    if (
+      rangeStore &&
+      values &&
+      typeof values === 'object' &&
+      (Object.prototype.hasOwnProperty.call(values, 'start') ||
+        Object.prototype.hasOwnProperty.call(values, 'end'))
+    ) {
+      if (rangeStore[key]) {
+        delete rangeStore[key]
+        changed = true
+      }
+    }
+  })
+  return changed
+}
+
+function applySelectedPrunedSelections(selectedPruned, containerId) {
+  const { global, container } = normalizeSelectedPrunedPayload(selectedPruned)
+  const pageChanged = pruneStoreBySelected(
+    pageFilterValues,
+    global,
+    pageFilterRanges,
+  )
+  let containerChanged = false
+  if (containerId) {
+    const store = containerFilterValues[containerId]
+    if (store) {
+      containerChanged = pruneStoreBySelected(
+        store,
+        container,
+        containerFilterRanges[containerId],
+      )
+    }
+  }
+  return { pageChanged, containerChanged }
+}
+
+function recalcPageFilterOptions(force = false, merge = false) {
+  if (pivotBackendActive.value && !force) {
+    return
+  }
+  const keys = activePageFilters.value.map((filter) => filter.key)
+  const containers = visibleContainers.value || []
+  const result = {}
+  keys.forEach((key) => {
+    const values = new Map()
+    containers.forEach((container) => {
+      const state = containerState(container.id)
+      const records = state.rawRecords || []
+      if (!records.length) return
+      const filtered = records.filter(
+        (record) =>
+          matchesGlobalFilters(record, key) &&
+          matchesContainerFilters(record, container),
+      )
+      const collected = collectAvailableValues(filtered, key)
+      collected.forEach((label, value) => {
+        if (!values.has(value)) values.set(value, label)
+      })
+    })
+    result[key] = Array.from(values.entries()).map(([value, label]) => ({
+      value,
+      label,
+    }))
+  })
+  Object.keys(availablePageFilterValues).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete availablePageFilterValues[key]
+    }
+  })
+  if (merge) {
+    mergePageFilterOptions(result, keys)
+    return
+  }
+  Object.entries(result).forEach(([key, options]) => {
+    availablePageFilterValues[key] = options
+  })
+}
+
+function mergePageFilterOptions(result = {}, keys = []) {
+  const allowedKeys = keys.length ? new Set(keys) : null
+  Object.entries(result).forEach(([key, options]) => {
+    if (allowedKeys && !allowedKeys.has(key)) return
+    const merged = new Map()
+    const existing = Array.isArray(availablePageFilterValues[key])
+      ? availablePageFilterValues[key]
+      : []
+    existing.forEach((option) => {
+      const value = normalizeValue(option?.value)
+      if (!merged.has(value)) {
+        merged.set(value, option?.label || option?.value || 'пусто')
+      }
+    })
+    ;(options || []).forEach((option) => {
+      const value = normalizeValue(option?.value)
+      if (!merged.has(value)) {
+        merged.set(value, option?.label || option?.value || 'пусто')
+      }
+    })
+    availablePageFilterValues[key] = Array.from(merged.entries()).map(
+      ([value, label]) => ({
+        value,
+        label,
+      }),
+    )
+  })
+}
+
+function recalcContainerFilterOptions(containerId, force = false) {
+  if (pivotBackendActive.value && !force) {
+    return
+  }
+  const container = (pageContainers.value || []).find(
+    (item) => item.id === containerId,
+  )
+  if (!container) {
+    delete availableContainerFilterValues[containerId]
+    return
+  }
+  const filters = templateFilters(container)
+  if (!filters.length) {
+    delete availableContainerFilterValues[containerId]
+    return
+  }
+  const state = containerState(container.id)
+  const records = state.rawRecords || []
+  const bucket = availableContainerFilterValues[containerId] || {}
+  const next = {}
+  filters.forEach((filter) => {
+    const filtered = records.filter(
+      (record) =>
+        matchesGlobalFilters(record) &&
+        matchesContainerFilters(record, container, filter.key),
+    )
+    const collected = collectAvailableValues(filtered, filter.key)
+    next[filter.key] = Array.from(collected.entries()).map(
+      ([value, label]) => ({
+        value,
+        label,
+      }),
+    )
+  })
+  Object.keys(bucket).forEach((key) => {
+    if (!next[key]) {
+      delete bucket[key]
+    }
+  })
+  Object.entries(next).forEach(([key, options]) => {
+    if (!availableContainerFilterValues[containerId]) {
+      availableContainerFilterValues[containerId] = {}
+    }
+    availableContainerFilterValues[containerId][key] = options
+  })
+}
+
+function recalcAllContainerFilterOptions() {
   const containers = pageContainers.value || []
+  containers.forEach((container) => {
+    recalcContainerFilterOptions(container.id)
+  })
+}
+
+function recalcVisibleContainerFilterOptions(force = false) {
+  const containers = visibleContainers.value || []
+  containers.forEach((container) => {
+    recalcContainerFilterOptions(container.id, force)
+  })
+}
+
+function buildGlobalFilterValueMap() {
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const aggregate = new Map()
   containers.forEach((container) => {
@@ -2836,7 +4154,7 @@ function buildGlobalFilterValueMap() {
 }
 
 function buildGlobalFieldMetaMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const result = new Map()
   containers.forEach((container) => {
@@ -2852,7 +4170,7 @@ function buildGlobalFieldMetaMap() {
 }
 
 function buildGlobalFilterRangeMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const ranges = new Map()
   containers.forEach((container) => {
@@ -2866,7 +4184,7 @@ function buildGlobalFilterRangeMap() {
 }
 
 function buildGlobalFilterModeMap() {
-  const containers = pageContainers.value || []
+  const containers = visibleContainers.value || []
   const templateMap = new Map(store.templates.map((tpl) => [tpl.id, tpl]))
   const modeBuckets = new Map()
   containers.forEach((container) => {
@@ -2988,11 +4306,10 @@ function buildHeaderMeta(tpl, metrics = [], view = null) {
   const fieldMeta = snapshot?.fieldMeta || {}
   const rowFields = snapshot?.pivot?.rows || []
   const columnFields = snapshot?.pivot?.columns || []
-  const rowHeaderTitle = rowFields.length
-    ? rowFields
-        .map((key) => resolveFieldLabel(key, overrides, fieldMeta))
-        .join(' › ')
-    : 'Строки'
+  const rowHeaderFields = rowFields.length
+    ? rowFields.map((key) => resolveFieldLabel(key, overrides, fieldMeta))
+    : ['Строки']
+  const rowHeaderTitle = rowHeaderFields.join(' › ')
   const columns = view?.columns || []
   const metricGroups =
     columns.length && metrics.length
@@ -3034,6 +4351,7 @@ function buildHeaderMeta(tpl, metrics = [], view = null) {
       : []
   return {
     rowHeaderTitle,
+    rowHeaderFields,
     metricGroups,
     columnFieldRows,
   }
@@ -3042,7 +4360,7 @@ function buildHeaderMeta(tpl, metrics = [], view = null) {
 function scheduleRefresh() {
   clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => {
-    refreshContainers()
+    refreshVisibleContainers()
   }, 200)
 }
 
@@ -3060,26 +4378,28 @@ function requestContainerRefresh(containerId) {
   }, 200)
 }
 
-watch(
-  () => pageContainers.value,
-  () => {
-    refreshContainers()
-  },
-  { immediate: true, deep: true },
-)
+function abortContainerViewRequests(containerIds = []) {
+  containerIds.forEach((id) => {
+    const state = containerStates[id]
+    if (state?.viewAbortController) {
+      state.viewAbortController.abort()
+      if (state.viewAbortController) {
+        state.viewAbortController = null
+      }
+    }
+  })
+}
 
 watch(
-  () => store.templates,
-  () => {
-    refreshContainers()
-  },
-  { deep: true },
-)
-
-watch(
-  () => page.value?.filters,
+  resolvedPageFilterKeys,
   (keys = []) => {
     ensurePageFilters(keys)
+    if (pivotBackendActive.value) {
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
   },
   { immediate: true },
 )
@@ -3087,6 +4407,7 @@ watch(
 watch(
   pageFilterValues,
   () => {
+    if (pivotBackendActive.value) return
     scheduleRefresh()
   },
   { deep: true },
@@ -3095,6 +4416,7 @@ watch(
 watch(
   pageFilterRanges,
   () => {
+    if (pivotBackendActive.value) return
     scheduleRefresh()
   },
   { deep: true },
@@ -3105,39 +4427,115 @@ function resetPageFilters() {
     pageFilterValues[filter.key] = []
     delete pageFilterRanges[filter.key]
   })
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
 }
 
 function resetContainerFilter(containerId, key) {
   const store = containerFilterStore(containerId)
   store[key] = []
   delete containerRangeStore(containerId)[key]
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
   requestContainerRefresh(containerId)
 }
 
 function handlePageFilterValuesChange(key, values, forcedMode = '') {
-  pageFilterValues[key] = Array.isArray(values) ? [...values] : []
+  const next = Array.isArray(values) ? [...values] : []
+  if (areValueArraysEqual(pageFilterValues[key], next)) {
+    if (forcedMode !== 'range' && pageFilterRanges[key]) {
+      delete pageFilterRanges[key]
+    }
+    return
+  }
+  pageFilterValues[key] = next
   if (forcedMode !== 'range') {
     delete pageFilterRanges[key]
   }
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+  if (forcedMode === 'range') {
+    return
+  }
+  scheduleRefresh()
 }
 
 function handlePageFilterRangeChange(key, range) {
   const sanitized = sanitizeRange(range)
+  const current = pageFilterRanges[key]
   if (sanitized) {
-    pageFilterRanges[key] = sanitized
-    pageFilterValues[key] = []
-  } else {
+    const changed = !rangesEqual(current, sanitized)
+    if (changed) {
+      pageFilterRanges[key] = sanitized
+    }
+    if (pageFilterValues[key]?.length) {
+      pageFilterValues[key] = []
+    }
+    if (pivotBackendActive.value) {
+      abortContainerViewRequests(
+        (visibleContainers.value || []).map((container) => container.id),
+      )
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
+    scheduleRefresh()
+    return
+  }
+  if (current) {
     delete pageFilterRanges[key]
   }
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests(
+      (visibleContainers.value || []).map((container) => container.id),
+    )
+    queueBackendFilterRefresh('tab-change')
+    return
+  }
+  recalcPageFilterOptions()
+  recalcVisibleContainerFilterOptions()
+  scheduleRefresh()
 }
 
 function handleContainerFilterValuesChange(containerId, filter, values) {
   const key = filter.key
   const store = containerFilterStore(containerId)
-  store[key] = Array.isArray(values) ? [...values] : []
+  const next = Array.isArray(values) ? [...values] : []
+  const current = store[key] || []
+  if (areValueArraysEqual(current, next)) {
+    if (!isContainerRangeFilter(filter)) {
+      delete containerRangeStore(containerId)[key]
+      requestContainerRefresh(containerId)
+    }
+    return
+  }
+  store[key] = next
   if (!isContainerRangeFilter(filter)) {
     delete containerRangeStore(containerId)[key]
   }
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
+  recalcContainerFilterOptions(containerId)
+  recalcPageFilterOptions()
   requestContainerRefresh(containerId)
 }
 
@@ -3145,18 +4543,64 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
   const key = filter.key
   const rangeStore = containerRangeStore(containerId)
   const sanitized = sanitizeRange(range)
+  const currentRange = rangeStore[key]
+  const filterStore = containerFilterStore(containerId)
   if (sanitized) {
-    rangeStore[key] = sanitized
-    containerFilterStore(containerId)[key] = []
-  } else {
-    delete rangeStore[key]
+    const changedRange = !rangesEqual(currentRange, sanitized)
+    if (changedRange) {
+      rangeStore[key] = sanitized
+    }
+    if (filterStore[key]?.length) {
+      filterStore[key] = []
+    }
+    if (changedRange || filterStore[key]?.length === 0) {
+      if (pivotBackendActive.value) {
+        abortContainerViewRequests([containerId])
+        queueBackendFilterRefresh('container', containerId)
+        return
+      }
+      recalcContainerFilterOptions(containerId)
+      recalcPageFilterOptions()
+      requestContainerRefresh(containerId)
+    }
+    return
   }
-  requestContainerRefresh(containerId)
+  if (currentRange) {
+    delete rangeStore[key]
+    if (pivotBackendActive.value) {
+      abortContainerViewRequests([containerId])
+      queueBackendFilterRefresh('container', containerId)
+      return
+    }
+    requestContainerRefresh(containerId)
+  }
+  if (pivotBackendActive.value) {
+    abortContainerViewRequests([containerId])
+    queueBackendFilterRefresh('container', containerId)
+    return
+  }
+  recalcContainerFilterOptions(containerId)
+  recalcPageFilterOptions()
 }
 
 onBeforeUnmount(() => {
   clearTimeout(refreshTimer)
   Object.values(containerRefreshTimers).forEach((timer) => clearTimeout(timer))
+  if (backendFiltersTimer) {
+    clearTimeout(backendFiltersTimer)
+  }
+  if (backendFiltersAbortController) {
+    backendFiltersAbortController.abort()
+  }
+  if (detailDialogAbortController) {
+    detailDialogAbortController.abort()
+    detailDialogAbortController = null
+  }
+  Object.values(containerStates).forEach((state) => {
+    if (state?.viewAbortController) {
+      state.viewAbortController.abort()
+    }
+  })
 })
 
 function goBack() {
@@ -3411,6 +4855,7 @@ function editPage() {
 }
 .pivot-wrapper {
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid #dfe7f5;
   border-radius: 18px;
   background: #fff;
@@ -3437,11 +4882,11 @@ function editPage() {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 11.5px;
   color: #0f172a;
-  line-height: 1.35;
+  line-height: 1.15;
   word-break: break-word;
-  max-height: 4.05em;
+  max-height: 3.45em;
 }
 .pivot-table {
   --cell-padding-y: 9px;
@@ -3501,11 +4946,29 @@ function editPage() {
   background: #f9fafb;
   border-right: 1px solid #edf2f7;
   color: #0f172a;
+  text-align: left !important;
+  direction: ltr !important;
+  unicode-bidi: plaintext;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.pivot-table .row-header-cell {
+  text-align: left !important;
+  direction: ltr !important;
+  vertical-align: top;
 }
 .pivot-table tbody td {
   text-align: right;
   color: #1f2937;
   background: rgba(255, 255, 255, 0.98);
+}
+.pivot-table tbody td.row-label,
+.pivot-table tbody td.row-header-cell {
+  text-align: left !important;
+  direction: ltr !important;
 }
 .pivot-table tbody td.cell {
   text-align: right;
@@ -3535,6 +4998,20 @@ function editPage() {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+}
+.row-content span {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .pivot-table .total,
 .pivot-table .grand-total {
@@ -3692,6 +5169,12 @@ function editPage() {
   font-size: 13px;
   margin: 4px 0 0;
 }
+.detail-panel__filters {
+  color: #64748b;
+  font-size: 12px;
+  margin: 6px 0 0;
+  line-height: 1.3;
+}
 .detail-panel__actions {
   display: flex;
   gap: 8px;
@@ -3783,7 +5266,7 @@ function editPage() {
 .detail-table tr:last-child td {
   border-bottom: none;
 }
-</style>
+.metric-header .column-field-value {
   font-size: 13.5px;
   color: rgba(15, 23, 42, 0.85);
   padding-bottom: 4px;
@@ -3809,3 +5292,4 @@ function editPage() {
   border-left: 1px solid rgba(148, 163, 184, 0.15);
   padding-left: 14px;
 }
+</style>

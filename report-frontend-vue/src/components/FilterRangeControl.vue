@@ -30,8 +30,8 @@
     <div v-else class="filter-range-control__range">
       <div v-if="rangeType === 'date'" class="range-inputs">
         <n-date-picker
-          class="range-input"
           v-model:value="rangeDraft.start"
+          class="range-input"
           type="date"
           value-format="yyyy-MM-dd"
           clearable
@@ -40,8 +40,8 @@
         />
         <span class="range-separator">—</span>
         <n-date-picker
-          class="range-input"
           v-model:value="rangeDraft.end"
+          class="range-input"
           type="date"
           value-format="yyyy-MM-dd"
           clearable
@@ -52,16 +52,16 @@
       <div v-else class="range-inputs">
         <n-input-number
           v-model:value="rangeDraft.start"
-          :disabled="disabled"
           class="range-input"
+          :disabled="disabled"
           clearable
           placeholder="От"
         />
         <span class="range-separator">—</span>
         <n-input-number
           v-model:value="rangeDraft.end"
-          :disabled="disabled"
           class="range-input"
+          :disabled="disabled"
           clearable
           placeholder="До"
         />

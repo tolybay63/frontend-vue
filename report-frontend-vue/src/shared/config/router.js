@@ -6,6 +6,8 @@ import LoginPage from '@/pages/LoginPage.vue'
 import PageManager from '@/pages/PageManager.vue'
 import PageLayoutEditor from '@/pages/PageLayoutEditor.vue'
 import PageRenderer from '@/pages/PageRenderer.vue'
+import DataSourcesPage from '@/pages/DataSourcesPage.vue'
+import DataConfigurationsPage from '@/pages/DataConfigurationsPage.vue'
 
 const routes = [
   {
@@ -20,6 +22,8 @@ const routes = [
   { path: '/pages/:pageId/edit', component: PageLayoutEditor, props: true },
   { path: '/dash/:pageId', component: PageRenderer, props: true },
   { path: '/templates', component: TemplatesPage },
+  { path: '/data-sources', component: DataSourcesPage },
+  { path: '/data-configurations', component: DataConfigurationsPage },
   { path: '/about', component: AboutPage },
 ]
 

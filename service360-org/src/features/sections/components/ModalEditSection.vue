@@ -4,7 +4,8 @@
     @close="closeModal"
     @save="saveData"
     @delete="handleDelete"
-    :show-delete="true"
+    :show-save="canUpdate"
+    :show-delete="canDelete"
   >
     <div class="form-section">
       <AppInput
@@ -56,7 +57,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { usePermissions } from '@/shared/api/auth/usePermissions';
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
@@ -76,6 +78,10 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'refresh'])
 const notificationStore = useNotificationStore()
+
+const { hasPermission } = usePermissions();
+const canUpdate = computed(() => hasPermission('sect:upd'));
+const canDelete = computed(() => hasPermission('sect:del'));
 
 const form = ref({
   name: props.sectionData.name || '',

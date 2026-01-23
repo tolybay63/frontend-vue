@@ -5,11 +5,14 @@ import Stations from '@/views/Stations.vue'
 import Stages from '@/views/Stages.vue'
 import OrgStructure from '@/views/OrgStructure.vue'
 import Login from '@/views/Login.vue'
+import Welcome from '@/views/Welcome.vue'
 import Tools from '@/views/Tools.vue'
 import Equipment from '@/views/Equipment.vue'
 import Materials from '@/views/Materials.vue'
 import ThirdPartyServices from '@/views/ThirdPartyServices.vue'
 import Personnel from '@/views/Personnel.vue'
+import Clients from '@/views/Clients.vue'
+import PassportData from '@/views/PassportData.vue'
 import { isAuthenticated } from '@/shared/api/auth/auth'
 
 const routes = [
@@ -22,6 +25,12 @@ const routes = [
     name: 'Login',
     component: Login,
     meta: { requiresAuth: false }
+  },
+  {
+    path: '/main',
+    name: 'Welcome',
+    component: Welcome,
+    meta: { requiresAuth: true }
   },
   {
     path: '/objects',
@@ -83,6 +92,18 @@ const routes = [
     component: Personnel,
     meta: { requiresAuth: true }
   },
+  {
+    path: '/clients',
+    name: 'Clients',
+    component: Clients,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/objects/:id/passport',
+    name: 'PassportData',
+    component: PassportData,
+    meta: { requiresAuth: true }
+  }
 ];
 
 
@@ -100,8 +121,8 @@ router.beforeEach((to, from, next) => {
     // Пытается зайти на защищенную страницу без авторизации
     next('/login')
   } else if (to.path === '/login' && authenticated) {
-    // Уже авторизован, пытается зайти на логин - редирект на объекты
-    next('/objects')
+    // Уже авторизован, пытается зайти на логин - редирект на welcome
+    next('/main')
   } else {
     // Всё ок, пропускаем
     next()

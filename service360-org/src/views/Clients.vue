@@ -1,27 +1,27 @@
 <template>
   <TableWrapper
     ref="tableWrapperRef"
-    title="Перегоны"
+    title="Клиенты"
     :columns="columns"
     :actions="tableActions"
     :limit="limit"
-    :loadFn="loadStage"
-    :initial-sort-key="null"
-    @row-dblclick="onRowDoubleClick"
+    :loadFn="loadClients"
+    @row-dblclick="handleRowDoubleClick"
   >
   </TableWrapper>
 
-  <ModalAddStage
+  <ModalAddClient
     v-if="isAddModalOpen"
     @close="closeAddModal"
-    @refresh="handleRefresh"
+    @refresh="refreshTable"
   />
 
-  <ModalEditStage
+  <ModalEditClient
     v-if="isEditModalOpen"
-    :stageData="selectedStage"
+    :clientData="selectedClient"
     @close="closeEditModal"
-    @refresh="handleRefresh"
+    @refresh="refreshTable"
+    @deleted="handleClientDeleted"
   />
 </template>
 
@@ -29,17 +29,17 @@
 import { ref, computed } from 'vue'
 import { usePermissions } from '@/shared/api/auth/usePermissions';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue'
-import ModalAddStage from '@/features/sections/components/ModalAddStage.vue'
-import ModalEditStage from '@/features/sections/components/ModalEditStage.vue'
-import { loadStage } from '@/shared/api/sections/sectionService'
+import ModalAddClient from '@/features/clients/components/ModalAddClient.vue'
+import ModalEditClient from '@/features/clients/components/ModalEditClient.vue'
+import { loadClients } from '@/shared/api/clients/clientService'
 
 const tableWrapperRef = ref(null)
 const isAddModalOpen = ref(false)
 const isEditModalOpen = ref(false)
-const selectedStage = ref(null)
+const selectedClient = ref(null)
 
 const { hasPermission } = usePermissions();
-const canInsert = computed(() => hasPermission('stag:ins'));
+const canInsert = computed(() => hasPermission('cl:ins'));
 
 const openAddModal = () => {
   isAddModalOpen.value = true
@@ -49,27 +49,34 @@ const closeAddModal = () => {
   isAddModalOpen.value = false
 }
 
-const openEditModal = (stageData) => {
-  selectedStage.value = stageData
+const openEditModal = (clientData) => {
+  selectedClient.value = clientData
   isEditModalOpen.value = true
 }
 
 const closeEditModal = () => {
   isEditModalOpen.value = false
-  selectedStage.value = null
+  selectedClient.value = null
 }
 
-const handleRefresh = () => {
-  tableWrapperRef.value?.refreshTable()
+const handleRowDoubleClick = (rowData) => {
+  openEditModal(rowData)
 }
 
-const onRowDoubleClick = (row) => {
-  openEditModal(row)
+const handleClientDeleted = () => {
+  closeEditModal()
+  refreshTable()
+}
+
+const refreshTable = () => {
+  if (tableWrapperRef.value && tableWrapperRef.value.refreshTable) {
+    tableWrapperRef.value.refreshTable()
+  }
 }
 
 const tableActions = computed(() => [
   {
-    label: 'Добавить перегон',
+    label: 'Добавить клиента',
     icon: 'Plus',
     onClick: openAddModal,
     show: canInsert.value,
@@ -86,9 +93,10 @@ const limit = 10
 
 const columns = [
   { key: 'index', label: '№' },
+  { key: 'bin', label: 'БИН' },
   { key: 'name', label: 'Наименование' },
-  { key: 'sections', label: 'Участки ЖД пути' },
-  { key: 'coords', label: 'Координаты' },
-  { key: 'StageLength', label: 'Протяженность' }
+  { key: 'contactPerson', label: 'Контактное лицо' },
+  { key: 'contactDetails', label: 'Контактные данные' },
+  { key: 'description', label: 'Описание' },
 ]
 </script>

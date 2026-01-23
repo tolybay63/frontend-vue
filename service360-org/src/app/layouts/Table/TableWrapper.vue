@@ -324,13 +324,26 @@ const handleClickOutside = (event) => {
   }
 };
 
+import { onActivated, onDeactivated } from 'vue';
+
 onMounted(() => {
+  console.log('TableWrapper: onMounted, loading data');
   loadData();
   window.addEventListener('resize', updateIsMobile);
   document.addEventListener('click', handleClickOutside);
 });
 
+onActivated(() => {
+  console.log('TableWrapper: onActivated');
+  // Не загружаем данные при активации, чтобы сохранить состояние
+});
+
+onDeactivated(() => {
+  console.log('TableWrapper: onDeactivated');
+});
+
 onUnmounted(() => {
+  console.log('TableWrapper: onUnmounted');
   window.removeEventListener('resize', updateIsMobile);
   document.removeEventListener('click', handleClickOutside);
 });

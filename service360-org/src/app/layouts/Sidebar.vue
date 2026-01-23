@@ -57,13 +57,18 @@ onBeforeUnmount(() => {
 
 const allItems = [
   {
+    label: 'Главная',
+    path: '/main',
+    icon: 'Home'
+  },
+  {
     label: 'Объекты',
     icon: 'Package',
     children: [
       { label: 'Обслуживаемые объекты', path: '/objects', permission: 'obj' },
-      { label: 'Участки', path: '/sections' },
-      { label: 'Раздельные пункты', path: '/stations' },
-      { label: 'Перегоны', path: '/stages' }
+      { label: 'Участки', path: '/sections', permission: 'sect' },
+      { label: 'Раздельные пункты', path: '/stations', permission: 'stat' },
+      { label: 'Перегоны', path: '/stages', permission: 'stag' }
     ]
   },
   {
@@ -83,6 +88,12 @@ const allItems = [
       { label: 'Организационная структура', path: '/organization', permission: 'org' },
       { label: 'Сотрудники', path: '/personnel', permission: 'team' }
     ]
+  },
+  {
+    label: 'Клиенты',
+    path: '/clients',
+    icon: 'Users',
+    permission: 'cl'
   }
 ]
 

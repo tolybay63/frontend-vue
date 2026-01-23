@@ -3,6 +3,8 @@ import { loadObjList } from '../common/loadObjList'
 import { formatDate } from '../common/formatters'
 
 const API_URL = import.meta.env.VITE_OBJECT_URL;
+const API_INSPECTIONS_URL = import.meta.env.VITE_INSPECTIONS_URL;
+const API_NSI_URL = import.meta.env.VITE_NSI_URL;
 
 export async function loadTypes() {
   try {
@@ -169,6 +171,111 @@ export async function deleteObject(objectId) {
     return response.data
   } catch (error) {
     console.error('Ошибка при удалении объекта:', error)
+    throw error
+  }
+}
+
+export async function loadComponentsByObjectType(objObjectType) {
+  try {
+    const response = await axios.post(API_INSPECTIONS_URL, {
+      method: 'data/loadComponentsByTypObjectForSelect',
+      params: [objObjectType],
+    })
+    return response.data.result?.records || []
+  } catch (error) {
+    console.error('Ошибка при загрузке компонентов:', error)
+    throw error
+  }
+}
+
+export async function loadParametersByComponent(objComponent) {
+  try {
+    const response = await axios.post(API_NSI_URL, {
+      method: 'data/loadRelObjByUch1ForSelect',
+      params: [objComponent, 'RT_ParamsComponent', 'Prop_PassportComponentParams'],
+    })
+    return response.data.result?.records || []
+  } catch (error) {
+    console.error('Ошибка при загрузке параметров:', error)
+    throw error
+  }
+}
+
+export async function loadMeasureUnits() {
+  try {
+    const response = await axios.post(API_NSI_URL, {
+      method: 'data/loadMeasure',
+      params: ['Prop_PassportMeasure'],
+    })
+    return response.data.result?.records || []
+  } catch (error) {
+    console.error('Ошибка при загрузке единиц измерения:', error)
+    throw error
+  }
+}
+
+export async function loadSignsByParameter(parameterId) {
+  try {
+    const response = await axios.post(API_NSI_URL, {
+      method: 'data/loadSignMultiForSelect',
+      params: [parameterId, 'Prop_PassportSignMulti'],
+    })
+    return response.data.result?.records || []
+  } catch (error) {
+    console.error('Ошибка при загрузке признаков:', error)
+    throw error
+  }
+}
+
+export async function saveComplexObjectPassport(payload) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveComplexObjectPassport',
+      params: ['ins', payload],
+    })
+    return response.data
+  } catch (error) {
+    console.error('Ошибка при сохранении паспортных данных:', error)
+    throw error
+  }
+}
+
+export async function updateComplexObjectPassport(payload) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/saveComplexObjectPassport',
+      params: ['upd', payload],
+    })
+    return response.data
+  } catch (error) {
+    console.error('Ошибка при обновлении паспортных данных:', error)
+    throw error
+  }
+}
+
+export async function deleteComplexObjectPassport(idPassportComplex) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/deleteComplexData',
+      params: [idPassportComplex],
+    })
+    return response.data
+  } catch (error) {
+    console.error('Ошибка при удалении паспортных данных:', error)
+    throw error
+  }
+}
+
+export async function loadComplexObjectPassport(objectId) {
+  try {
+    const response = await axios.post(API_URL, {
+      method: 'data/loadComplexObjectPassport',
+      params: [objectId],
+    })
+    // API возвращает result как массив напрямую, а не result.records
+    return response.data.result || []
+  } catch (error) {
+    console.error('Ошибка при загрузке паспортных данных:', error)
     throw error
   }
 }

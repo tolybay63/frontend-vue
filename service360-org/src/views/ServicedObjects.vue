@@ -12,7 +12,7 @@
       <ModalUpdateObject
         v-if="showEditModal"
         :rowData="selectedRow"
-        @close="closeModals"        
+        @close="closeModals"
         @save="() => handleTableUpdate(closeModals)"
         @deleted="() => handleTableUpdate(closeModals)"
       />
@@ -27,12 +27,29 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onActivated, onDeactivated } from 'vue'
 import { usePermissions } from '@/shared/api/auth/usePermissions';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue'
 import ModalAddObject from '@/features/objects/components/ModalAddObject.vue'
 import ModalUpdateObject from '@/features/objects/components/ModalUpdateObject.vue'
+import RowActionButton from '@/features/objects/components/RowActionButton.vue'
 import { loadObjectServed } from '@/shared/api/objects/objectService'
+
+defineOptions({
+  name: 'ServicedObjects'
+})
+
+onMounted(() => {
+  console.log('ServicedObjects: onMounted');
+});
+
+onActivated(() => {
+  console.log('ServicedObjects: onActivated');
+});
+
+onDeactivated(() => {
+  console.log('ServicedObjects: onDeactivated');
+});
 
 const tableWrapperRef = ref(null)
 const isAddObjectModalOpen = ref(false)
@@ -78,11 +95,12 @@ const columns = [
   { key: 'coords', label: 'Координаты' },
   { key: 'feature', label: 'Характеристика' },
   { key: 'location', label: 'Сведения о месте' },
-  { key: 'replacement', label: 'Периодичность замены (год)' },
+  // { key: 'replacement', label: 'Периодичность замены (год)' },
   { key: 'number', label: 'Номер объекта' },
   { key: 'installDate', label: 'Дата установки' },
-  { key: 'createDate', label: 'Дата создания' },
-  { key: 'updateDate', label: 'Дата обновления' },
-  { key: 'description', label: 'Описание' }
+  // { key: 'createDate', label: 'Дата создания' },
+  // { key: 'updateDate', label: 'Дата обновления' },
+  // { key: 'description', label: 'Описание' }
+  { key: 'actions', label: 'Действия', component: RowActionButton },
 ]
 </script>

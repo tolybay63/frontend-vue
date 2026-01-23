@@ -27,6 +27,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { usePermissions } from '@/shared/api/auth/usePermissions';
 import TableWrapper from '@/app/layouts/Table/TableWrapper.vue'
 import ModalAddStation from '@/features/sections/components/ModalAddStation.vue'
 import ModalEditStation from '@/features/sections/components/ModalEditStation.vue'
@@ -36,6 +37,9 @@ const tableWrapperRef = ref(null)
 const isAddModalOpen = ref(false)
 const isEditModalOpen = ref(false)
 const selectedStation = ref(null)
+
+const { hasPermission } = usePermissions();
+const canInsert = computed(() => hasPermission('stat:ins'));
 
 const openAddModal = () => {
   isAddModalOpen.value = true
@@ -68,7 +72,7 @@ const tableActions = computed(() => [
     label: 'Добавить раздельный пункт',
     icon: 'Plus',
     onClick: openAddModal,
-    show: true,
+    show: canInsert.value,
   },
   {
     label: 'Экспорт',

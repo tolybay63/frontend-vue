@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { attachApiInterceptors } from '@/shared/api/http'
 
 const PARAMETER_BASE_URL = (
   import.meta.env.VITE_INSPECTION_API_BASE || '/dtj/api/inspections'
@@ -10,6 +11,8 @@ export const parameterApi = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
+
+attachApiInterceptors(parameterApi, { source: 'parameterApi' })
 
 export const DEFAULT_PARAMETER_PAYLOAD = {
   date: '2025-11-23',

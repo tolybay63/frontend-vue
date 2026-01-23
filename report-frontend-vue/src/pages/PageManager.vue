@@ -16,7 +16,13 @@
     </div>
     <div v-else-if="pagesError" class="empty-state empty-state--error">
       <p>{{ pagesError }}</p>
-      <button class="btn-outline btn-sm" type="button" @click="store.fetchPages(true)">Повторить</button>
+      <button
+        class="btn-outline btn-sm"
+        type="button"
+        @click="store.fetchPages({ force: true, skipCooldown: true })"
+      >
+        Повторить
+      </button>
     </div>
     <div v-else-if="!pages.length" class="empty-state">
       <p>Страниц пока нет. Нажмите «Создать страницу», чтобы начать.</p>
@@ -43,27 +49,30 @@
           <button
             class="icon-btn"
             type="button"
-            @click="previewPage(page.id)"
             aria-label="Открыть страницу"
             title="Открыть"
+            :disabled="!canInteractWithPage(page)"
+            @click="previewPage(page.id)"
           >
             <span class="icon icon-eye" />
           </button>
           <button
             class="icon-btn"
             type="button"
-            @click="editPage(page.id)"
             aria-label="Редактировать страницу"
             title="Редактировать"
+            :disabled="!canInteractWithPage(page)"
+            @click="editPage(page.id)"
           >
             <span class="icon icon-edit" />
           </button>
           <button
             class="icon-btn icon-btn--danger"
             type="button"
-            @click="removePage(page.id)"
             aria-label="Удалить страницу"
             title="Удалить"
+            :disabled="!canInteractWithPage(page)"
+            @click="removePage(page.id)"
           >
             <span class="icon icon-trash" />
           </button>
@@ -78,11 +87,18 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePageBuilderStore, resolveCommonContainerFieldKeys } from '@/shared/stores/pageBuilder'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
-import { humanizeKey } from '@/shared/lib/pivotUtils'
+import { useAuthStore } from '@/shared/stores/auth'
+import {
+  humanizeKey,
+  parseDatePartKey,
+  formatDatePartFieldLabel,
+} from '@/shared/lib/pivotUtils'
+import { canUserAccessPage, readStoredUserMeta, resolveUserMeta } from '@/shared/lib/pageAccess'
 
 const router = useRouter()
 const store = usePageBuilderStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
+const authStore = useAuthStore()
 
 const pages = computed(() => store.pages)
 const pagesLoading = computed(() => store.pagesLoading)
@@ -90,9 +106,14 @@ const pagesError = computed(() => store.pagesError)
 const layoutLabels = computed(() => store.layoutLabelMap)
 const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
 const dictionaryLabelsLower = computed(() => fieldDictionaryStore.labelMapLower || {})
+const currentUserMeta = computed(() => {
+  const personal = resolveUserMeta(authStore.personalInfo)
+  if (personal) return personal
+  return readStoredUserMeta()
+})
 
 onMounted(() => {
-  store.fetchPages(true)
+  store.fetchPages()
   fieldDictionaryStore.fetchDictionary()
 })
 
@@ -116,28 +137,52 @@ function resolveFieldLabel(key) {
   if (!key) return ''
   const normalized = String(key).trim()
   if (!normalized) return ''
-  const direct = dictionaryLabels.value?.[normalized]
+  const dictionary = dictionaryLabels.value || {}
+  const direct = dictionary[normalized]
   if (direct) return direct
+  const lowerDict = dictionaryLabelsLower.value || {}
   const lower = normalized.toLowerCase()
-  const lowerMatch = dictionaryLabelsLower.value?.[lower]
-  if (lowerMatch) return lowerMatch
+  if (lowerDict[lower]) return lowerDict[lower]
+  const dateMeta = parseDatePartKey(normalized)
+  if (dateMeta) {
+    const baseLower = dateMeta.fieldKey ? dateMeta.fieldKey.toLowerCase() : ''
+    const baseLabel =
+      dictionary[dateMeta.fieldKey] ||
+      (baseLower ? lowerDict[baseLower] : '') ||
+      humanizeKey(dateMeta.fieldKey || '')
+    return formatDatePartFieldLabel(baseLabel, dateMeta.part)
+  }
   return humanizeKey(normalized)
 }
 
 function createPage() {
   router.push('/pages/new')
 }
+function canInteractWithPage(page) {
+  return canUserAccessPage(page, currentUserMeta.value)
+}
+function ensurePageAccess(pageId) {
+  const page = store.getPageById(pageId)
+  if (page && canInteractWithPage(page)) {
+    return true
+  }
+  alert('Нет доступа к этой странице.')
+  return false
+}
 function editPage(pageId) {
+  if (!ensurePageAccess(pageId)) return
   router.push(`/pages/${pageId}/edit`)
 }
 function previewPage(pageId) {
+  if (!ensurePageAccess(pageId)) return
   router.push(`/dash/${pageId}`)
 }
 async function removePage(pageId) {
+  if (!ensurePageAccess(pageId)) return
   if (confirm('Удалить страницу?')) {
     try {
       await store.removePage(pageId)
-      store.fetchPages(true)
+      store.fetchPages({ force: true, skipCooldown: true })
     } catch (err) {
       alert('Не удалось удалить страницу. Попробуйте позже.')
     }

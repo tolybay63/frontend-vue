@@ -4264,7 +4264,7 @@ function resolveCurrentRequestPayload() {
   return payload
 }
 
-function normalizeBatchEndpoint(rawUrl = '') {
+function normalizeSourceEndpoint(rawUrl = '') {
   const trimmed = String(rawUrl || '').trim()
   if (!trimmed) {
     return { endpoint: '', error: 'Укажите URL источника.' }
@@ -4289,6 +4289,10 @@ function normalizeBatchEndpoint(rawUrl = '') {
     endpoint: trimmed.startsWith('/') ? trimmed : `/${trimmed}`,
     error: '',
   }
+}
+
+function normalizeBatchEndpoint(rawUrl = '') {
+  return normalizeSourceEndpoint(rawUrl)
 }
 
 function resolveSourceRemoteId(source) {
@@ -4345,6 +4349,11 @@ function buildRequestPayloadFromConfig(config = {}) {
   if (!url) {
     return { payload: null, error: 'Укажите URL источника.' }
   }
+  const endpointInfo = normalizeSourceEndpoint(url)
+  if (endpointInfo.error) {
+    return { payload: null, error: endpointInfo.error }
+  }
+  const normalizedUrl = endpointInfo.endpoint
   const method = config.httpMethod?.toUpperCase?.() || 'POST'
   const headers =
     config.headers && Object.keys(config.headers).length
@@ -4354,7 +4363,12 @@ function buildRequestPayloadFromConfig(config = {}) {
   if (method === 'GET') {
     if (!rawBody) {
       return {
-        payload: [{ request: { url, method, headers }, meta: { fields: {} } }],
+        payload: [
+          {
+            request: { url: normalizedUrl, method, headers },
+            meta: { fields: {} },
+          },
+        ],
         error: null,
       }
     }
@@ -4365,7 +4379,11 @@ function buildRequestPayloadFromConfig(config = {}) {
         error: 'Параметры GET-запроса должны быть корректным JSON.',
       }
     }
-    const requests = buildRequestEntries(parsed.value, { url, method, headers })
+    const requests = buildRequestEntries(parsed.value, {
+      url: normalizedUrl,
+      method,
+      headers,
+    })
     return { payload: requests, error: null }
   }
   if (!rawBody) {
@@ -4378,7 +4396,11 @@ function buildRequestPayloadFromConfig(config = {}) {
       error: 'Тело запроса должно быть валидным JSON-объектом.',
     }
   }
-  const requests = buildRequestEntries(parsed.value, { url, method, headers })
+  const requests = buildRequestEntries(parsed.value, {
+    url: normalizedUrl,
+    method,
+    headers,
+  })
   return { payload: requests, error: null }
 }
 

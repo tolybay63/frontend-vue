@@ -387,17 +387,73 @@ function splitColumnKey(key) {
   return { baseKey, metricId }
 }
 
+function toNumericId(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function findMetricByRemoteId(list, value) {
+  const numeric = toNumericId(value)
+  if (numeric === null) return null
+  return (
+    list.find(
+      (metric) => toNumericId(metric?.remoteMeta?.idMetricsComplex) === numeric,
+    ) || null
+  )
+}
+
+function parseBackendMetricKey(value) {
+  if (typeof value !== 'string') return null
+  const index = value.lastIndexOf('__')
+  if (index <= 0 || index === value.length - 2) return null
+  const fieldKey = value.slice(0, index)
+  const aggregator = value.slice(index + 2)
+  if (!fieldKey || !aggregator) return null
+  return { fieldKey, aggregator }
+}
+
+function fieldKeyMatches(metricFieldKey, backendFieldKey) {
+  if (!metricFieldKey || !backendFieldKey) return false
+  if (metricFieldKey === backendFieldKey) return true
+  return (
+    metricFieldKey.endsWith(`.${backendFieldKey}`) ||
+    metricFieldKey.endsWith(`:${backendFieldKey}`)
+  )
+}
+
+function findMetricByBackendKey(list, value) {
+  const parsed = parseBackendMetricKey(value)
+  if (!parsed) return null
+  const backendAgg = parsed.aggregator.toLowerCase()
+  const candidates = list.filter((metric) => {
+    if (!metric || metric.type === 'formula') return false
+    const metricAgg = String(metric.aggregator || '').toLowerCase()
+    if (!metricAgg || metricAgg !== backendAgg) return false
+    return fieldKeyMatches(String(metric.fieldKey || ''), parsed.fieldKey)
+  })
+  if (!candidates.length) return null
+  return candidates.find((metric) => metric.enabled !== false) || candidates[0]
+}
+
 function resolveMetricId(column, fallbackMetricId, metrics) {
   const list = Array.isArray(metrics) ? metrics : []
   if (column?.metricId && list.some((metric) => metric.id === column.metricId)) {
     return column.metricId
   }
+  const byRemote = findMetricByRemoteId(list, column?.metricId)
+  if (byRemote) return byRemote.id
+  const byBackend = findMetricByBackendKey(list, column?.metricId)
+  if (byBackend) return byBackend.id
   if (
     fallbackMetricId &&
     list.some((metric) => metric.id === fallbackMetricId)
   ) {
     return fallbackMetricId
   }
+  const byRemoteFallback = findMetricByRemoteId(list, fallbackMetricId)
+  if (byRemoteFallback) return byRemoteFallback.id
+  const byBackendFallback = findMetricByBackendKey(list, fallbackMetricId)
+  if (byBackendFallback) return byBackendFallback.id
   const key = typeof column?.key === 'string' ? column.key : ''
   const byKey = list.find((metric) => metric.id === key)
   if (byKey) return byKey.id

@@ -272,6 +272,24 @@ function normalizeSource(entry = {}, index = 0) {
   }
 }
 
+function normalizeMetricEnabled(value) {
+  if (value === null || typeof value === 'undefined') return null
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return null
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  }
+  return null
+}
+
+function resolveMetricEnabled(saved) {
+  const normalized = normalizeMetricEnabled(saved?.enabled)
+  return normalized === null ? true : normalized
+}
+
 function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
   const remoteList = Array.isArray(list) ? list : []
   const settings = Array.isArray(metricSettings) ? metricSettings : []
@@ -290,7 +308,7 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           id: saved.id || createLocalId(`metric-${index}`),
           type: 'formula',
           title: saved.title || '',
-          enabled: saved.enabled !== false,
+          enabled: resolveMetricEnabled(saved),
           showRowTotals: saved.showRowTotals !== false,
           showColumnTotals: saved.showColumnTotals !== false,
           expression: saved.expression || '',
@@ -347,12 +365,15 @@ function buildNormalizedMetric(
     ? Number(saved.precision)
     : 2
   return {
-    id: entry?.idMetricsComplex
-      ? String(entry.idMetricsComplex)
-      : saved?.id || createLocalId(`metric-${index}`),
+    id:
+      saved?.id ||
+      (entry?.idMetricsComplex
+        ? String(entry.idMetricsComplex)
+        : createLocalId(`metric-${index}`)),
     type: 'base',
     fieldKey,
     aggregator,
+    enabled: resolveMetricEnabled(saved),
     fieldLabel: saved?.title || entry?.FieldLabel || fieldKey,
     outputFormat:
       saved?.outputFormat ||

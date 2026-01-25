@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { toRaw } from 'vue'
 import { DEFAULT_PLAN_PAYLOAD } from '@/shared/api/plan'
 import { DEFAULT_PARAMETER_PAYLOAD } from '@/shared/api/parameter'
 import { callReportMethod } from '@/shared/api/report'
@@ -178,6 +179,22 @@ function createId(prefix = 'source') {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function cloneSourcePayload(payload) {
+  const raw = toRaw(payload)
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(raw)
+    } catch {
+      // Fallback for Vue proxies or non-clonable values.
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(raw))
+  } catch {
+    return raw
+  }
+}
+
 export const useDataSourcesStore = defineStore('dataSources', {
   state: () => ({
     sources: loadSources(),
@@ -195,7 +212,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
   },
   actions: {
     async saveSource(payload) {
-      const base = structuredClone(payload)
+      const base = cloneSourcePayload(payload)
       base.id = base.id || createId()
       base.name = base.name?.trim() || 'Без названия'
       base.url = base.url?.trim() || ''

@@ -2885,6 +2885,25 @@ async function hydrateContainer(container) {
           signal: viewAbortController.signal,
           silent: hadData,
         })
+        if (debugLogsEnabled) {
+          const backendColumns = Array.isArray(backendView?.columns)
+            ? backendView.columns.map((column) => ({
+                metricId: column?.metricId ?? null,
+                key: column?.key ?? null,
+                label: column?.label ?? null,
+              }))
+            : []
+          const templateMetrics = metrics.map((metric) => ({
+            id: metric.id,
+            fieldKey: metric.fieldKey,
+            enabled: metric.enabled !== false,
+            remoteId: metric.remoteMeta?.idMetricsComplex ?? null,
+          }))
+          console.debug('backend metric ids vs template', {
+            templateMetrics,
+            backendColumns,
+          })
+        }
         const normalized = normalizeBackendView(backendView, baseMetrics)
         if (normalized?.rows?.length) {
           baseView = normalized

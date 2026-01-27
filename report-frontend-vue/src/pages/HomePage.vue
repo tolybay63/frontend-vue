@@ -1468,6 +1468,10 @@ import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import { createBatch, getBatchStatus, cancelBatch } from '@/shared/api/batch'
 import {
+  hasPagedBatchResults,
+  loadPagedBatchResults,
+} from '@/shared/services/batchResults'
+import {
   fetchBackendView,
   isPivotBackendEnabled,
   normalizeBackendView,
@@ -1690,6 +1694,7 @@ const batchTotals = reactive({ total: 0, done: 0 })
 const batchProgress = ref(0)
 const batchResultsSummary = ref(null)
 const batchResultsFileRef = ref('')
+const batchResultsAvailableVia = ref('')
 const batchCancelRequested = ref(false)
 let batchPollToken = 0
 const selectedSource = computed(
@@ -3287,7 +3292,8 @@ const batchIsActive = computed(() =>
 )
 const batchHasBlockingIssue = computed(
   () =>
-    Boolean(batchResultsFileRef.value) ||
+    (Boolean(batchResultsFileRef.value) &&
+      batchResultsAvailableVia.value !== 'paged') ||
     batchStatus.value === 'failed' ||
     batchStatus.value === 'cancelled',
 )
@@ -3907,7 +3913,7 @@ async function loadFields() {
         trackUI: true,
       })
       if (!batchStatusResult) return
-      const batchRecords = buildRecordsFromBatchStatus(
+      const batchRecords = await buildRecordsFromBatchStatus(
         batchStatusResult,
         batchCandidate.paramsList,
         { reportErrors: true },
@@ -4006,6 +4012,7 @@ function resetBatchState() {
   batchProgress.value = 0
   batchResultsSummary.value = null
   batchResultsFileRef.value = ''
+  batchResultsAvailableVia.value = ''
   batchCancelRequested.value = false
 }
 
@@ -4022,6 +4029,7 @@ function updateBatchState(status = {}) {
         : 0
   batchResultsSummary.value = status.resultsSummary || null
   batchResultsFileRef.value = status.resultsFileRef || ''
+  batchResultsAvailableVia.value = status.resultsAvailableVia || ''
   batchCancelRequested.value = Boolean(status.cancelRequested)
 }
 
@@ -4070,7 +4078,7 @@ function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function buildRecordsFromBatchStatus(
+async function buildRecordsFromBatchStatus(
   status,
   paramsList = [],
   { reportErrors } = {},
@@ -4089,14 +4097,20 @@ function buildRecordsFromBatchStatus(
     }
     return null
   }
-  if (status.resultsFileRef) {
-    if (reportErrors) {
-      planError.value =
-        'Результат слишком большой. Разбейте параметры на партии или добавьте фильтры. Для выгрузки нужен отдельный endpoint.'
+  let results = status.results
+  if (hasPagedBatchResults(status)) {
+    try {
+      const jobId = status.job_id || status.jobId
+      const paged = await loadPagedBatchResults(jobId)
+      results = paged?.results
+    } catch (err) {
+      if (reportErrors) {
+        planError.value = 'Результат пакетной загрузки недоступен.'
+      }
+      return null
     }
-    return null
   }
-  if (!Array.isArray(status.results)) {
+  if (!Array.isArray(results)) {
     if (reportErrors && status.status === 'done') {
       planError.value = 'Результат пакетной загрузки недоступен.'
       return null
@@ -4106,7 +4120,7 @@ function buildRecordsFromBatchStatus(
   const fieldMaps = paramsList.map((params) =>
     buildRequestFieldsFromParams(params),
   )
-  return status.results.flatMap((item, index) => {
+  return results.flatMap((item, index) => {
     if (!item || item.ok === false) return []
     const rows = extractRecordsFromResponse(item.data)
     const fields = fieldMaps[index] || {}
@@ -4126,7 +4140,7 @@ async function cancelBatchJob() {
 
 function formatBatchError(status) {
   if (!status) return 'Пакетная загрузка не удалась.'
-  if (status.resultsFileRef) {
+  if (status.resultsFileRef && status.resultsAvailableVia !== 'paged') {
     return 'Результат слишком большой. Разбейте параметры на партии или добавьте фильтры.'
   }
   if (status.status === 'failed') {
@@ -4182,7 +4196,7 @@ async function fetchJoinResults(joins = []) {
             error: `Не удалось загрузить связь «${label}».`,
           }
         }
-        const records = buildRecordsFromBatchStatus(
+        const records = await buildRecordsFromBatchStatus(
           status,
           batchCandidate.paramsList,
           { reportErrors: false },

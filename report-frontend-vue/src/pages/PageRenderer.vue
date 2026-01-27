@@ -25,6 +25,7 @@
         <button
           class="btn-outline btn-outline--icon"
           type="button"
+          v-if="canConfigurePage"
           @click="editPage"
         >
           <span>Настроить</span>
@@ -693,6 +694,7 @@ import {
   resolveCommonContainerFieldKeys,
 } from '@/shared/stores/pageBuilder'
 import { useAuthStore } from '@/shared/stores/auth'
+import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 import { fetchRemoteRecords } from '@/shared/services/dataSources'
 import {
   fetchBackendFilters,
@@ -995,6 +997,9 @@ const currentUserMeta = computed(() => {
   return readStoredUserMeta()
 })
 const canViewPage = computed(() => canUserAccessPage(page.value, currentUserMeta.value))
+const canConfigurePage = computed(
+  () => canViewPage.value && hasConstructorAccess(authStore.user),
+)
 let refreshTimer = null
 const pageRefreshing = ref(false)
 const exportingExcel = ref(false)
@@ -4626,6 +4631,7 @@ function goBack() {
   router.push('/pages')
 }
 function editPage() {
+  if (!canConfigurePage.value) return
   router.push(`/pages/${pageId.value}/edit`)
 }
 </script>

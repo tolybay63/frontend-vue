@@ -8,7 +8,8 @@
     <ResourceInfoSection
       v-if="recordData"
       :recordData="recordData"
-      :showActionButton="false"
+      :canUpdate="canUpdate"
+      :showWorkflowActions="false"
     />
 
     <div class="cards-section" v-if="recordData">
@@ -62,6 +63,7 @@
           :unitOptions="unitOptions"
           resourceType="materials"
           :canInsert="canInsert"
+          :canUpdate="canUpdate"
           @add-row="handleAddMaterialRow"
         />
         <ResourcePlanningTable
@@ -72,6 +74,7 @@
           :nameOptions="toolNameOptions"
           resourceType="tools"
           :canInsert="canInsert"
+          :canUpdate="canUpdate"
           @add-row="handleAddToolRow"
         />
         <ResourcePlanningTable
@@ -82,6 +85,7 @@
           :nameOptions="equipmentNameOptions"
           resourceType="equipment"
           :canInsert="canInsert"
+          :canUpdate="canUpdate"
           @add-row="handleAddEquipmentRow"
         />
         <ResourcePlanningTable
@@ -92,6 +96,7 @@
           :nameOptions="serviceNameOptions"
           resourceType="services"
           :canInsert="canInsert"
+          :canUpdate="canUpdate"
           @add-row="handleAddServiceRow"
         />
         <ResourcePlanningTable
@@ -102,6 +107,7 @@
           :nameOptions="performerNameOptions"
           resourceType="personnel"
           :canInsert="canInsert"
+          :canUpdate="canUpdate"
           @add-row="handleAddPerformerRow"
         />
       </Transition>
@@ -157,6 +163,7 @@ const notificationStore = useNotificationStore();
 
 // Проверка прав доступа
 const canInsert = computed(() => hasPermission('res:ins'));
+const canUpdate = computed(() => hasPermission('res:upd'));
 
 const materialNameOptions = ref([]);
 const unitOptions = ref([]);

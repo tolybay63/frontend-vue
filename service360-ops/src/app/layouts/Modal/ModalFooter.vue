@@ -31,7 +31,6 @@ const deleteObject = () => emit('delete')
   align-items: center;
   gap: 12px;
   padding: 20px 24px;
-  background: #f8fafc;
   border-top: 1px solid #e2e8f0;
 }
 

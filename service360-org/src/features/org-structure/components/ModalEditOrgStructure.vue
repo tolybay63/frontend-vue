@@ -404,7 +404,7 @@ onMounted(async () => {
 .form-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  
+  gap: 16px;
   padding: 0 32px 32px;
   background-color: #f9fafb;
 }

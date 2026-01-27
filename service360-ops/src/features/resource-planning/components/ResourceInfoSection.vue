@@ -66,6 +66,7 @@
       </div>
 
       <button
+        v-if="!buttonState.hidden"
         class="task-action-button"
         :class="{
           'start-task-button': buttonState.actionType === 'start',
@@ -109,19 +110,25 @@ const props = defineProps({
   },
   taskLogId: {
     type: [Number, String],
-    required: true,
+    default: null,
   },
   objWorkPlan: {
     type: [Number, String],
-    required: true,
+    default: null,
   },
   onTaskUpdated: {
     type: Function,
-    required: true,
+    default: () => {},
   },
   canUpdate: {
     type: Boolean,
     default: false,
+  },
+  // Показывать ли кнопки начать/завершить задачу (для WorkLogForm)
+  // Если false - только проверка прав без workflow (для ResourcePlanningEdit)
+  showWorkflowActions: {
+    type: Boolean,
+    default: true,
   }
 });
 
@@ -136,6 +143,26 @@ const getFormattedDate = (date = new Date()) => {
 };
 
 const buttonState = computed(() => {
+  // Режим без workflow (для ResourcePlanningEdit) - только проверка прав res:upd
+  if (!props.showWorkflowActions) {
+    if (!props.canUpdate) {
+      return {
+        text: 'Нет прав для управления задачей',
+        disabled: true,
+        actionType: 'no-permission',
+        hidden: false
+      };
+    }
+    // Если права есть - скрываем кнопку (workflow не нужен)
+    return {
+      text: '',
+      disabled: true,
+      actionType: 'hidden',
+      hidden: true
+    };
+  }
+
+  // Режим с workflow (для WorkLogForm) - проверка прав ftl:upd + логика начать/завершить
   const hasFactStart = props.recordData.startDateFact && props.recordData.startDateFact !== '-';
   const hasFactEnd = props.recordData.endDateFact && props.recordData.endDateFact !== '-';
 
@@ -144,7 +171,8 @@ const buttonState = computed(() => {
     return {
       text: 'Нет прав для управления задачей',
       disabled: true,
-      actionType: 'no-permission'
+      actionType: 'no-permission',
+      hidden: false
     };
   }
 
@@ -154,21 +182,24 @@ const buttonState = computed(() => {
     return {
       text: 'Начать задачу',
       disabled: false,
-      actionType: 'start'
+      actionType: 'start',
+      hidden: false
     };
   // 2. Если FactDateEnd отсутствует (а FactDateStart есть) -> Завершить задачу
   } else if (!hasFactEnd) {
     return {
       text: 'Завершить задачу',
       disabled: false,
-      actionType: 'complete'
+      actionType: 'complete',
+      hidden: false
     };
   // 3. Если есть оба -> Задача завершена (disabled)
   } else {
     return {
       text: 'Задача завершена',
       disabled: true,
-      actionType: 'finished'
+      actionType: 'finished',
+      hidden: false
     };
   }
 });

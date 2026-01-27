@@ -102,7 +102,7 @@ const closeModal = () => {
 .form-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  padding: 20px;
+  gap: 16px;
 }
 
 .col-span-2 {

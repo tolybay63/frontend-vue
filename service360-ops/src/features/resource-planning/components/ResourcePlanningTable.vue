@@ -2,7 +2,7 @@
   <div class="resource-edit-section">
     <div class="section-header">
       <h3 class="section-title">{{ title }}</h3>
-      <button class="add-row-button" @click="addNewRow" :disabled="!canInsert">
+      <button class="add-row-button" @click="addNewRow" :disabled="!canInsert || !canUpdate">
         <Plus :size="18" />
         Добавить строку
       </button>
@@ -15,7 +15,7 @@
             <th class="name-column">{{ getColumnLabel() }}</th>
             <th v-if="showUnit" class="unit-column">Ед. измерения</th>
             <th v-if="showQuantity" class="count-column">Количество</th>
-            <th v-if="showHours" class="time-column">Время</th>
+            <th v-if="showHours" class="time-column">Время, минуты</th>
             <th v-if="showVolume" class="plan-column">План</th>
             <th v-if="newRow" class="actions-column"></th>
           </tr>
@@ -129,6 +129,10 @@ const props = defineProps({
     default: 'materials' // materials, services, tools, equipment, personnel
   },
   canInsert: {
+    type: Boolean,
+    default: false
+  },
+  canUpdate: {
     type: Boolean,
     default: false
   }

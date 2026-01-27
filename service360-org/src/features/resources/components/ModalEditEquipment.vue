@@ -2,7 +2,9 @@
   <ModalWrapper
     title="Редактировать технику"
     @close="closeModal"
+    :show-delete="canDelete"
     @save="saveData"
+    @delete="handleDelete"
   >
     <div class="form-section">
       <AppInput
@@ -54,16 +56,25 @@
         type="textarea"
       />
     </div>
+
+    <ConfirmationModal
+      v-if="showConfirmModal"
+      title="Удаление техники"
+      message="Вы действительно хотите удалить эту технику?"
+      @confirm="confirmDelete"
+      @cancel="showConfirmModal = false" />
   </ModalWrapper>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
+import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { loadEquipmentTypes, loadSections, updateEquipment } from '@/shared/api/resources/resourceService'
+import { loadEquipmentTypes, loadSections, updateEquipment, deleteResource } from '@/shared/api/resources/resourceService'
+import { usePermissions } from '@/shared/api/auth/usePermissions'
 
 const props = defineProps({
   equipmentData: {
@@ -72,8 +83,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'refresh'])
+const emit = defineEmits(['close', 'refresh', 'deleted'])
 const notificationStore = useNotificationStore()
+
+const { hasPermission } = usePermissions()
+const canDelete = computed(() => hasPermission('equ:del'))
+const showConfirmModal = ref(false)
 
 // Form data
 const form = ref({
@@ -157,6 +172,27 @@ const saveData = async () => {
   }
 }
 
+// Delete handlers
+const handleDelete = () => {
+  if (!props.equipmentData?.id) {
+    notificationStore.showNotification('Не удалось получить ID техники для удаления.', 'error')
+    return
+  }
+  showConfirmModal.value = true
+}
+
+const confirmDelete = async () => {
+  showConfirmModal.value = false
+  try {
+    await deleteResource(props.equipmentData.id)
+    notificationStore.showNotification('Техника успешно удалена!', 'success')
+    emit('deleted')
+  } catch (error) {
+    console.error('Ошибка при удалении техники:', error)
+    notificationStore.showNotification('Ошибка при удалении техники.', 'error')
+  }
+}
+
 // Close modal
 const closeModal = () => {
   emit('close')
@@ -173,8 +209,7 @@ onMounted(() => {
 .form-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  
-  padding: 20px;
+  gap: 16px;
 }
 
 .col-span-2 {

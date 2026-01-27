@@ -509,3 +509,18 @@ export async function updateTpService(serviceData) {
   }
 }
 
+export async function deleteResource(id) {
+  try {
+    const response = await axios.post(API_RESOURCE_URL, {
+      method: 'data/deleteObjWithProperties',
+      params: [id]
+    });
+
+    console.log('Ответ от сервера при удалении:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при удалении ресурса:', error);
+    throw error;
+  }
+}
+

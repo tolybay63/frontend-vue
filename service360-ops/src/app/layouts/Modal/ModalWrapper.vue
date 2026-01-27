@@ -87,7 +87,7 @@ const onDelete = () => emit('delete')
 }
 
 .modal-wrapper {
-  background: white;
+  background: #f9fafb;
   border-radius: 12px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   max-width: 800px;
@@ -112,23 +112,6 @@ const onDelete = () => emit('delete')
 
 .modal-body {
   padding: 24px;
-  background-color: white;
-}
-
-.modal-body :deep(.form-group) {
-  margin-bottom: 24px !important;
-}
-
-.modal-body :deep(.form-group:last-child) {
-  margin-bottom: 0 !important;
-}
-
-.modal-body :deep(> *) {
-  margin-bottom: 24px;
-}
-
-.modal-body :deep(> *:last-child) {
-  margin-bottom: 0;
 }
 
 /* Tablet styles */
@@ -168,15 +151,10 @@ const onDelete = () => emit('delete')
     padding: 16px;
   }
 
-  /* Улучшаем читаемость для form elements в модалках */
-  .modal-body :deep(.form-group) {
-    margin-bottom: 20px !important;
-  }
-
   /* Делаем grid layouts одноколоночными */
   .modal-body :deep(.form-section) {
     grid-template-columns: 1fr !important;
-    gap: 20px !important;
+    gap: 16px !important;
     padding: 16px !important;
   }
 

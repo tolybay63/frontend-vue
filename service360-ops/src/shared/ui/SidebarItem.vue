@@ -251,14 +251,26 @@ if (props.children && props.children.some(child => route.path.startsWith(child.p
   margin-left: 12px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   min-width: 200px;
 }
 
+/* Мост между иконкой и tooltip для плавного перехода мышки */
+.collapsed-tooltip::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 0;
+  width: 12px;
+  height: 100%;
+}
+
 .sidebar-item-wrapper:hover .collapsed-tooltip {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
 }
 

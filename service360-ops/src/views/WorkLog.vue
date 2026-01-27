@@ -26,6 +26,10 @@ import { usePermissions } from '@/shared/api/permissions/usePermissions';
 import WorkStatus from '@/features/work-log/components/WorkStatus.vue';
 // ResourceEditingModal больше не импортируется
 
+defineOptions({
+  name: 'WorkLog'
+});
+
 const { hasPermission } = usePermissions();
 const canInsert = computed(() => hasPermission('ins:ins'));
 
@@ -55,16 +59,14 @@ const dropdownConfig = ref({
 onMounted(async () => {
   try {
     const types = await loadPeriodTypes();
-    
     dropdownConfig.value.options = types;
-    
+
     const defaultType = types.find(t => t.value === 71);
     if (defaultType) {
       filters.value.periodType = defaultType;
     } else if (types.length > 0) {
       filters.value.periodType = types[0];
     }
-    
   } catch (error) {
     console.error('Ошибка загрузки типов периодов:', error);
     dropdownConfig.value.options = [];

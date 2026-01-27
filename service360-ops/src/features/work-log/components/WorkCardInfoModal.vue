@@ -275,10 +275,19 @@ const visibleTabs = computed(() => allTabs.value);
 
 const activeTab = ref(null);
 
-onMounted(() => {
+onMounted(async () => {
   // Устанавливаем активную вкладку на первую видимую
   if (visibleTabs.value.length > 0) {
     activeTab.value = visibleTabs.value[0].name;
+
+    // Загружаем данные для первой вкладки, если есть inspectionId
+    if (savedInspectionId.value) {
+      if (activeTab.value === 'defects') {
+        await loadExistingDefects(savedInspectionId.value);
+      } else if (activeTab.value === 'parameters') {
+        await loadExistingParameters(savedInspectionId.value);
+      }
+    }
   }
 });
 

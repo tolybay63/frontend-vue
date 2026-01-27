@@ -269,6 +269,8 @@ const columns = [
 ];
 
 const goBack = () => {
+  // Устанавливаем флаг что возвращаемся на ResourcePlanning
+  localStorage.setItem('resourcePlanningNavigation', 'fromRelatedPage');
   router.push({ name: 'ResourcePlanning' });
 };
 
@@ -354,7 +356,14 @@ const loadAllUnfinishedWork = async () => {
     if (sections.value.length > 0) {
       selectedSection.value = sections.value[0].value;
       updateMonthsForSection();
-      autoSelectDate();
+
+      // Пытаемся восстановить дату из localStorage (если пришли с ResourcePlanning)
+      const savedDate = localStorage.getItem('resourcePlanningDate');
+      if (savedDate) {
+        initializeFromSavedDate(savedDate);
+      } else {
+        autoSelectDate();
+      }
     } else {
       // Если участков нет, отображаем все записи
       filterTableData();
@@ -366,6 +375,33 @@ const loadAllUnfinishedWork = async () => {
   } finally {
     isLoading.value = false;
   }
+};
+
+const initializeFromSavedDate = (savedDate) => {
+  if (!savedDate || !selectedSection.value) {
+    autoSelectDate();
+    return;
+  }
+
+  const [year, month, day] = savedDate.split('-');
+  const targetMonth = `${year}-${month}`;
+
+  // Проверяем есть ли такой месяц в доступных
+  const monthExists = months.value.some(m => m.value === targetMonth);
+
+  if (monthExists) {
+    selectedMonth.value = targetMonth;
+    monthDropdownKey.value++;
+
+    // Проверяем есть ли такой день в доступных для этого месяца
+    const dayExists = filteredDays.value.some(d => d.value === day);
+    if (dayExists) {
+      selectedDay.value = day;
+      dayDropdownKey.value++;
+    }
+  }
+
+  filterTableData();
 };
 
 

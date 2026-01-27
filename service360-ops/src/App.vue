@@ -7,7 +7,11 @@
       <Sidebar />
       <div class="main-content">
         <Navbar />
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <keep-alive :include="keepAliveInclude">
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
         <AppNotification />
       </div>
     </div>
@@ -19,7 +23,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './app/layouts/Sidebar.vue'
 import Navbar from './app/layouts/Navbar.vue'
@@ -32,6 +36,37 @@ const route = useRoute()
 const isLoginPage = computed(() => route.path === '/login')
 const sidebar = useSidebarStore()
 
+// Динамическое кэширование WorkLog
+const keepAliveInclude = ref([])
+
+watch(
+  () => route.path,
+  (newPath, oldPath) => {
+    const workLogPath = '/work-log'
+    const workLogFormPathPrefix = '/work-log/record/'
+
+    // При заходе на WorkLog - добавляем в кэш
+    if (newPath === workLogPath) {
+      // Если пришли с WorkLogForm - оставляем в кэше (уже закэширован)
+      // Если пришли откуда-то ещё - это свежий заход, но всё равно кэшируем
+      // чтобы при переходе на WorkLogForm состояние сохранилось
+      if (!keepAliveInclude.value.includes('WorkLog')) {
+        keepAliveInclude.value = ['WorkLog']
+      }
+    }
+    // При переходе на WorkLogForm - сохраняем WorkLog в кэше
+    else if (newPath.startsWith(workLogFormPathPrefix)) {
+      if (!keepAliveInclude.value.includes('WorkLog')) {
+        keepAliveInclude.value = ['WorkLog']
+      }
+    }
+    // При уходе на любую другую страницу - очищаем кэш
+    else {
+      keepAliveInclude.value = []
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

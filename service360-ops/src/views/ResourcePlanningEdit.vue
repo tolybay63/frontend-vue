@@ -410,6 +410,8 @@ const handleAddPerformerRow = async (newRowData) => {
 };
 
 const goBack = () => {
+  // Устанавливаем флаг что возвращаемся на ResourcePlanning
+  localStorage.setItem('resourcePlanningNavigation', 'fromRelatedPage');
   router.push({ name: 'ResourcePlanning' });
 };
 

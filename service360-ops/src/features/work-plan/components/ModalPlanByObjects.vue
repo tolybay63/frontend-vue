@@ -61,6 +61,7 @@
         v-model="form.objects"
         :options="objectOptions"
         :loading="loadingObjects"
+        :show-select-all="true"
       />
     </div>
   </ModalWrapper>

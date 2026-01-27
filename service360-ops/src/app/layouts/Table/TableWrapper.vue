@@ -165,6 +165,10 @@ const props = defineProps({
   selectedRows: {
     type: Array,
     default: () => []
+  },
+  storageKey: {
+    type: String,
+    default: null
   }
 });
 
@@ -179,7 +183,22 @@ const page = ref(1);
 const selectedRow = ref(null);
 const showEditModal = ref(false);
 
-const columnFilters = ref({});
+// Восстанавливаем columnFilters из localStorage при инициализации
+const getInitialColumnFilters = () => {
+  if (props.storageKey) {
+    try {
+      const saved = localStorage.getItem(`${props.storageKey}_columnFilters`);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Ошибка при восстановлении фильтров столбцов:', e);
+    }
+  }
+  return {};
+};
+
+const columnFilters = ref(getInitialColumnFilters());
 const openFilter = ref(null);
 
 const sortKey = ref('id');
@@ -350,6 +369,15 @@ const closeFilter = () => {
 const applyColumnFilter = ({ columnKey, value }) => {
   columnFilters.value[columnKey] = value;
   page.value = 1;
+
+  // Сохраняем фильтры столбцов в localStorage
+  if (props.storageKey) {
+    try {
+      localStorage.setItem(`${props.storageKey}_columnFilters`, JSON.stringify(columnFilters.value));
+    } catch (e) {
+      console.error('Ошибка при сохранении фильтров столбцов:', e);
+    }
+  }
 };
 
 const handleClickOutside = (event) => {

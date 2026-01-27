@@ -392,15 +392,45 @@ export async function saveTaskLogFact(taskData) {
     const payload = {
       id: taskData.id,
       objWorkPlan: taskData.objWorkPlan,
-      FactDateEnd: taskData.FactDateEnd,
-      ReasonDeviation: taskData.ReasonDeviation || '',
-      Number: taskData.Number || '',
-      objObject: taskData.objObject,
-      fullNameWork: taskData.fullNameWork,
       objUser: user.id,
       pvUser: user.pv,
       UpdatedAt: today
     };
+
+    // Добавляем FactDateStart только если он передан (при начале задачи)
+    if (taskData.FactDateStart) {
+      payload.FactDateStart = taskData.FactDateStart;
+    }
+
+    // Добавляем FactDateEnd только если он передан (при завершении задачи)
+    if (taskData.FactDateEnd) {
+      payload.FactDateEnd = taskData.FactDateEnd;
+    }
+
+    // Добавляем Value (фактический объем) только если он передан
+    if (taskData.Value !== undefined) {
+      payload.Value = taskData.Value;
+    }
+
+    // Добавляем ReasonDeviation только если он передан
+    if (taskData.ReasonDeviation) {
+      payload.ReasonDeviation = taskData.ReasonDeviation;
+    }
+
+    // Добавляем Number (новый номер объекта) только если он передан
+    if (taskData.Number) {
+      payload.Number = taskData.Number;
+    }
+
+    // Добавляем objObject только если он передан
+    if (taskData.objObject) {
+      payload.objObject = taskData.objObject;
+    }
+
+    // Добавляем fullNameWork только если он передан
+    if (taskData.fullNameWork) {
+      payload.fullNameWork = taskData.fullNameWork;
+    }
 
     // Добавляем idUser только если он есть
     if (taskData.idUser) {

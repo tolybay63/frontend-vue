@@ -11,7 +11,8 @@
     :showFilters="true"
     :filters="filters"
     :getRowClassFn="getRowClassFn"
-    @update:filters="filters = $event"
+    :storageKey="'inspections'"
+    @update:filters="onFiltersUpdate"
     @row-dblclick="onRowDoubleClick"
   />
   <WorkCardInfoModal
@@ -49,8 +50,34 @@ const tableWrapperRef = ref(null);
 const showWorkCardInfoModal = ref(false);
 const selectedRecord = ref(null);
 
+// Проверяем флаг навигации - если пришли не со связанных страниц, очищаем фильтры
+const checkAndClearFilters = () => {
+  const navigationFlag = localStorage.getItem('inspectionsNavigation');
+
+  if (navigationFlag !== 'fromRelatedPage') {
+    // Пришли с другой страницы (sidebar) - очищаем все фильтры
+    localStorage.removeItem('inspectionsDate');
+    localStorage.removeItem('inspectionsPeriodType');
+    localStorage.removeItem('inspections_columnFilters');
+  }
+
+  // Удаляем флаг после проверки
+  localStorage.removeItem('inspectionsNavigation');
+};
+
+// Синхронно восстанавливаем дату из localStorage при инициализации
+const getSavedDate = () => {
+  checkAndClearFilters();
+
+  const savedDate = localStorage.getItem('inspectionsDate');
+  if (savedDate) {
+    return new Date(savedDate);
+  }
+  return new Date();
+};
+
 const filters = ref({
-  date: new Date(),
+  date: getSavedDate(),
   periodType: null,
 });
 
@@ -65,19 +92,50 @@ const dropdownConfig = ref({
   placeholder: 'Выберите тип периода',
 });
 
+// Обработчик изменения фильтров - сохраняем в localStorage
+const onFiltersUpdate = (newFilters) => {
+  filters.value = newFilters;
+
+  // Сохраняем фильтры в localStorage
+  if (newFilters.date) {
+    localStorage.setItem('inspectionsDate', formatDateToString(newFilters.date));
+  }
+  if (newFilters.periodType?.value) {
+    localStorage.setItem('inspectionsPeriodType', newFilters.periodType.value);
+  }
+};
+
 onMounted(async () => {
   try {
     const types = await loadPeriodTypes();
-    
+
     dropdownConfig.value.options = types;
-    
-    const defaultType = types.find(t => t.value === 71);
-    if (defaultType) {
-      filters.value.periodType = defaultType;
-    } else if (types.length > 0) {
-      filters.value.periodType = types[0];
+
+    // Восстанавливаем тип периода из localStorage
+    const savedPeriodType = localStorage.getItem('inspectionsPeriodType');
+
+    if (savedPeriodType) {
+      const savedType = types.find(t => t.value === parseInt(savedPeriodType));
+      if (savedType) {
+        filters.value.periodType = savedType;
+      } else {
+        const defaultType = types.find(t => t.value === 71);
+        filters.value.periodType = defaultType || types[0] || null;
+      }
+    } else {
+      const defaultType = types.find(t => t.value === 71);
+      if (defaultType) {
+        filters.value.periodType = defaultType;
+      } else if (types.length > 0) {
+        filters.value.periodType = types[0];
+      }
     }
-    
+
+    // Перезагружаем таблицу с восстановленными фильтрами
+    if (tableWrapperRef.value) {
+      tableWrapperRef.value.refreshTable();
+    }
+
   } catch (error) {
     console.error('Ошибка загрузки типов периодов:', error);
     dropdownConfig.value.options = [];
@@ -174,13 +232,17 @@ const loadInspectionsWrapper = async ({ page, limit, filters: filterValues }) =>
 };
 
 const onRowDoubleClick = (row) => {
-  
+
   selectedRecord.value = row;
-  
+
   if (!row.rawData?.id) {
     console.warn('Отсутствует ID инспекции. Открытие окна Defect/Parameters невозможно.');
     return;
   }
+
+  // Сохраняем фильтры перед открытием модального окна
+  localStorage.setItem('inspectionsDate', formatDateToString(filters.value.date));
+  localStorage.setItem('inspectionsPeriodType', filters.value.periodType?.value || '71');
 
   showWorkCardInfoModal.value = true;
 };
@@ -216,6 +278,13 @@ const tableActions = computed(() => [
     label: 'Добавить запись',
     icon: 'Plus',
     onClick: () => {
+      // Сохраняем данные фильтров в localStorage для использования на странице добавления
+      localStorage.setItem('inspectionsDate', formatDateToString(filters.value.date));
+      localStorage.setItem('inspectionsPeriodType', filters.value.periodType?.value || '71');
+
+      // Устанавливаем флаг что переходим на связанную страницу
+      localStorage.setItem('inspectionsNavigation', 'fromRelatedPage');
+
       router.push({ name: 'InspectionRecord' });
     },
     show: canInsert.value,

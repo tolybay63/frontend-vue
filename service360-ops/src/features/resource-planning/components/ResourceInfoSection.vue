@@ -179,6 +179,8 @@ const handleStartTask = async () => {
       id: props.taskLogId,
       objWorkPlan: props.objWorkPlan,
       FactDateStart: getFormattedDate(),
+      idUser: props.recordData.idUser,
+      idUpdatedAt: props.recordData.idUpdatedAt,
     };
 
     await saveTaskLogFact(payload);
@@ -190,14 +192,19 @@ const handleStartTask = async () => {
   }
 };
 
-const handleCompleteTask = async (actualVolume, reasonDeviation) => {
+const handleCompleteTask = async (actualVolume, newObjectNumber, reasonDeviation) => {
   try {
     const payload = {
       id: props.taskLogId,
       objWorkPlan: props.objWorkPlan,
-      Value: actualVolume, // Фактический объем из модального окна
+      Value: actualVolume,                          // Фактический объем из модального окна
       FactDateEnd: getFormattedDate(),
-      ReasonDeviation: reasonDeviation || '', // Причина отклонения от плана
+      ReasonDeviation: reasonDeviation || '',       // Причина отклонения от плана
+      Number: newObjectNumber || '',                // Новый номер объекта (приборы)
+      objObject: props.recordData.objObject,        // objObject записи
+      fullNameWork: props.recordData.fullNameWork,  // fullNameWork записи
+      idUser: props.recordData.idUser,              // idUser записи
+      idUpdatedAt: props.recordData.idUpdatedAt,    // idUpdatedAt записи
     };
 
     await saveTaskLogFact(payload);

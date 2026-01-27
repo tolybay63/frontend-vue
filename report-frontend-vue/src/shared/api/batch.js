@@ -25,6 +25,13 @@ export async function getBatchStatus(jobId) {
   return data
 }
 
+export async function getBatchResults(jobId, { offset = 0, limit = 1000 } = {}) {
+  const { data } = await batchApi.get(`/batch/${jobId}/results`, {
+    params: { offset, limit },
+  })
+  return data
+}
+
 export async function cancelBatch(jobId) {
   const { data } = await batchApi.delete(`/batch/${jobId}`)
   return data

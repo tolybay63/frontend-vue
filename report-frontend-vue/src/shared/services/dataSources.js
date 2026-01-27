@@ -1,6 +1,10 @@
 import { createRemoteDataSourceClient } from '@company/report-data-source'
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 import { createBatch, getBatchStatus } from '@/shared/api/batch'
+import {
+  hasPagedBatchResults,
+  loadPagedBatchResults,
+} from '@/shared/services/batchResults'
 import { loadReportSources } from '@/shared/api/report'
 import { fetchJoinPayload } from '@/shared/lib/sourceJoins.js'
 
@@ -20,7 +24,7 @@ async function sendMultiRequestData(payload = {}) {
     String(payload.method || '').toUpperCase() !== 'GET'
   if (shouldUseBatch) {
     const status = await runBatchJob(batchCandidate.payload)
-    const records = buildRecordsFromBatchStatus(
+    const records = await buildRecordsFromBatchStatus(
       status,
       batchCandidate.paramsList,
     )
@@ -114,25 +118,26 @@ function normalizeBatchEndpoint(rawUrl) {
   }
 }
 
-function buildRecordsFromBatchStatus(status, paramsList = []) {
+async function buildRecordsFromBatchStatus(status, paramsList = []) {
   if (status.status === 'failed') {
     throw new Error('Пакетная загрузка завершилась с ошибкой.')
   }
   if (status.status === 'cancelled') {
     throw new Error('Пакетная загрузка отменена.')
   }
-  if (status.resultsFileRef) {
-    throw new Error(
-      'Результат слишком большой. Разбейте параметры на партии или добавьте фильтры.',
-    )
+  let results = status.results
+  if (hasPagedBatchResults(status)) {
+    const jobId = status.job_id || status.jobId
+    const paged = await loadPagedBatchResults(jobId)
+    results = paged?.results
   }
-  if (!Array.isArray(status.results)) {
+  if (!Array.isArray(results)) {
     throw new Error('Результат пакетной загрузки недоступен.')
   }
   const fieldMaps = paramsList.map((params) =>
     buildRequestFieldsFromParams(params),
   )
-  return status.results.flatMap((item, index) => {
+  return results.flatMap((item, index) => {
     if (!item || item.ok === false) return []
     const rows = extractRecordsFromResponse(item.data)
     const fields = fieldMaps[index] || {}

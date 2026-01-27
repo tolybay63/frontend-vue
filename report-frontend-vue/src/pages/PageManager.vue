@@ -40,6 +40,19 @@
         <dl>
           <dt>Пункт меню</dt>
           <dd>{{ page.menuTitle }}</dd>
+          <dt>Порядок в меню</dt>
+          <dd>
+            <input
+              class="order-input"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              :value="menuOrderValue(page.id)"
+              placeholder="-"
+              @change="updateMenuOrder(page.id, $event)"
+            />
+          </dd>
           <dt>Глобальные фильтры</dt>
           <dd>{{ pageFilterLabels(page).length ? pageFilterLabels(page).join(', ') : 'Нет' }}</dd>
           <dt>Контейнеры</dt>
@@ -100,7 +113,7 @@ const store = usePageBuilderStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
 const authStore = useAuthStore()
 
-const pages = computed(() => store.pages)
+const pages = computed(() => store.orderedPages)
 const pagesLoading = computed(() => store.pagesLoading)
 const pagesError = computed(() => store.pagesError)
 const layoutLabels = computed(() => store.layoutLabelMap)
@@ -157,6 +170,14 @@ function resolveFieldLabel(key) {
 
 function createPage() {
   router.push('/pages/new')
+}
+function menuOrderValue(pageId) {
+  const value = store.getDashboardOrderForPage(pageId)
+  return value == null ? '' : value
+}
+function updateMenuOrder(pageId, event) {
+  const nextValue = event?.target?.value ?? ''
+  store.setDashboardOrder(pageId, nextValue)
 }
 function canInteractWithPage(page) {
   return canUserAccessPage(page, currentUserMeta.value)
@@ -233,6 +254,14 @@ async function removePage(pageId) {
   border-radius: 999px;
   font-size: 12px;
   text-transform: uppercase;
+}
+.order-input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: #fff;
 }
 dl {
   margin: 0;

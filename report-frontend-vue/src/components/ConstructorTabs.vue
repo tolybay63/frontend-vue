@@ -1,13 +1,6 @@
 <template>
   <nav class="constructor-tabs">
     <RouterLink
-      to="/templates"
-      class="constructor-tab"
-      exact-active-class="is-active"
-    >
-      Представления
-    </RouterLink>
-    <RouterLink
       to="/data-sources"
       class="constructor-tab"
       exact-active-class="is-active"
@@ -20,6 +13,20 @@
       exact-active-class="is-active"
     >
       Конфигурации данных
+    </RouterLink>
+    <RouterLink
+      to="/templates"
+      class="constructor-tab"
+      exact-active-class="is-active"
+    >
+      Представления
+    </RouterLink>
+    <RouterLink
+      to="/pages"
+      class="constructor-tab"
+      exact-active-class="is-active"
+    >
+      Страницы
     </RouterLink>
   </nav>
 </template>

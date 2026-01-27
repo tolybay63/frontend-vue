@@ -10,6 +10,15 @@ import {
 import { fetchReportViewTemplates } from '@/shared/services/reportViews'
 import { canUserAccessPage } from '@/shared/lib/pageAccess'
 import {
+  getDashboardOrderForUser,
+  loadDashboardOrderByUser,
+  normalizeDashboardOrderValue,
+  persistDashboardOrderByUser,
+  resolveDashboardUserKey,
+  sortPagesByOrder,
+  updateDashboardOrderByUser,
+} from '@/shared/lib/dashboardOrder'
+import {
   extractLayoutMeta,
   injectLayoutMeta,
   parseContainerTitle,
@@ -82,6 +91,8 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
     pagesLoaded: false,
     pagesFetchedAt: 0,
     pagesError: '',
+    dashboardOrderByUser: loadDashboardOrderByUser(),
+    dashboardOrderUserKey: resolveDashboardUserKey(),
     pageContainers: {},
     templates: [],
     templatesLoading: false,
@@ -118,6 +129,21 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
   getters: {
     getPageById: (state) => (id) => state.pages.find((page) => page.id === id),
     getTemplateById: (state) => (id) => state.templates.find((tpl) => tpl.id === id),
+    dashboardOrderForUser: (state) =>
+      getDashboardOrderForUser(state.dashboardOrderByUser, state.dashboardOrderUserKey),
+    getDashboardOrderForPage: (state) => (pageId) => {
+      const orderMap = getDashboardOrderForUser(
+        state.dashboardOrderByUser,
+        state.dashboardOrderUserKey,
+      )
+      const raw = orderMap[String(pageId)]
+      return normalizeDashboardOrderValue(raw)
+    },
+    orderedPages: (state) =>
+      sortPagesByOrder(
+        state.pages,
+        getDashboardOrderForUser(state.dashboardOrderByUser, state.dashboardOrderUserKey),
+      ),
     layoutTemplateMap: (state) =>
       state.layoutOptions.reduce((acc, preset) => {
         acc[preset.value] = preset.template || '1fr'
@@ -140,6 +166,23 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       }, {}),
   },
   actions: {
+    syncDashboardOrderUser(userId) {
+      const nextKey = resolveDashboardUserKey(userId)
+      if (nextKey !== this.dashboardOrderUserKey) {
+        this.dashboardOrderUserKey = nextKey
+      }
+    },
+    setDashboardOrder(pageId, value) {
+      const normalized = normalizeDashboardOrderValue(value)
+      const next = updateDashboardOrderByUser(
+        this.dashboardOrderByUser,
+        this.dashboardOrderUserKey,
+        pageId,
+        normalized,
+      )
+      this.dashboardOrderByUser = next
+      persistDashboardOrderByUser(next)
+    },
     async fetchTemplates(forceOrOptions = false) {
       const { force, skipCooldown } = normalizeFetchOptions(forceOrOptions)
       if (
@@ -351,6 +394,11 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
             this.heightOptions,
             page.layout?.containerTabs || {},
           )
+          const resolvedCount = Math.max(
+            Number(page.containerCount || 0),
+            containers.length,
+          )
+          page.containerCount = resolvedCount
           containersMap.set(page.id, containers)
           return page
         })

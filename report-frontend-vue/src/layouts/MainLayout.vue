@@ -54,7 +54,7 @@
               }}</span>
             </RouterLink>
           </div>
-          <div class="sider__section">
+          <div v-if="canUseConstructor" class="sider__section">
             <button
               class="sider__section-toggle"
               type="button"
@@ -88,19 +88,6 @@
               </div>
             </transition>
           </div>
-          <div class="sider__section">
-            <div class="sider__section-title">Страницы</div>
-            <RouterLink
-              v-for="item in pageLinks"
-              :key="item.to"
-              :to="item.to"
-              class="sider__link"
-              active-class="is-active"
-            >
-              <span :class="['sider__icon', `icon-${item.icon}`]" />
-              <span class="sider__label">{{ item.label }}</span>
-            </RouterLink>
-          </div>
         </nav>
       </aside>
       <div
@@ -124,16 +111,18 @@ import logoUrl from '@/shared/assets/logo.png'
 import { useAuthStore } from '@/shared/stores/auth'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 import { useNavigationStore } from '@/shared/stores/navigation'
+import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const pageStore = usePageBuilderStore()
 const navigationStore = useNavigationStore()
-const navPages = computed(() => pageStore.pages)
+const navPages = computed(() => pageStore.orderedPages || pageStore.pages)
 const asideCollapsed = ref(false)
 const constructorOpen = ref(true)
 const siderWidth = ref(248)
+const canUseConstructor = computed(() => hasConstructorAccess(user.value))
 const advancedMode = computed({
   get: () => navigationStore.isAdvancedMode,
   set: (value) => navigationStore.setAdvancedMode(value),
@@ -158,11 +147,12 @@ const constructorLinks = computed(() => {
       },
     )
   }
-  links.push({ to: '/templates', label: 'Представления', icon: 'layers' })
+  links.push(
+    { to: '/templates', label: 'Представления', icon: 'layers' },
+    { to: '/pages', label: 'Страницы', icon: 'layout' },
+  )
   return links
 })
-
-const pageLinks = [{ to: '/pages', label: 'Страницы', icon: 'layout' }]
 
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value

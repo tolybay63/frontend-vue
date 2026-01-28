@@ -1,5 +1,5 @@
 <template>
-  <ModalWrapper title="Запланировать новую работу" @close="closeModal" @save="saveData" :show-save="canInsert">
+  <ModalWrapper title="Запланировать новую работу" @close="closeModal" @save="saveData" :show-save="canInsert" :loading="isSaving">
     <div class="form-section">
 
       <AppDropdown

@@ -5,7 +5,8 @@
     :show-save="canUpdate"
     :show-delete="canDelete"
     @save="saveChanges"
-    @delete="onDeleteClicked" 
+    @delete="onDeleteClicked"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -106,6 +107,8 @@ const notificationStore = useNotificationStore()
 const criticalityOptions = ref([])
 const loadingCriticality = ref(false)
 
+const isSaving = ref(false)
+
 const { hasPermission } = usePermissions();
 const canUpdate = computed(() => hasPermission('inc:upd'));
 const canDelete = computed(() => hasPermission('inc:del'));
@@ -198,6 +201,8 @@ const loadInitialData = async () => {
 }
 
 const saveChanges = async () => {
+  if (isSaving.value) return
+
   const rawData = props.rowData.rawData;
 
   if (!rawData || !rawData.id) {
@@ -207,7 +212,7 @@ const saveChanges = async () => {
 
   const payload = {
     id: rawData.id, // id инцидента
-    
+
     // Передаем ID свойств из rawData, чтобы сервер знал, какие свойства обновлять
     idCriticality: rawData.idCriticality,
     idInfoApplicant: rawData.idInfoApplicant,
@@ -220,12 +225,15 @@ const saveChanges = async () => {
     Description: form.value.description,
   };
 
+  isSaving.value = true
   try {
     await updateIncident(payload);
     notificationStore.showNotification('Инцидент успешно обновлен!', 'success');
     emit('deleted'); // Используем событие 'deleted' для обновления таблицы, как при удалении
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при обновлении инцидента.', 'error');
+  } finally {
+    isSaving.value = false
   }
 };
 

@@ -5,6 +5,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -107,6 +108,7 @@ const sectionOptions = ref([])
 // Loading states
 const loadingEquipmentTypes = ref(false)
 const loadingSections = ref(false)
+const isSaving = ref(false)
 
 // Load equipment types
 const loadEquipmentTypesData = async () => {
@@ -154,7 +156,11 @@ const loadSectionsData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.inventoryNumber || !form.value.name || !form.value.equipmentType || !form.value.section) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -169,6 +175,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при обновлении техники', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

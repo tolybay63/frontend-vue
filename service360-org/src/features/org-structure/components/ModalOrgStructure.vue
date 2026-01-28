@@ -1,5 +1,5 @@
 <template>
-  <ModalWrapper title="Создать организационную структуру" @close="closeModal" @save="saveData">
+  <ModalWrapper title="Создать организационную структуру" @close="closeModal" @save="saveData" :loading="isSaving">
     <div class="form-section">
 
       <AppInput
@@ -160,13 +160,18 @@ const trueOption = ref(null)
 const falseOption = ref(null)
 
 const multiOptions = ref([])
+const isSaving = ref(false)
 
 const closeModal = () => {
   emit('close')
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     await saveLocation(
       form.value,
       multiOptions.value,
@@ -180,6 +185,8 @@ const saveData = async () => {
   } catch (e) {
     console.error('Ошибка при сохранении:', e)
     notificationStore.showNotification('Ошибка при сохранении структуры', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

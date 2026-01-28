@@ -7,6 +7,7 @@
     :show-save="canUpdate"
     @save="saveData"
     @delete="confirmDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppDropdown
@@ -149,6 +150,7 @@ const objectTypeOptions = ref([])
 const objectOptions = ref([])
 const sectionOptions = ref([])
 
+const isSaving = ref(false)
 const loadingWorks = ref(false)
 const loadingPlaces = ref(false)
 const loadingObjectTypes = ref(false)
@@ -176,6 +178,9 @@ const formatDateForBackend = (date) => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
+  isSaving.value = true
   try {
     if (!form.value.work) {
       notificationStore.showNotification('Не выбрана работа', 'error')
@@ -258,6 +263,8 @@ const saveData = async () => {
     }
 
     notificationStore.showNotification(errorMessage, 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

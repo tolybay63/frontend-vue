@@ -18,6 +18,7 @@
       @update:value="handleInput"
       @keydown="handleKeydown"
       @blur="handleBlur"
+      @paste="handlePaste"
     />
   </div>
 </template>
@@ -93,6 +94,21 @@ const handleBlur = () => {
   }
 }
 
+const handlePaste = (e) => {
+  if (!props.allowDecimal) return
+
+  const pastedText = e.clipboardData?.getData('text')
+  if (pastedText && pastedText.includes(',')) {
+    e.preventDefault()
+    const normalizedText = pastedText.replace(/,/g, '.')
+    const numberValue = parseFloat(normalizedText)
+
+    if (!isNaN(numberValue)) {
+      handleInput(numberValue)
+    }
+  }
+}
+
 const handleKeydown = (e) => {
   const allowedKeys = [
     'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
@@ -104,6 +120,27 @@ const handleKeydown = (e) => {
 
   if (e.key === '-' || e.key === 'Minus') {
     e.preventDefault()
+    return
+  }
+
+  // Заменяем запятую на точку
+  if (e.key === ',' && props.allowDecimal) {
+    e.preventDefault()
+    const input = e.target
+    const start = input.selectionStart
+    const end = input.selectionEnd
+    const currentValue = input.value || ''
+
+    // Проверяем, что точка еще не введена
+    if (!currentValue.includes('.')) {
+      const newValue = currentValue.substring(0, start) + '.' + currentValue.substring(end)
+      input.value = newValue
+      input.setSelectionRange(start + 1, start + 1)
+
+      // Эмитим событие для обновления внутреннего значения
+      const event = new Event('input', { bubbles: true })
+      input.dispatchEvent(event)
+    }
     return
   }
 

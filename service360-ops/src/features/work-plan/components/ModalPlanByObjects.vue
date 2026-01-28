@@ -1,5 +1,5 @@
 <template>
-  <ModalWrapper title="Запланировать по объектам" @close="closeModal" @save="saveData" :show-save="true">
+  <ModalWrapper title="Запланировать по объектам" @close="closeModal" @save="saveData" :show-save="true" :loading="isSaving">
     <div class="form-section">
       <AppDropdown
         class="full-width-item"

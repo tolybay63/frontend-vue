@@ -3,6 +3,7 @@
     title="Добавить участок"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -74,6 +75,7 @@ const clientOptions = ref([])
 
 // Loading states
 const loadingClients = ref(false)
+const isSaving = ref(false)
 
 // Load clients
 const loadClientsData = async () => {
@@ -89,7 +91,11 @@ const loadClientsData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.name || !form.value.client || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordEndKm || !form.value.stageLength) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -129,6 +135,8 @@ const saveData = async () => {
   } catch (error) {
     const errorMessage = error.response?.data?.error?.message || error.message || 'Ошибка при сохранении участка'
     notificationStore.showNotification(errorMessage, 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

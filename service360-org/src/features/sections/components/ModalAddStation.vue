@@ -3,6 +3,7 @@
     title="Добавить раздельный пункт"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -67,6 +68,7 @@ const sectionOptions = ref([])
 
 // Loading states
 const loadingSections = ref(false)
+const isSaving = ref(false)
 
 // Load sections
 const loadSectionsData = async () => {
@@ -87,7 +89,11 @@ const loadSectionsData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.name || !form.value.section || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordStartPk || !form.value.coordinates.coordStartZv || !form.value.coordinates.coordEndKm || !form.value.coordinates.coordEndPk || !form.value.coordinates.coordEndZv) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -127,6 +133,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при сохранении раздельного пункта', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

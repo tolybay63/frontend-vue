@@ -1,5 +1,5 @@
 <template>
-  <ModalWrapper title="Копировать план работ" @close="closeModal" @save="saveData">
+  <ModalWrapper title="Копировать план работ" @close="closeModal" @save="saveData" :loading="isSaving">
     <div class="form-section">
       <AppDatePicker
         id="copyDateStart"

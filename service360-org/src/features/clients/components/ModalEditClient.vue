@@ -6,6 +6,7 @@
     @delete="handleDelete"
     :show-save="canUpdate"
     :show-delete="canDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -88,6 +89,7 @@ const canUpdate = computed(() => hasPermission('cl:upd'));
 const canDelete = computed(() => hasPermission('cl:del'));
 
 const showConfirmModal = ref(false)
+const isSaving = ref(false)
 
 // Form data
 const form = ref({
@@ -101,7 +103,11 @@ const form = ref({
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.name || !form.value.bin || !form.value.contactPerson || !form.value.contactDetails) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -116,6 +122,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при обновлении клиента', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

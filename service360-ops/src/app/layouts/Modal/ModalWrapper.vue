@@ -1,6 +1,6 @@
 <template>
   <Transition name="modal-fade" appear>
-    <div class="modal-overlay" @click.self="closeModal">
+    <div class="modal-overlay">
       <div class="modal-wrapper">
         <div class="modal-card">
           <ModalHeader :title="title" @close="closeModal" />
@@ -12,6 +12,7 @@
           <ModalFooter
             v-if="showFooter"
             :disabled="disabled"
+            :loading="loading"
             :showDelete="showDelete"
             :showSave="showSave"
             :showCancel="showCancel"
@@ -19,6 +20,10 @@
             @save="onSave"
             @delete="onDelete"
           />
+          <div v-if="loading" class="loading-overlay">
+            <div class="spinner"></div>
+            <span class="loading-text">Сохранение...</span>
+          </div>
         </div>
       </div>
     </div>
@@ -33,6 +38,7 @@ import ModalFooter from './ModalFooter.vue'
 const props = defineProps({
   title: { type: String, required: true },
   disabled: { type: Boolean, default: false },
+  loading: { type: Boolean, default: false },
   showDelete: { type: Boolean, default: false },
   showSave: { type: Boolean, default: true },
   showCancel: { type: Boolean, default: true }
@@ -103,6 +109,7 @@ const onDelete = () => emit('delete')
   height: 100%;
   border-radius: 12px;
   overflow: hidden;
+  position: relative;
 }
 
 .modal-scrollable {
@@ -112,6 +119,43 @@ const onDelete = () => emit('delete')
 
 .modal-body {
   padding: 24px;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(249, 250, 251, 0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  border-radius: 12px;
+  gap: 12px;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spinModal 0.8s linear infinite;
+}
+
+@keyframes spinModal {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Tablet styles */

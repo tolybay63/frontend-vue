@@ -6,6 +6,7 @@
     @delete="handleDelete"
     :show-save="canUpdate"
     :show-delete="canDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -89,6 +90,7 @@ const form = ref({
 const sectionOptions = ref([])
 const loadingSections = ref(false)
 const showConfirmModal = ref(false)
+const isSaving = ref(false)
 
 const loadSectionsData = async () => {
   loadingSections.value = true
@@ -116,7 +118,11 @@ const loadSectionsData = async () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     if (!form.value.name || !form.value.section || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordStartPk || !form.value.coordinates.coordStartZv || !form.value.coordinates.coordEndKm || !form.value.coordinates.coordEndPk || !form.value.coordinates.coordEndZv) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
       return
@@ -157,6 +163,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при обновлении раздельного пункта', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

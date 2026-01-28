@@ -3,6 +3,7 @@
     title="Добавить нового сотрудника"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -152,6 +153,7 @@ const sexOptions = ref([])
 const loadingPositions = ref(false)
 const loadingLocations = ref(false)
 const loadingSex = ref(false)
+const isSaving = ref(false)
 
 // Load positions
 const loadPositionsData = async () => {
@@ -191,7 +193,11 @@ const loadSexData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.tabNumber || !form.value.secondName ||
         !form.value.firstName || !form.value.position ||
@@ -214,6 +220,8 @@ const saveData = async () => {
     } else {
       notificationStore.showNotification(error.message || 'Ошибка при сохранении сотрудника', 'error')
     }
+  } finally {
+    isSaving.value = false
   }
 }
 

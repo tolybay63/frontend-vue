@@ -6,6 +6,7 @@
     @delete="handleDelete"
     :show-save="canUpdate"
     :show-delete="canDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -97,6 +98,7 @@ const form = ref({
 const clientOptions = ref([])
 const loadingClients = ref(false)
 const showConfirmModal = ref(false)
+const isSaving = ref(false)
 
 const loadClientsData = async () => {
   loadingClients.value = true
@@ -118,7 +120,11 @@ const loadClientsData = async () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     if (!form.value.name || !form.value.client || !form.value.coordinates.coordStartKm || !form.value.coordinates.coordEndKm || !form.value.stageLength) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
       return
@@ -156,6 +162,8 @@ const saveData = async () => {
   } catch (error) {
     const errorMessage = error.response?.data?.error?.message || error.message || 'Ошибка при обновлении участка'
     notificationStore.showNotification(errorMessage, 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

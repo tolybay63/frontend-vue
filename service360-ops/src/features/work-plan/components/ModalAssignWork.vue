@@ -4,6 +4,7 @@
     modal-class="modal-assign-work"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppDropdown
@@ -72,7 +73,7 @@ import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import IncidentHeaderInfo from '@/features/incidents/components/IncidentHeaderInfo.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
-import { fetchLocationByCoords } from '@/shared/api/plans/planWorkApi' 
+import { fetchLocationByCoords } from '@/shared/api/plans/planWorkApi'
 import { assignWorkToIncident, loadCriticalityLevels, loadWorksForIncidentObject } from '@/shared/api/incidents/incidentApi'
 
 const props = defineProps({
@@ -98,6 +99,8 @@ const isDateDisabled = (timestamp) => {
 
 const emit = defineEmits(['close', 'assign-work'])
 const notificationStore = useNotificationStore()
+
+const isSaving = ref(false)
 
 const form = ref({
   incidentType: null,
@@ -273,10 +276,12 @@ const validateForm = () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   if (!validateForm()) {
      return
   }
-  
+
   const selectedIncidentOption = incidentOptions.value.find(
     inc => inc.value === form.value.incidentType.value
   );
@@ -294,7 +299,7 @@ const saveData = async () => {
     notificationStore.showNotification('Не удалось найти данные выбранного инцидента.', 'error');
     return;
   }
-  
+
   if (!selectedWorkOption) {
     notificationStore.showNotification('Не удалось найти данные выбранной работы.', 'error');
     return;
@@ -309,7 +314,8 @@ const saveData = async () => {
     notificationStore.showNotification('Не удалось найти данные выбранного участка.', 'error');
     return;
   }
-  
+
+  isSaving.value = true
   try {
       const now = new Date();
       const year = now.getFullYear();
@@ -334,6 +340,8 @@ const saveData = async () => {
       closeModal()
   } catch (error) {
       notificationStore.showNotification(error.message || 'Ошибка при назначении работы', 'error')
+  } finally {
+      isSaving.value = false
   }
 }
 

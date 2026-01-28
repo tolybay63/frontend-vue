@@ -5,8 +5,9 @@
     :show-cancel="false"
     :showDelete="canDelete"
     @close="closeModal"
-    @delete="handleDelete" 
+    @delete="handleDelete"
     :disabled="isSaving"
+    :loading="isSaving"
   >
     <div class="work-card-content">
       <WorkHeaderInfo :record="record" :section="section" :date="date" />

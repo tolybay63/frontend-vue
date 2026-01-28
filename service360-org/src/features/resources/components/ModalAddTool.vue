@@ -3,6 +3,7 @@
     title="Добавить новый инструмент"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -84,6 +85,7 @@ const sectionOptions = ref([])
 // Loading states
 const loadingToolTypes = ref(false)
 const loadingSections = ref(false)
+const isSaving = ref(false)
 
 // Load tool types
 const loadToolTypesData = async () => {
@@ -111,7 +113,11 @@ const loadSectionsData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.inventoryNumber || !form.value.name || !form.value.toolType || !form.value.section) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -126,6 +132,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при сохранении инструмента', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

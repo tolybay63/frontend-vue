@@ -371,8 +371,9 @@ export async function assignWorkToIncident(incident, work, completionDate, selec
           objWork: work.value,
           pvWork: work.pv,
           linkCls: work.cls,
-          fvCriticality: selectedCriticality.value, 
+          fvCriticality: selectedCriticality.value,
           pvCriticality: selectedCriticality.pv,
+          Description: incident.Description || '',
         },
       ],
     };

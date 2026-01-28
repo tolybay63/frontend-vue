@@ -6,6 +6,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
 
@@ -167,6 +168,7 @@ const canUpdate = computed(() => hasPermission('org:upd'))
 const canDelete = computed(() => hasPermission('org:del'))
 
 const showConfirmModal = ref(false)
+const isSaving = ref(false)
 
 // Helper function to parse coordinates from km to km+pk
 const parseKmToPkFormat = (kmValue) => {
@@ -219,7 +221,11 @@ const closeModal = () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     await updateLocation(
       form.value,
       multiOptions.value,
@@ -233,6 +239,8 @@ const saveData = async () => {
   } catch (e) {
     console.error('Ошибка при обновлении:', e)
     notificationStore.showNotification('Ошибка при обновлении структуры', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

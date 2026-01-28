@@ -5,6 +5,7 @@
     :show-cancel="false"
     :showDelete="false"
     @close="closeModal"
+    :loading="isSaving"
   >
     <div class="work-card-content">
       <WorkHeaderInfo :record="record" :section="section" :date="date" />

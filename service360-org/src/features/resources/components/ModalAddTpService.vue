@@ -3,6 +3,7 @@
     title="Добавить услугу сторонней организации"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput
@@ -60,6 +61,7 @@ const measureOptions = ref([])
 
 // Loading states
 const loadingMeasures = ref(false)
+const isSaving = ref(false)
 
 // Load measures
 const loadMeasuresData = async () => {
@@ -75,7 +77,11 @@ const loadMeasuresData = async () => {
 
 // Save data
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
+    isSaving.value = true
+
     // Validate required fields
     if (!form.value.name || !form.value.measure) {
       notificationStore.showNotification('Пожалуйста, заполните все обязательные поля', 'error')
@@ -90,6 +96,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification(error.message || 'Ошибка при сохранении услуги', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

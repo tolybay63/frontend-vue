@@ -4,6 +4,7 @@
     :show-save="canInsert"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppDropdown
@@ -123,6 +124,7 @@ const notificationStore = useNotificationStore()
 const { hasPermission } = usePermissions()
 const canInsert = computed(() => hasPermission('inc:ins'))
 
+const isSaving = ref(false)
 let nextObjectId = 1;
 const generateObjectId = () => nextObjectId++;
 
@@ -491,6 +493,8 @@ const validateForm = () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   if (!validateForm()) return;
 
   const selectedEvent = incidentTypeOptions.value.find(opt => opt.value == form.value.incidentType?.value);
@@ -515,24 +519,25 @@ const saveData = async () => {
 
       criticalityFv: selectedEvent.fvCriticality,
       criticalityPv: selectedEvent.pvCriticality,
-      
+
       objectId: objectRecord.objObject,
       objectPv: objectRecord.pvObject,
-      
+
       StartKm: coordinates.coordStartKm !== null ? parseFloat(coordinates.coordStartKm) : 0.0,
       FinishKm: coordinates.coordEndKm !== null ? parseFloat(coordinates.coordEndKm) : 0.0,
       StartPicket: coordinates.coordStartPk !== null ? parseFloat(coordinates.coordStartPk) : 0.0,
       FinishPicket: coordinates.coordEndPk !== null ? parseFloat(coordinates.coordEndPk) : 0.0,
       Description: objectForm.description,
-      InfoApplicant: form.value.applicantName, 
-      
+      InfoApplicant: form.value.applicantName,
+
       StartLink: coordinates.coordStartZv !== null ? parseFloat(coordinates.coordStartZv) : 0.0,
       FinishLink: coordinates.coordEndZv !== null ? parseFloat(coordinates.coordEndZv) : 0.0,
     };
 
     return saveIncident(payloadData);
   });
-  
+
+  isSaving.value = true
   try {
       await Promise.all(savePromises);
       notificationStore.showNotification(`Инцидент(ы) успешно добавлен(ы) (${form.value.incidents.length} шт.)`, 'success')
@@ -562,6 +567,8 @@ const saveData = async () => {
       }
 
       notificationStore.showNotification(errorMessage, 'error')
+  } finally {
+      isSaving.value = false
   }
 }
 

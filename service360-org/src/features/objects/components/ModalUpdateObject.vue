@@ -6,6 +6,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput 
@@ -182,6 +183,7 @@ const selectedSide = ref(null)
 const stationData = ref(null)
 const isFetching = ref(false)
 const showConfirmModal = ref(false)
+const isSaving = ref(false)
 let fetchTimeout = null
 
 const closeModal = () => emit('close')
@@ -246,10 +248,15 @@ onMounted(async () => {
 })
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   if (!validateForm()) {
     return
   }
+
   try {
+    isSaving.value = true
+
     const user = await getUserData()
     const installDate = formatDateToString(form.value.installDate)
     const updatedAt = new Date().toISOString().slice(0, 10)
@@ -305,15 +312,17 @@ const saveData = async () => {
     delete payload.nameObjectType
     delete payload.nameSection
     delete payload.nameSide
-    
+
     // Используем новый метод для обновления
-    await updateObjectServed(payload) 
-    
+    await updateObjectServed(payload)
+
     notificationStore.showNotification('Объект успешно обновлён!', 'success')
     emit('save')
   } catch (error) {
     console.error(error)
     notificationStore.showNotification('Ошибка при обновлении объекта', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

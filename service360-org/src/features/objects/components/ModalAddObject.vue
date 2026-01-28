@@ -3,6 +3,7 @@
     title="Добавить новый объект"
     @close="closeModal"
     @save="saveData"
+    :loading="isSaving"
   >
     <div class="form-section">
       <AppInput 
@@ -147,6 +148,7 @@ const selectedType = ref(null)
 const selectedSide = ref(null)
 const stationData = ref(null)
 const isFetching = ref(false)
+const isSaving = ref(false)
 let fetchTimeout = null
 
 const closeModal = () => emit('close')
@@ -177,10 +179,14 @@ const validateForm = () => {
 }
 
 const saveData = async () => {
+  if (isSaving.value) return
+
   try {
     if (!validateForm()) {
       return
     }
+
+    isSaving.value = true
     const user = await getUserData()
     const installDate = formatDateToString(form.value.installDate)
     const createdAt = new Date().toISOString().slice(0, 10)
@@ -235,6 +241,8 @@ const saveData = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification('Ошибка при сохранении объекта', 'error')
+  } finally {
+    isSaving.value = false
   }
 }
 

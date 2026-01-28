@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git checkout:*)",
       "Bash(npm install:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(del \"components\\\\RoadHeatmap.vue\")",
+      "Bash(del \"views\\\\HeatmapTest.vue\")"
     ],
     "deny": [],
     "ask": []

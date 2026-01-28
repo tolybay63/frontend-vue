@@ -1,9 +1,9 @@
 <template>
   <div class="modal-footer">
-    <button v-if="showDelete" class="button button-delete" @click="deleteObject">Удалить</button>
+    <button v-if="showDelete" class="button button-delete" @click="deleteObject" :disabled="loading">Удалить</button>
     <div></div>
-    <button v-if="showCancel" class="button button-secondary" @click="cancel">Отмена</button>
-    <button v-if="showSave" class="button button-primary" @click="save" :disabled="disabled">Сохранить</button>
+    <button v-if="showCancel" class="button button-secondary" @click="cancel" :disabled="loading">Отмена</button>
+    <button v-if="showSave" class="button button-primary" @click="save" :disabled="disabled || loading">Сохранить</button>
   </div>
 </template>
 
@@ -14,6 +14,7 @@ const emit = defineEmits(['cancel', 'save', 'delete'])
 
 const props = defineProps({
   disabled: Boolean,
+  loading: { type: Boolean, default: false },
   showDelete: Boolean,
   showSave: { type: Boolean, default: true },
   showCancel: { type: Boolean, default: true },
@@ -89,6 +90,17 @@ const deleteObject = () => emit('delete')
   background: #b91c1c;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.button-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {

@@ -17,6 +17,7 @@ from app.models.view import ViewResponse
 from app.observability.metrics import record_http_request, set_report_jobs_queue_size
 from app.observability.otel import configure_otel
 from app.observability.request_context import set_request_id
+from app.services.computed_fields import build_computed_fields_engine
 from app.services.data_source_client import async_load_records, get_records_limit
 from app.services.detail_service import build_details
 from app.services.filter_service import apply_filters, collect_filter_options
@@ -176,6 +177,7 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
     """
     request_id = getattr(request.state, "request_id", None)
     max_records = get_records_limit()
+    computed_engine = build_computed_fields_engine(payload.remoteSource)
 
     try:
         joins = await resolve_joins(payload.remoteSource)
@@ -204,6 +206,8 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
                 max_records=max_records,
             )
             _enforce_records_limit(len(joined_records), max_records, "apply_joins")
+            if computed_engine:
+                computed_engine.apply(joined_records)
             logger.info(
                 "report.filters.apply_joins",
                 extra={
@@ -218,6 +222,8 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
                 await set_cached_records(cache_key, joined_records)
         else:
             _enforce_records_limit(len(joined_records), max_records, "cache_records")
+            if computed_engine:
+                computed_engine.apply(joined_records)
     except HTTPException:
         raise
     except ValueError as exc:
@@ -262,6 +268,8 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
     }
     if selected_pruned:
         response["selectedPruned"] = selected_pruned
+    if computed_engine and computed_engine.warnings:
+        response["computedWarnings"] = computed_engine.warnings
     if os.getenv("REPORT_DEBUG_FILTERS"):
         filtered_records, _ = apply_filters(
             joined_records,
@@ -311,6 +319,7 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
 
     request_id = getattr(request.state, "request_id", None)
     max_records = get_records_limit()
+    computed_engine = build_computed_fields_engine(view_payload.remoteSource)
 
     try:
         joins = await resolve_joins(view_payload.remoteSource)
@@ -339,6 +348,8 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
                 max_records=max_records,
             )
             _enforce_records_limit(len(joined_records), max_records, "apply_joins")
+            if computed_engine:
+                computed_engine.apply(joined_records)
             logger.info(
                 "report.details.apply_joins",
                 extra={
@@ -353,6 +364,8 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
                 await set_cached_records(cache_key, joined_records)
         else:
             _enforce_records_limit(len(joined_records), max_records, "cache_records")
+            if computed_engine:
+                computed_engine.apply(joined_records)
 
         details_started = time.monotonic()
         response, debug_payload = build_details(
@@ -391,6 +404,8 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
         if join_debug:
             debug_payload["joins"] = join_debug
         response["debug"] = debug_payload
+    if computed_engine and computed_engine.warnings:
+        response["computedWarnings"] = computed_engine.warnings
 
     return response
 

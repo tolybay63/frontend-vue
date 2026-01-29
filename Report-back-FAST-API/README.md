@@ -51,12 +51,12 @@ cp .env.example .env
 
 Пример .env:
 
-SERVICE360_BASE_URL=http://45.8.116.32
+SERVICE360_BASE_URL=http://77.245.107.213
 REPORT_FILTERS_MAX_VALUES=200
 REPORT_FILTERS_CACHE_TTL=30
 REPORT_FILTERS_CACHE_MAX=20
 REPORT_MAX_RECORDS=100000
-REPORT_REMOTE_ALLOWLIST=45.8.116.32
+REPORT_REMOTE_ALLOWLIST=77.245.107.213
 REPORT_DEBUG_FILTERS=0
 REPORT_DEBUG_JOINS=0
 REDIS_URL=redis://localhost:6379/0
@@ -64,10 +64,10 @@ BATCH_CONCURRENCY=5
 BATCH_MAX_ITEMS=100
 BATCH_JOB_TTL_SECONDS=3600
 BATCH_RESULTS_TTL_SECONDS=3600
-UPSTREAM_BASE_URL=http://45.8.116.32
-# UPSTREAM_URL=http://45.8.116.32/dtj/api/plan
+UPSTREAM_BASE_URL=http://77.245.107.213
+# UPSTREAM_URL=http://77.245.107.213/dtj/api/plan
 UPSTREAM_TIMEOUT=30
-UPSTREAM_ALLOWLIST=45.8.116.32
+UPSTREAM_ALLOWLIST=77.245.107.213
 
 3. Запустить контейнер
    docker rm -f report-back-fast-api 2>/dev/null || true
@@ -193,6 +193,30 @@ Upstream pushdown (Stage 3B)
     { "filterKey": "objLocation", "op": "eq", "targetPath": "body.params.0.objLocation" }
   ]
 }
+
+Вычисляемые поля (computedFields)
+
+В payload /api/report/view, /api/report/filters, /api/report/details можно передать
+remoteSource.computedFields. Поля вычисляются после загрузки/joins и до фильтров/пивота,
+поэтому могут использоваться в filters/rows/columns/metrics.
+
+Формат:
+
+{
+  "remoteSource": {
+    "computedFields": [
+      {
+        "id": "uuid",
+        "fieldKey": "is_equal",
+        "expression": "(date({{FactDateEnd}}) == date({{UpdatedAt}})) ? 1 : 0",
+        "resultType": "number"
+      }
+    ]
+  }
+}
+
+Если формула содержит ошибки, значение вычисляемого поля = null,
+а предупреждения возвращаются в view.meta.computedWarnings.
 
 4. Проверка работы сервиса
    docker ps

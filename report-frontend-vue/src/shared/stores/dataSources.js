@@ -36,6 +36,7 @@ const defaultSources = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     joins: [],
+    computedFields: [],
   },
   {
     id: 'source-parameters',
@@ -56,6 +57,7 @@ const defaultSources = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     joins: [],
+    computedFields: [],
   },
 ]
 
@@ -221,6 +223,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
       base.headers = base.headers || { 'Content-Type': 'application/json' }
       const index = this.sources.findIndex((item) => item.id === base.id)
       const existing = index >= 0 ? this.sources[index] : null
+      base.computedFields = Array.isArray(base.computedFields)
+        ? base.computedFields
+        : existing?.computedFields || []
       base.supportsPivot = payload.supportsPivot !== false
       base.updatedAt = new Date().toISOString()
       base.joins = normalizeJoinList(base.joins || existing?.joins || [])
@@ -282,6 +287,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
             (remoteId != null ? localByRemoteId.get(String(remoteId)) : null)
           if (match?.pushdown) {
             remote.pushdown = match.pushdown
+          }
+          if (Array.isArray(match?.computedFields)) {
+            remote.computedFields = match.computedFields
           }
           return applyJoinDefaults(remote)
         })
@@ -672,5 +680,8 @@ function applyJoinDefaults(source = {}) {
     normalized = bodyJoins
   }
   next.joins = normalized
+  next.computedFields = Array.isArray(source.computedFields)
+    ? source.computedFields
+    : []
   return next
 }

@@ -343,6 +343,105 @@
             <span v-if="rawBodyError" class="error">{{ rawBodyError }}</span>
           </label>
 
+          <section class="computed-fields">
+            <div class="computed-fields__header">
+              <div>
+                <span class="field__label">Вычисляемые поля</span>
+                <p class="muted">
+                  Построчные формулы создают новые поля для метрик и фильтров.
+                </p>
+              </div>
+              <n-button size="small" quaternary @click="addComputedField">
+                Добавить поле
+              </n-button>
+            </div>
+            <p v-if="!sourceDraft.computedFields?.length" class="muted">
+              Здесь можно добавить формулы для вычисления новых полей.
+            </p>
+            <article
+              v-for="(field, index) in sourceDraft.computedFields"
+              :key="field.id"
+              class="computed-field-card"
+            >
+              <header class="computed-field-card__header">
+                <strong>Поле {{ index + 1 }}</strong>
+                <n-button
+                  quaternary
+                  circle
+                  size="small"
+                  aria-label="Удалить поле"
+                  @click="removeComputedField(field.id)"
+                >
+                  <span class="icon icon-close" />
+                </n-button>
+              </header>
+              <div class="computed-field-grid">
+                <label class="field">
+                  <span class="field__label">Ключ поля</span>
+                  <n-input
+                    v-model:value="field.fieldKey"
+                    placeholder="is_equal"
+                    size="large"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Тип результата</span>
+                  <n-select
+                    v-model:value="field.resultType"
+                    :options="computedFieldResultOptions"
+                    size="large"
+                  />
+                </label>
+                <label class="field computed-field-grid__wide">
+                  <span class="field__label">Формула</span>
+                  <n-input
+                    v-model:value="field.expression"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }"
+                    placeholder="({{FactDateEnd}} == {{UpdatedAt}}) ? 1 : 0"
+                  />
+                  <span v-if="computedFieldErrors[field.id]" class="error">
+                    {{ computedFieldErrors[field.id] }}
+                  </span>
+                </label>
+              </div>
+            </article>
+
+            <details class="computed-fields__help">
+              <summary>Справка по формулам</summary>
+              <div class="computed-fields__help-body">
+                <p class="muted">
+                  Используйте поля в виде токенов:
+                  <code v-pre>{{FieldKey}}</code>.
+                </p>
+                <p class="muted">
+                  Операции: <code>+ - * / %</code>, сравнения
+                  <code>== != &gt; &gt;= &lt; &lt;=</code>, логика
+                  <code>&amp;&amp; || !</code>, тернарный оператор
+                  <code>условие ? A : B</code>.
+                </p>
+                <p class="muted">
+                  Функции: <code>date(x)</code>, <code>number(x)</code>,
+                  <code>text(x)</code>, <code>len(x)</code>,
+                  <code>empty(x)</code>.
+                </p>
+                <p class="muted">
+                  Пример:
+                  <code v-pre
+                    >(date({{FactDateEnd}}) == date({{UpdatedAt}})) ? 1 : 0</code
+                  >
+                </p>
+                <p class="muted">
+                  Формулы выполняются сверху вниз — можно ссылаться на поля,
+                  созданные выше.
+                </p>
+                <p v-if="!computedFieldOptions.length" class="muted">
+                  Загрузите данные, чтобы увидеть доступные ключи полей.
+                </p>
+              </div>
+            </details>
+          </section>
+
           <section class="joins-section">
             <div class="joins-section__header">
               <div>
@@ -1584,9 +1683,26 @@ const pushdownOperatorOptions = [
   { label: 'in', value: 'in' },
   { label: 'range', value: 'range' },
 ]
+const computedFieldResultOptions = [
+  { label: 'Число', value: 'number' },
+  { label: 'Текст', value: 'text' },
+  { label: 'Дата (YYYY-MM-DD)', value: 'date' },
+]
 const FORMULA_ALLOWED_CHARS = /^[0-9+\-*/().<>=!&|?:,_\s]+$/
 const FORMULA_STRING_LITERAL_PATTERN = /(["'])(?:\\.|(?!\1).)*\1/g
 const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+const COMPUTED_FIELD_ALLOWED_CHARS = /^[0-9a-zA-Z+\-*/%().<>=!&|?:,_"'\s]+$/
+const COMPUTED_FIELD_TOKEN_REGEX = /\{\{\s*([^}]+?)\s*\}\}/g
+const COMPUTED_FIELD_ALLOWED_NAMES = new Set([
+  'date',
+  'number',
+  'text',
+  'len',
+  'empty',
+  'true',
+  'false',
+  'null',
+])
 const MAX_CONCURRENT_REQUESTS =
   Number(import.meta.env.VITE_MAX_SOURCE_REQUESTS) || 4
 const BATCH_THRESHOLD = Number(import.meta.env.VITE_BATCH_THRESHOLD) || 0
@@ -1685,6 +1801,52 @@ const dimensionFieldKeys = computed(() => {
     }
   })
   return keys
+})
+const computedFieldOptions = computed(() =>
+  fields.value.map((field) => ({
+    label: getFieldDisplayName(field),
+    value: field.key,
+  })),
+)
+const computedFieldRuntimeErrors = ref({})
+const computedFieldErrors = computed(() => {
+  const errors = { ...(computedFieldRuntimeErrors.value || {}) }
+  const list = Array.isArray(sourceDraft.computedFields)
+    ? sourceDraft.computedFields
+    : []
+  const usedKeys = new Set()
+  const computedKeys = new Set(
+    list.map((field) => String(field?.fieldKey || '').trim()).filter(Boolean),
+  )
+  const existingKeys = new Set(
+    fields.value
+      .map((field) => field.key)
+      .filter((key) => !computedKeys.has(key)),
+  )
+  list.forEach((field) => {
+    const id = field?.id || ''
+    const key = String(field?.fieldKey || '').trim()
+    if (!id) return
+    if (!key) {
+      errors[id] = 'Укажите ключ поля.'
+      return
+    }
+    if (usedKeys.has(key)) {
+      errors[id] = 'Ключ уже используется.'
+      return
+    }
+    usedKeys.add(key)
+    if (existingKeys.has(key)) {
+      errors[id] = 'Поле с таким ключом уже есть в источнике.'
+      return
+    }
+    const expression = String(field?.expression || '').trim()
+    const expressionError = validateComputedFieldExpression(expression)
+    if (expressionError) {
+      errors[id] = expressionError
+    }
+  })
+  return errors
 })
 const planLoading = ref(false)
 const planError = ref('')
@@ -3034,6 +3196,171 @@ function sanitizeFormulaExpression(value = '') {
     .replace(FORMULA_STRING_LITERAL_PATTERN, '')
 }
 
+function sanitizeComputedFieldExpression(value = '') {
+  if (!value) return ''
+  return value
+    .replace(COMPUTED_FIELD_TOKEN_REGEX, '')
+    .replace(FORMULA_STRING_LITERAL_PATTERN, '')
+}
+
+function validateComputedFieldExpression(expression = '') {
+  const trimmed = String(expression || '').trim()
+  if (!trimmed) return 'Укажите формулу.'
+  const sanitized = sanitizeComputedFieldExpression(trimmed)
+  if (!COMPUTED_FIELD_ALLOWED_CHARS.test(sanitized)) {
+    return 'Формула содержит недопустимые символы.'
+  }
+  const identifiers = sanitized.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) || []
+  const invalid = identifiers.filter(
+    (entry) => !COMPUTED_FIELD_ALLOWED_NAMES.has(entry),
+  )
+  if (invalid.length) {
+    return `Недопустимые идентификаторы: ${invalid.join(', ')}.`
+  }
+  return ''
+}
+
+function padTwoValue(value) {
+  return String(value).padStart(2, '0')
+}
+
+function normalizeComputedDate(value) {
+  const timestamp = parseDateValue(value)
+  if (!Number.isFinite(timestamp)) return ''
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return ''
+  const year = date.getUTCFullYear()
+  const month = padTwoValue(date.getUTCMonth() + 1)
+  const day = padTwoValue(date.getUTCDate())
+  return `${year}-${month}-${day}`
+}
+
+function normalizeComputedValue(value, resultType = 'number') {
+  if (resultType === 'date') {
+    return normalizeComputedDate(value) || null
+  }
+  if (resultType === 'text') {
+    if (value === null || typeof value === 'undefined') return ''
+    return String(value)
+  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function buildComputedFieldHelpers() {
+  return {
+    date: (value) => normalizeComputedDate(value),
+    number: (value) => {
+      const numeric = Number(value)
+      return Number.isFinite(numeric) ? numeric : null
+    },
+    text: (value) => {
+      if (value === null || typeof value === 'undefined') return ''
+      return String(value)
+    },
+    len: (value) => {
+      if (value === null || typeof value === 'undefined') return 0
+      return String(value).length
+    },
+    empty: (value) =>
+      value === null ||
+      typeof value === 'undefined' ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0),
+  }
+}
+
+function compileComputedFieldExpression(expression = '') {
+  const trimmed = String(expression || '').trim()
+  const validationError = validateComputedFieldExpression(trimmed)
+  if (validationError) return { evaluate: null, error: validationError }
+  const jsExpression = trimmed.replace(COMPUTED_FIELD_TOKEN_REGEX, (_, key) => {
+    const token = String(key || '').trim()
+    return `__get(${JSON.stringify(token)})`
+  })
+  try {
+    const fn = new Function(
+      '__get',
+      '__fn',
+      'const { date, number, text, len, empty } = __fn; return (' +
+        jsExpression +
+        ');',
+    )
+    const helpers = buildComputedFieldHelpers()
+    return {
+      evaluate: (record) => {
+        try {
+          return fn((id) => record?.[id] ?? null, helpers)
+        } catch {
+          return null
+        }
+      },
+      error: '',
+    }
+  } catch {
+    return { evaluate: null, error: 'Некорректная формула.' }
+  }
+}
+
+function buildComputedFieldEvaluators(definitions = [], existingKeys = new Set()) {
+  const evaluators = []
+  const errors = {}
+  const usedKeys = new Set()
+  if (!Array.isArray(definitions) || !definitions.length) {
+    return { evaluators, errors }
+  }
+  definitions.forEach((field) => {
+    const id = field?.id || ''
+    const key = String(field?.fieldKey || '').trim()
+    const expression = String(field?.expression || '').trim()
+    if (!id || !key || !expression) return
+    if (usedKeys.has(key)) {
+      errors[id] = 'Ключ уже используется.'
+      return
+    }
+    usedKeys.add(key)
+    if (existingKeys.has(key)) {
+      errors[id] = 'Поле с таким ключом уже есть в источнике.'
+      return
+    }
+    const compiled = compileComputedFieldExpression(expression)
+    if (compiled.error) {
+      errors[id] = compiled.error
+      return
+    }
+    if (typeof compiled.evaluate !== 'function') {
+      errors[id] = 'Не удалось скомпилировать формулу.'
+      return
+    }
+    evaluators.push({
+      id,
+      key,
+      resultType: field.resultType || 'number',
+      evaluate: compiled.evaluate,
+    })
+  })
+  return { evaluators, errors }
+}
+
+function applyComputedFields(recordsList = [], definitions = []) {
+  const records = Array.isArray(recordsList) ? recordsList : []
+  if (!records.length) return { records, errors: {} }
+  const existingKeys = new Set(Object.keys(records[0] || {}))
+  const { evaluators, errors } = buildComputedFieldEvaluators(
+    definitions,
+    existingKeys,
+  )
+  if (!evaluators.length) return { records, errors }
+  records.forEach((record) => {
+    if (!record || typeof record !== 'object') return
+    evaluators.forEach((field) => {
+      const value = field.evaluate(record)
+      record[field.key] = normalizeComputedValue(value, field.resultType)
+    })
+  })
+  return { records, errors }
+}
+
 const backendPivotState = reactive({
   view: null,
   chart: null,
@@ -3081,6 +3408,7 @@ function buildBackendRemoteSource() {
     headers: sourceDraft.headers || {},
     joins: normalizeJoinList(sourceDraft.joins || []),
     rawBody: sourceDraft.rawBody || '',
+    computedFields: normalizeComputedFields(sourceDraft.computedFields || []),
     remoteMeta: sourceDraft.remoteMeta || {},
     ...(pushdownPayload ? { pushdown: pushdownPayload } : {}),
   }
@@ -3271,6 +3599,14 @@ watch(
       planError.value = ''
     }
   },
+)
+
+watch(
+  () => sourceDraft.computedFields,
+  () => {
+    computedFieldRuntimeErrors.value = {}
+  },
+  { deep: true },
 )
 const pivotReady = computed(() =>
   Boolean(pivotView.value && pivotView.value.rows.length),
@@ -3713,6 +4049,7 @@ async function saveCurrentSource() {
     supportsPivot: sourceDraft.supportsPivot !== false,
     joins: normalizeJoinList(sourceDraft.joins || []),
     pushdown: sourceDraft.pushdown,
+    computedFields: normalizeComputedFields(sourceDraft.computedFields || []),
   }
   try {
     const result = await dataSourcesStore.saveSource(payload)
@@ -3951,6 +4288,12 @@ async function loadFields() {
         .filter((item) => item.error)
         .map((item) => item.error)
     }
+    const computedResult = applyComputedFields(
+      mergedRecords,
+      sourceDraft.computedFields || [],
+    )
+    computedFieldRuntimeErrors.value = computedResult.errors || {}
+    mergedRecords = computedResult.records
     records.value = mergedRecords
     fields.value = extractFieldDescriptors(mergedRecords)
     result.value = mergedRecords
@@ -3978,6 +4321,7 @@ async function loadFields() {
       message: String(err?.message || err),
       totalRequests: requestPayloads?.length || 0,
     })
+    computedFieldRuntimeErrors.value = {}
     records.value = []
     fields.value = []
     result.value = null
@@ -5001,6 +5345,33 @@ function ensureMetricExists() {
 }
 
 let metricCounter = 0
+const DETAIL_FILTER_MODES = new Set([
+  'auto',
+  'none',
+  'flag',
+  'not_empty',
+  'gt0',
+  'gte1',
+  'custom',
+])
+const DETAIL_FILTER_OPERATORS = new Set([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+])
+
+function normalizeDetailFilter(value = null) {
+  const safe = value && typeof value === 'object' ? value : {}
+  const mode = DETAIL_FILTER_MODES.has(safe.mode) ? safe.mode : 'auto'
+  const op = DETAIL_FILTER_OPERATORS.has(safe.op) ? safe.op : 'eq'
+  const rawValue =
+    safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
+  return { mode, op, value: rawValue }
+}
+
 function createMetric(overrides = {}) {
   metricCounter += 1
   const type = overrides.type === 'formula' ? 'formula' : 'base'
@@ -5028,6 +5399,7 @@ function createMetric(overrides = {}) {
     detailFields: Array.isArray(overrides.detailFields)
       ? [...overrides.detailFields]
       : [],
+    detailFilter: normalizeDetailFilter(overrides.detailFilter),
     remoteMeta: overrides.remoteMeta || null,
   }
 }
@@ -5046,6 +5418,34 @@ function removeMetric(metricId) {
   }
 }
 
+function createComputedField(overrides = {}) {
+  const rawKey =
+    typeof overrides.fieldKey === 'string'
+      ? overrides.fieldKey
+      : typeof overrides.key === 'string'
+        ? overrides.key
+        : typeof overrides.name === 'string'
+          ? overrides.name
+          : ''
+  return {
+    id: overrides.id || createId(),
+    fieldKey: rawKey,
+    expression:
+      typeof overrides.expression === 'string' ? overrides.expression : '',
+    resultType:
+      overrides.resultType === 'text' ||
+      overrides.resultType === 'date' ||
+      overrides.resultType === 'number'
+        ? overrides.resultType
+        : 'number',
+  }
+}
+
+function normalizeComputedFields(list = []) {
+  if (!Array.isArray(list)) return []
+  return list.map((item) => createComputedField(item))
+}
+
 function createBlankSource(overrides = {}) {
   return {
     id: overrides.id || '',
@@ -5060,6 +5460,7 @@ function createBlankSource(overrides = {}) {
     supportsPivot: overrides.supportsPivot !== false,
     joins: normalizeJoinList(overrides.joins || []),
     pushdown: createBlankPushdown(overrides.pushdown),
+    computedFields: normalizeComputedFields(overrides.computedFields || []),
   }
 }
 
@@ -5240,6 +5641,7 @@ function loadDraftFromSource(source) {
       'Content-Type': 'application/json',
       ...(source.headers || {}),
     },
+    computedFields: normalizeComputedFields(source.computedFields || []),
   })
 }
 
@@ -5248,6 +5650,23 @@ function addJoin() {
     sourceDraft.joins = []
   }
   sourceDraft.joins.push(createJoinTemplate())
+}
+
+function addComputedField() {
+  if (!Array.isArray(sourceDraft.computedFields)) {
+    sourceDraft.computedFields = []
+  }
+  sourceDraft.computedFields.push(createComputedField())
+}
+
+function removeComputedField(fieldId) {
+  if (!Array.isArray(sourceDraft.computedFields)) return
+  const index = sourceDraft.computedFields.findIndex(
+    (field) => field.id === fieldId,
+  )
+  if (index >= 0) {
+    sourceDraft.computedFields.splice(index, 1)
+  }
 }
 
 function removeJoin(joinId) {
@@ -6159,6 +6578,7 @@ function encodeFilterPayload() {
       detailFields: Array.isArray(metric.detailFields)
         ? metric.detailFields
         : [],
+      detailFilter: metric.detailFilter || null,
     })),
     filtersMeta: buildFiltersMetaSnapshot(),
     fieldMeta: buildFieldMetaSnapshot(),
@@ -6302,6 +6722,7 @@ function mergeMetricSettings(remoteList = [], settings = []) {
             detailFields: Array.isArray(saved?.detailFields)
               ? [...saved.detailFields]
               : [],
+            detailFilter: saved?.detailFilter,
           }),
         )
         return
@@ -6345,6 +6766,7 @@ function normalizeRemoteMetric(entry = {}, saved = null, index = 0) {
     detailFields: Array.isArray(saved?.detailFields)
       ? [...saved.detailFields]
       : [],
+    detailFilter: saved?.detailFilter,
     remoteMeta: {
       idMetricsComplex: entry?.idMetricsComplex,
       idFieldVal: entry?.idFieldVal,
@@ -7869,6 +8291,54 @@ function resolveMetricLabelById(metricId) {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+.computed-fields {
+  border-top: 1px solid var(--s360-color-border-subtle, #e5e7eb);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.computed-fields__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.computed-field-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.computed-field-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.computed-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.computed-field-grid__wide {
+  grid-column: 1 / -1;
+}
+.computed-fields__help {
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.computed-fields__help-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .joins-section {
   border-top: 1px solid var(--s360-color-border-subtle, #e5e7eb);

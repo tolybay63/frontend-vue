@@ -118,6 +118,7 @@ export async function fetchBackendDetails({
   columnKey,
   metric,
   detailFields = [],
+  detailMetricFilter = null,
   limit,
   offset,
   signal,
@@ -149,6 +150,9 @@ export async function fetchBackendDetails({
     detailFields,
     limit,
     offset,
+  }
+  if (detailMetricFilter) {
+    payload.detailMetricFilter = detailMetricFilter
   }
   const response = await fetch(`${baseUrl}/api/report/details`, {
     method: 'POST',
@@ -693,6 +697,17 @@ function computeMetricTotal(values = [], metric) {
 }
 
 function formatMetricValue(value, metric) {
+  if (metric?.aggregator === 'count') {
+    const numeric = Number(value)
+    if (
+      value === null ||
+      typeof value === 'undefined' ||
+      value === '' ||
+      (Number.isFinite(numeric) && numeric === 0)
+    ) {
+      return ''
+    }
+  }
   if (value === null || typeof value === 'undefined' || value === '') return '—'
   if (!metric) return formatValue(value)
   const format = metric.outputFormat || 'auto'

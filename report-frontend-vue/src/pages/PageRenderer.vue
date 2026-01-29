@@ -113,7 +113,7 @@
             {{ dataSourceLabel(template(container.templateId)) }}
           </span>
         </header>
-        <p v-if="template(container.templateId)" class="muted">
+        <p v-if="template(container.templateId)" class="muted multiline-text">
           {{ template(container.templateId).description || 'Без описания' }}
         </p>
         <p v-else class="muted">
@@ -476,6 +476,7 @@
                           container,
                           row,
                           columnEntry(container, cellIndex),
+                          cell,
                         )
                       "
                     >
@@ -1829,7 +1830,7 @@ function closeDetailDialog() {
   detailDialog.filtersSummary = ''
 }
 
-async function handleCellDetails(container, row, columnEntry) {
+async function handleCellDetails(container, row, columnEntry, cell) {
   if (!columnEntry || !canShowCellDetails(container, columnEntry)) return
   const tpl = template(container.templateId)
   if (!tpl) return
@@ -1837,6 +1838,9 @@ async function handleCellDetails(container, row, columnEntry) {
   const metrics = state.meta.metrics || []
   const metric = metrics.find((item) => item.id === columnEntry.metricId)
   if (!metric) return
+  const detailMetricFilter = buildDetailMetricFilter(tpl, metric)
+  const detailMetricTotal =
+    detailMetricFilter && Number.isFinite(cell?.value) ? cell.value : null
   detailDialog.visible = true
   detailDialog.containerId = container.id
   detailDialog.loading = true
@@ -1854,6 +1858,10 @@ async function handleCellDetails(container, row, columnEntry) {
     metric.label || metric.title || metric.fieldKey || 'Метрика'
   detailDialog.filtersSummary = buildDetailFilterSummary(tpl, container.id)
   detailDialog.fields = resolveDetailFieldDescriptors(tpl, metric)
+  const detailRequestFieldKeys = buildDetailRequestFieldKeys(
+    detailDialog.fields,
+    detailMetricFilter,
+  )
   const rowsPivot = tpl.snapshot?.pivot?.rows || []
   const columnsPivot = tpl.snapshot?.pivot?.columns || []
   const rowKey = row.key || '__all__'
@@ -1880,7 +1888,8 @@ async function handleCellDetails(container, row, columnEntry) {
           aggregator: metric.aggregator,
           type: metric.type,
         },
-        detailFields: detailDialog.fields.map((field) => field.key),
+        detailFields: detailRequestFieldKeys,
+        detailMetricFilter,
         limit: 200,
         offset: 0,
         signal: controller.signal,
@@ -1888,9 +1897,18 @@ async function handleCellDetails(container, row, columnEntry) {
       if (controller.signal.aborted || requestId !== detailDialogRequestId) {
         return
       }
-      const entries = Array.isArray(response?.entries) ? response.entries : []
+      const rawEntries = Array.isArray(response?.entries)
+        ? response.entries
+        : []
+      const entries = applyDetailMetricFilter(rawEntries, detailMetricFilter)
+      const backendTotal = Number(response?.total)
       detailDialog.entries = entries
-      detailDialog.total = Number(response?.total) || entries.length
+      detailDialog.total =
+        detailMetricFilter && Number.isFinite(detailMetricTotal)
+          ? detailMetricTotal
+          : Number.isFinite(backendTotal)
+            ? backendTotal
+            : entries.length
       detailDialog.loading = false
       detailDialog.error = entries.length
         ? ''
@@ -1920,10 +1938,17 @@ async function handleCellDetails(container, row, columnEntry) {
             matchesDimensionPath(record, rowsPivot, rowKey) &&
             matchesDimensionPath(record, columnsPivot, columnKey),
         )
-        detailDialog.total = matched.length
-        detailDialog.entries = matched.slice(0, 200)
+        const detailEntries = applyDetailMetricFilter(
+          matched,
+          detailMetricFilter,
+        )
+        detailDialog.total =
+          detailMetricFilter && Number.isFinite(detailMetricTotal)
+            ? detailMetricTotal
+            : detailEntries.length
+        detailDialog.entries = detailEntries.slice(0, 200)
         detailDialog.loading = false
-        detailDialog.error = matched.length
+        detailDialog.error = detailEntries.length
           ? ''
           : 'Нет подробностей для этой ячейки.'
       } catch (fallbackError) {
@@ -1945,10 +1970,14 @@ async function handleCellDetails(container, row, columnEntry) {
           matchesDimensionPath(record, rowsPivot, rowKey) &&
           matchesDimensionPath(record, columnsPivot, columnKey),
       )
-      detailDialog.total = matched.length
-      detailDialog.entries = matched.slice(0, 200)
+      const detailEntries = applyDetailMetricFilter(matched, detailMetricFilter)
+      detailDialog.total =
+        detailMetricFilter && Number.isFinite(detailMetricTotal)
+          ? detailMetricTotal
+          : detailEntries.length
+      detailDialog.entries = detailEntries.slice(0, 200)
       detailDialog.loading = false
-      if (!matched.length) {
+      if (!detailEntries.length) {
         detailDialog.error = 'Нет подробностей для этой ячейки.'
       }
     } catch (err) {
@@ -2001,6 +2030,154 @@ function resolveDetailFieldDescriptors(tpl, metric) {
         resolveFieldMetaEntry(fieldMeta, key)?.type ||
         (metric?.fieldKey === key ? 'number' : 'string'),
     }))
+}
+
+function resolveComputedFieldKeySet(tpl) {
+  const list = Array.isArray(tpl?.remoteSource?.computedFields)
+    ? tpl.remoteSource.computedFields
+    : []
+  const keys = list
+    .map((field) =>
+      String(field?.fieldKey || field?.key || field?.name || '').trim(),
+    )
+    .filter(Boolean)
+  return new Set(keys)
+}
+
+const DETAIL_FILTER_MODES = new Set([
+  'auto',
+  'none',
+  'flag',
+  'not_empty',
+  'gt0',
+  'gte1',
+  'custom',
+])
+const DETAIL_FILTER_OPERATORS = new Set([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'not_empty',
+  'empty',
+])
+
+function normalizeDetailFilterConfig(value = null) {
+  const safe = value && typeof value === 'object' ? value : {}
+  const mode = DETAIL_FILTER_MODES.has(safe.mode) ? safe.mode : 'auto'
+  const op = DETAIL_FILTER_OPERATORS.has(safe.op) ? safe.op : 'eq'
+  const rawValue =
+    safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
+  return { mode, op, value: rawValue }
+}
+
+function buildDetailMetricFilter(tpl, metric) {
+  if (!tpl || !metric) return null
+  if (metric.type === 'formula') return null
+  const fieldKey = String(metric.fieldKey || '').trim()
+  if (!fieldKey) return null
+  const config = normalizeDetailFilterConfig(metric.detailFilter)
+  if (config.mode === 'none') return null
+  if (config.mode !== 'auto') {
+    return buildDetailFilterFromMode(fieldKey, config)
+  }
+  if (metric.aggregator !== 'sum') return null
+  const computedFields = resolveComputedFieldKeySet(tpl)
+  if (!computedFields.has(fieldKey)) return null
+  return { fieldKey, op: 'eq', value: 1 }
+}
+
+function buildDetailFilterFromMode(fieldKey, config) {
+  if (!fieldKey) return null
+  switch (config.mode) {
+    case 'flag':
+      return { fieldKey, op: 'eq', value: 1 }
+    case 'not_empty':
+      return { fieldKey, op: 'not_empty', value: null }
+    case 'gt0':
+      return { fieldKey, op: 'gt', value: 0 }
+    case 'gte1':
+      return { fieldKey, op: 'gte', value: 1 }
+    case 'custom': {
+      const rawValue = config.value
+      if (rawValue === null || typeof rawValue === 'undefined' || rawValue === '')
+        return null
+      return { fieldKey, op: config.op || 'eq', value: rawValue }
+    }
+    default:
+      return null
+  }
+}
+
+function buildDetailRequestFieldKeys(fields = [], detailMetricFilter = null) {
+  const list = Array.isArray(fields) ? fields : []
+  const keys = new Set(list.map((field) => field?.key).filter(Boolean))
+  if (detailMetricFilter?.fieldKey) {
+    keys.add(detailMetricFilter.fieldKey)
+  }
+  return Array.from(keys)
+}
+
+function normalizeDetailMetricValue(value) {
+  if (value === null || typeof value === 'undefined' || value === '') return null
+  if (value === true) return 1
+  if (value === false) return 0
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : value
+}
+
+function isEmptyDetailValue(value) {
+  return value === null || typeof value === 'undefined' || value === ''
+}
+
+function recordMatchesDetailMetricFilter(record, filter) {
+  if (!filter?.fieldKey) return true
+  const recordValue = normalizeDetailMetricValue(
+    resolvePivotFieldValue(record, filter.fieldKey),
+  )
+  const filterValue = normalizeDetailMetricValue(filter.value)
+  switch (filter.op) {
+    case 'not_empty':
+      return !isEmptyDetailValue(recordValue)
+    case 'empty':
+      return isEmptyDetailValue(recordValue)
+    case 'eq':
+      return recordValue === filterValue
+    case 'ne':
+      return recordValue !== filterValue
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte': {
+      const left = Number(recordValue)
+      const right = Number(filterValue)
+      if (!Number.isFinite(left) || !Number.isFinite(right)) return false
+      if (filter.op === 'gt') return left > right
+      if (filter.op === 'gte') return left >= right
+      if (filter.op === 'lt') return left < right
+      return left <= right
+    }
+    default:
+      return true
+  }
+}
+
+function applyDetailMetricFilter(entries = [], detailMetricFilter = null) {
+  if (!detailMetricFilter?.fieldKey) return entries
+  if (!Array.isArray(entries) || !entries.length) return entries
+  const hasField = entries.some((entry) => {
+    const value = resolvePivotFieldValue(entry, detailMetricFilter.fieldKey)
+    return value !== null && typeof value !== 'undefined' && value !== ''
+  })
+  if (!hasField) return entries
+  return entries.filter((entry) =>
+    recordMatchesDetailMetricFilter(entry, detailMetricFilter),
+  )
 }
 
 function formatDetailValue(value) {
@@ -2556,6 +2733,7 @@ function prepareMetrics(list = []) {
         detailFields: Array.isArray(metric.detailFields)
           ? metric.detailFields.filter(Boolean)
           : [],
+        detailFilter: normalizeDetailFilterConfig(metric.detailFilter),
       }
     })
 }

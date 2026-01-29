@@ -134,6 +134,36 @@
             Эти поля будут показаны при раскрытии значения.
           </small>
         </label>
+        <label v-if="metric.type !== 'formula'" class="metric-field">
+          <span>Фильтр детализации</span>
+          <n-select
+            v-model:value="metric.detailFilter.mode"
+            :options="detailFilterOptions"
+            size="large"
+          />
+          <small class="metric-hint">
+            Ограничивает записи, которые попадут в детализацию метрики.
+          </small>
+        </label>
+        <div
+          v-if="metric.type !== 'formula' && metric.detailFilter?.mode === 'custom'"
+          class="metric-field metric-detail-filter"
+        >
+          <span>Условие</span>
+          <div class="metric-detail-filter__row">
+            <n-select
+              v-model:value="metric.detailFilter.op"
+              :options="detailFilterOperatorOptions"
+              size="large"
+              class="metric-detail-filter__operator"
+            />
+            <n-input
+              v-model:value="metric.detailFilter.value"
+              placeholder="Значение"
+              size="large"
+            />
+          </div>
+        </div>
         <div class="metric-settings">
           <n-checkbox v-model:checked="metric.enabled">
             Показывать в таблице
@@ -424,6 +454,23 @@ const valueFormatOptions = [
   { label: 'Валюта (₽)', value: 'currency' },
   { label: 'Текст', value: 'text' },
 ]
+const detailFilterOptions = [
+  { label: 'Нет', value: 'none' },
+  { label: 'Авто (вычисляемые поля)', value: 'auto' },
+  { label: 'Флаг = 1', value: 'flag' },
+  { label: 'Не пусто', value: 'not_empty' },
+  { label: '> 0', value: 'gt0' },
+  { label: '>= 1', value: 'gte1' },
+  { label: 'Кастом', value: 'custom' },
+]
+const detailFilterOperatorOptions = [
+  { label: '=', value: 'eq' },
+  { label: '!=', value: 'ne' },
+  { label: '>', value: 'gt' },
+  { label: '>=', value: 'gte' },
+  { label: '<', value: 'lt' },
+  { label: '<=', value: 'lte' },
+]
 
 function switchMetricType(metric, nextType) {
   const next = nextType === 'formula' ? 'formula' : 'base'
@@ -467,10 +514,30 @@ watch(
       if (!Array.isArray(metric.detailFields)) {
         metric.detailFields = []
       }
+      if (!metric.detailFilter || typeof metric.detailFilter !== 'object') {
+        metric.detailFilter = normalizeDetailFilter(null)
+      } else {
+        metric.detailFilter = normalizeDetailFilter(metric.detailFilter)
+      }
     })
   },
   { deep: true, immediate: true },
 )
+
+function normalizeDetailFilter(value = null) {
+  const safe = value && typeof value === 'object' ? value : {}
+  const mode = detailFilterOptions.some((option) => option.value === safe.mode)
+    ? safe.mode
+    : 'auto'
+  const op = detailFilterOperatorOptions.some(
+    (option) => option.value === safe.op,
+  )
+    ? safe.op
+    : 'eq'
+  const rawValue =
+    safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
+  return { mode, op, value: rawValue }
+}
 
 function formattingConfig(metric) {
   const config = metric.conditionalFormatting
@@ -645,6 +712,14 @@ function clamp01(value) {
 .metric-hint {
   font-size: 12px;
   color: #6b7280;
+}
+.metric-detail-filter__row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.metric-detail-filter__operator {
+  min-width: 90px;
 }
 .formula-hints {
   font-size: 12px;

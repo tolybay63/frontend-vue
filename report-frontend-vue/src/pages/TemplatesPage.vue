@@ -56,7 +56,7 @@
           }}</span>
         </header>
 
-        <p class="card__description">
+        <p class="card__description multiline-text">
           {{ view.description || 'Без описания' }}
         </p>
 

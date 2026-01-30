@@ -118,6 +118,7 @@ export async function fetchBackendDetails({
   columnKey,
   metric,
   detailFields = [],
+  detailMetricFilter = null,
   limit,
   offset,
   signal,
@@ -149,6 +150,9 @@ export async function fetchBackendDetails({
     detailFields,
     limit,
     offset,
+  }
+  if (detailMetricFilter) {
+    payload.detailMetricFilter = detailMetricFilter
   }
   const response = await fetch(`${baseUrl}/api/report/details`, {
     method: 'POST',

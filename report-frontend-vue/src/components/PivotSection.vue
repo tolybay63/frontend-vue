@@ -25,8 +25,12 @@
         переименования и фильтры для каждого поля.
       </p>
 
-      <ul v-if="modelValue.length" class="pivot-card__list">
-        <li v-for="(key, index) in modelValue" :key="`${section}-${key}`" class="pivot-card__item">
+      <ul v-if="selectedKeys.length" class="pivot-card__list">
+        <li
+          v-for="(key, index) in selectedKeys"
+          :key="`${section}-${key}`"
+          class="pivot-card__item"
+        >
           <div class="pivot-card__item-info">
             <span class="pivot-card__drag">☰</span>
             <div>
@@ -350,8 +354,20 @@ const rangeDraft = ref(createEmptyRange())
 const activeRangeType = ref('number')
 
 const selectedKeys = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value.filter(Boolean)),
+  get: () => {
+    const value = props.modelValue
+    if (Array.isArray(value)) return value
+    if (value === null || typeof value === 'undefined') return []
+    return [value]
+  },
+  set: (value) => {
+    const next = Array.isArray(value)
+      ? value
+      : value === null || typeof value === 'undefined'
+        ? []
+        : [value]
+    emit('update:modelValue', next.filter(Boolean))
+  },
 })
 
 const fieldTreeOptions = computed(() =>
@@ -521,16 +537,17 @@ function cycleSort(key, type) {
 }
 
 function move(index, delta) {
+  const list = selectedKeys.value
   const next = index + delta
-  if (next < 0 || next >= props.modelValue.length) return
-  const copy = [...props.modelValue]
+  if (next < 0 || next >= list.length) return
+  const copy = [...list]
   const [item] = copy.splice(index, 1)
   copy.splice(next, 0, item)
   emit('update:modelValue', copy)
 }
 
 function remove(key) {
-  const copy = props.modelValue.filter((item) => item !== key)
+  const copy = selectedKeys.value.filter((item) => item !== key)
   emit('update:modelValue', copy)
 }
 

@@ -113,7 +113,7 @@
             {{ dataSourceLabel(template(container.templateId)) }}
           </span>
         </header>
-        <p v-if="template(container.templateId)" class="muted">
+        <p v-if="template(container.templateId)" class="muted multiline-text">
           {{ template(container.templateId).description || 'Без описания' }}
         </p>
         <p v-else class="muted">
@@ -677,7 +677,20 @@
               </tbody>
             </table>
           </div>
-          <p v-else class="detail-panel__empty">
+          <div
+            v-if="detailDialog.hasMore"
+            class="detail-panel__load-more"
+          >
+            <button
+              class="detail-panel__action"
+              type="button"
+              :disabled="detailDialog.loadingMore"
+              @click="loadMoreDetailEntries"
+            >
+              {{ detailDialog.loadingMore ? 'Загружаем…' : 'Показать ещё' }}
+            </button>
+          </div>
+          <p v-else-if="!detailDialog.entries.length" class="detail-panel__empty">
             Нет данных для выбранной ячейки.
           </p>
         </template>
@@ -860,10 +873,16 @@ const detailDialog = reactive({
   visible: false,
   containerId: '',
   loading: false,
+  loadingMore: false,
   error: '',
   entries: [],
   fields: [],
   total: 0,
+  limit: 200,
+  offset: 0,
+  hasMore: false,
+  request: null,
+  localMatched: [],
   containerLabel: '',
   rowLabel: '',
   columnLabel: '',
@@ -1822,10 +1841,16 @@ function closeDetailDialog() {
   detailDialog.visible = false
   detailDialog.containerId = ''
   detailDialog.loading = false
+  detailDialog.loadingMore = false
   detailDialog.error = ''
   detailDialog.entries = []
   detailDialog.fields = []
   detailDialog.total = 0
+  detailDialog.limit = 200
+  detailDialog.offset = 0
+  detailDialog.hasMore = false
+  detailDialog.request = null
+  detailDialog.localMatched = []
   detailDialog.filtersSummary = ''
 }
 
@@ -1858,86 +1883,40 @@ async function handleCellDetails(container, row, columnEntry) {
   const columnsPivot = tpl.snapshot?.pivot?.columns || []
   const rowKey = row.key || '__all__'
   const columnKey = columnEntry.baseKey || '__all__'
+  const detailMetricFilter = resolveDetailMetricFilter(metric)
+  const detailRequestFields = buildDetailRequestFields(
+    detailDialog.fields,
+    detailMetricFilter,
+  )
+  detailDialog.offset = 0
+  detailDialog.total = 0
+  detailDialog.hasMore = false
+  detailDialog.localMatched = []
   if (pivotBackendActive.value) {
     if (detailDialogAbortController) {
       detailDialogAbortController.abort()
     }
     detailDialogRequestId += 1
-    const requestId = detailDialogRequestId
-    const controller = new AbortController()
-    detailDialogAbortController = controller
-    try {
-      const response = await fetchBackendDetails({
-        templateId: tpl.id,
-        remoteSource: tpl.remoteSource,
-        snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
-        filters: buildBackendFilters(container.id),
-        rowKey,
-        columnKey,
-        metric: {
-          id: metric.id,
-          fieldKey: metric.fieldKey,
-          aggregator: metric.aggregator,
-          type: metric.type,
-        },
-        detailFields: detailDialog.fields.map((field) => field.key),
-        limit: 200,
-        offset: 0,
-        signal: controller.signal,
-      })
-      if (controller.signal.aborted || requestId !== detailDialogRequestId) {
-        return
-      }
-      const entries = Array.isArray(response?.entries) ? response.entries : []
-      detailDialog.entries = entries
-      detailDialog.total = Number(response?.total) || entries.length
-      detailDialog.loading = false
-      detailDialog.error = entries.length
-        ? ''
-        : 'Нет подробностей для этой ячейки.'
-    } catch (err) {
-      if (err?.name === 'AbortError') return
-      if (controller.signal.aborted || requestId !== detailDialogRequestId) {
-        return
-      }
-      try {
-        let filtered = state.records || []
-        if (!filtered.length) {
-          const raw = state.rawRecords?.length
-            ? state.rawRecords
-            : await ensureTemplateData(tpl)
-          state.rawRecords = Array.isArray(raw) ? raw : []
-          filtered = filterRecords(
-            state.rawRecords,
-            tpl.snapshot,
-            tpl.dataSource,
-            container.id,
-          )
-          state.records = filtered
-        }
-        const matched = (filtered || []).filter(
-          (record) =>
-            matchesDimensionPath(record, rowsPivot, rowKey) &&
-            matchesDimensionPath(record, columnsPivot, columnKey),
-        )
-        detailDialog.total = matched.length
-        detailDialog.entries = matched.slice(0, 200)
-        detailDialog.loading = false
-        detailDialog.error = matched.length
-          ? ''
-          : 'Нет подробностей для этой ячейки.'
-      } catch (fallbackError) {
-        detailDialog.error =
-          err?.message || 'Не удалось получить детализацию.'
-        detailDialog.loading = false
-      }
-    } finally {
-      if (detailDialogAbortController === controller) {
-        detailDialogAbortController = null
-      }
+    detailDialog.request = {
+      templateId: tpl.id,
+      remoteSource: tpl.remoteSource,
+      snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+      filters: buildBackendFilters(container.id),
+      rowKey,
+      columnKey,
+      metric: {
+        id: metric.id,
+        fieldKey: metric.fieldKey,
+        aggregator: metric.aggregator,
+        type: metric.type,
+      },
+      detailFields: detailRequestFields,
+      detailMetricFilter,
     }
+    await fetchDetailEntries({ append: false })
     return
   }
+  detailDialog.request = null
   requestAnimationFrame(() => {
     try {
       const matched = (state.records || []).filter(
@@ -1945,10 +1924,17 @@ async function handleCellDetails(container, row, columnEntry) {
           matchesDimensionPath(record, rowsPivot, rowKey) &&
           matchesDimensionPath(record, columnsPivot, columnKey),
       )
-      detailDialog.total = matched.length
-      detailDialog.entries = matched.slice(0, 200)
+      const filteredMatched = applyDetailMetricFilter(
+        matched,
+        detailMetricFilter,
+      )
+      detailDialog.localMatched = filteredMatched
+      detailDialog.entries = filteredMatched.slice(0, detailDialog.limit)
+      detailDialog.offset = detailDialog.entries.length
+      detailDialog.total = filteredMatched.length
+      detailDialog.hasMore = detailDialog.offset < detailDialog.total
       detailDialog.loading = false
-      if (!matched.length) {
+      if (!filteredMatched.length) {
         detailDialog.error = 'Нет подробностей для этой ячейки.'
       }
     } catch (err) {
@@ -2001,6 +1987,179 @@ function resolveDetailFieldDescriptors(tpl, metric) {
         resolveFieldMetaEntry(fieldMeta, key)?.type ||
         (metric?.fieldKey === key ? 'number' : 'string'),
     }))
+}
+
+function buildDetailRequestFields(fields = [], detailMetricFilter = null) {
+  const keys = new Set(
+    Array.isArray(fields) ? fields.map((field) => field.key) : [],
+  )
+  if (detailMetricFilter?.fieldKey) {
+    keys.add(detailMetricFilter.fieldKey)
+  }
+  return Array.from(keys).filter(Boolean)
+}
+
+const DETAIL_FILTER_MODES = new Set([
+  'none',
+  'flag',
+  'not_empty',
+  'gt0',
+  'gte1',
+  'custom',
+])
+const DETAIL_FILTER_OPERATORS = new Set([
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+])
+
+function normalizeDetailFilter(value = null) {
+  const safe = value && typeof value === 'object' ? value : {}
+  const mode = DETAIL_FILTER_MODES.has(safe.mode) ? safe.mode : 'none'
+  const op = DETAIL_FILTER_OPERATORS.has(safe.op) ? safe.op : 'eq'
+  const rawValue =
+    safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
+  return { mode, op, value: rawValue }
+}
+
+function resolveDetailMetricFilter(metric) {
+  if (!metric || metric.type === 'formula') return null
+  const fieldKey = metric.fieldKey
+  if (!fieldKey) return null
+  const filter = normalizeDetailFilter(metric.detailFilter)
+  if (filter.mode === 'none') return null
+  if (filter.mode === 'flag') {
+    return { fieldKey, op: 'eq', value: 1 }
+  }
+  if (filter.mode === 'not_empty') {
+    return { fieldKey, op: 'not_empty', value: '' }
+  }
+  if (filter.mode === 'gt0') {
+    return { fieldKey, op: 'gt', value: 0 }
+  }
+  if (filter.mode === 'gte1') {
+    return { fieldKey, op: 'gte', value: 1 }
+  }
+  if (filter.mode === 'custom') {
+    return { fieldKey, op: filter.op, value: filter.value }
+  }
+  return null
+}
+
+function matchesDetailMetricFilter(record, filter) {
+  if (!filter) return true
+  const value = resolvePivotFieldValue(record, filter.fieldKey)
+  if (filter.op === 'not_empty') {
+    return !(value === null || typeof value === 'undefined' || value === '')
+  }
+  const normalizedLeft = normalizeValue(value)
+  const normalizedRight = normalizeValue(filter.value)
+  if (filter.op === 'eq') {
+    return normalizedLeft === normalizedRight
+  }
+  if (filter.op === 'ne') {
+    return normalizedLeft !== normalizedRight
+  }
+  const leftNumber = Number(value)
+  const rightNumber = Number(filter.value)
+  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) {
+    return false
+  }
+  if (filter.op === 'gt') return leftNumber > rightNumber
+  if (filter.op === 'gte') return leftNumber >= rightNumber
+  if (filter.op === 'lt') return leftNumber < rightNumber
+  if (filter.op === 'lte') return leftNumber <= rightNumber
+  return true
+}
+
+function applyDetailMetricFilter(records = [], filter = null) {
+  if (!filter || !Array.isArray(records) || !records.length) return records
+  return records.filter((record) => matchesDetailMetricFilter(record, filter))
+}
+
+async function fetchDetailEntries(options = {}) {
+  const append = Boolean(options.append)
+  if (!detailDialog.request) return
+  if (detailDialog.loadingMore && append) return
+  const requestId = detailDialogRequestId
+  const offset = append ? detailDialog.offset : 0
+  const controller = new AbortController()
+  detailDialogAbortController = controller
+  if (append) {
+    detailDialog.loadingMore = true
+  } else {
+    detailDialog.loading = true
+    detailDialog.error = ''
+    detailDialog.entries = []
+    detailDialog.total = 0
+    detailDialog.offset = 0
+    detailDialog.hasMore = false
+  }
+  try {
+    const response = await fetchBackendDetails({
+      ...detailDialog.request,
+      limit: detailDialog.limit,
+      offset,
+      signal: controller.signal,
+    })
+    if (controller.signal.aborted || requestId !== detailDialogRequestId) {
+      return
+    }
+    const entries = Array.isArray(response?.entries) ? response.entries : []
+    const detailMetricFilter = detailDialog.request.detailMetricFilter || null
+    const filteredEntries = applyDetailMetricFilter(entries, detailMetricFilter)
+    detailDialog.entries = append
+      ? [...detailDialog.entries, ...filteredEntries]
+      : filteredEntries
+    detailDialog.offset = offset + entries.length
+    const responseTotal = Number(response?.total)
+    if (Number.isFinite(responseTotal)) {
+      detailDialog.total = responseTotal
+      detailDialog.hasMore = detailDialog.offset < responseTotal
+    } else {
+      detailDialog.total = detailDialog.entries.length
+      detailDialog.hasMore = entries.length === detailDialog.limit
+    }
+    detailDialog.error =
+      detailDialog.entries.length || detailDialog.hasMore
+        ? ''
+        : 'Нет подробностей для этой ячейки.'
+  } catch (err) {
+    if (err?.name === 'AbortError') return
+    if (controller.signal.aborted || requestId !== detailDialogRequestId) {
+      return
+    }
+    detailDialog.error = err?.message || 'Не удалось получить детализацию.'
+  } finally {
+    if (detailDialogAbortController === controller) {
+      detailDialogAbortController = null
+    }
+    detailDialog.loading = false
+    detailDialog.loadingMore = false
+  }
+}
+
+function loadMoreDetailEntries() {
+  if (detailDialog.loading || detailDialog.loadingMore || !detailDialog.hasMore) {
+    return
+  }
+  if (detailDialog.request) {
+    fetchDetailEntries({ append: true })
+    return
+  }
+  if (!Array.isArray(detailDialog.localMatched)) return
+  const start = detailDialog.offset
+  const next = detailDialog.localMatched.slice(
+    start,
+    start + detailDialog.limit,
+  )
+  detailDialog.entries = [...detailDialog.entries, ...next]
+  detailDialog.offset = start + next.length
+  detailDialog.total = detailDialog.localMatched.length
+  detailDialog.hasMore = detailDialog.offset < detailDialog.total
 }
 
 function formatDetailValue(value) {
@@ -5240,6 +5399,11 @@ function editPage() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.detail-panel__load-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 0;
 }
 .detail-panel__placeholder,
 .detail-panel__error,

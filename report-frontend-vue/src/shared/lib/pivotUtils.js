@@ -20,17 +20,6 @@ export function formatValue(value) {
 }
 
 function formatMetricOutput(value, aggregator, format = 'auto', precision = 2) {
-  if (aggregator === 'count') {
-    const numeric = Number(value)
-    if (
-      value === null ||
-      typeof value === 'undefined' ||
-      value === '' ||
-      (Number.isFinite(numeric) && numeric === 0)
-    ) {
-      return ''
-    }
-  }
   const override = format && format !== 'auto'
   if (override) {
     return formatFormulaValue(value, format, precision)

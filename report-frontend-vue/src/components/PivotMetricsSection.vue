@@ -137,30 +137,37 @@
         <label v-if="metric.type !== 'formula'" class="metric-field">
           <span>Фильтр детализации</span>
           <n-select
-            v-model:value="metric.detailFilter.mode"
+            :value="getDetailFilter(metric).mode"
             :options="detailFilterOptions"
             size="large"
+            @update:value="(value) => updateDetailFilter(metric, { mode: value })"
           />
           <small class="metric-hint">
-            Ограничивает записи, которые попадут в детализацию метрики.
+            Ограничивает записи в детализации по полю метрики.
           </small>
         </label>
         <div
-          v-if="metric.type !== 'formula' && metric.detailFilter?.mode === 'custom'"
+          v-if="metric.type !== 'formula' && getDetailFilter(metric).mode === 'custom'"
           class="metric-field metric-detail-filter"
         >
           <span>Условие</span>
           <div class="metric-detail-filter__row">
             <n-select
-              v-model:value="metric.detailFilter.op"
+              :value="getDetailFilter(metric).op"
               :options="detailFilterOperatorOptions"
               size="large"
               class="metric-detail-filter__operator"
+              @update:value="
+                (value) => updateDetailFilter(metric, { op: value })
+              "
             />
             <n-input
-              v-model:value="metric.detailFilter.value"
+              :value="getDetailFilter(metric).value"
               placeholder="Значение"
               size="large"
+              @update:value="
+                (value) => updateDetailFilter(metric, { value })
+              "
             />
           </div>
         </div>
@@ -456,7 +463,6 @@ const valueFormatOptions = [
 ]
 const detailFilterOptions = [
   { label: 'Нет', value: 'none' },
-  { label: 'Авто (вычисляемые поля)', value: 'auto' },
   { label: 'Флаг = 1', value: 'flag' },
   { label: 'Не пусто', value: 'not_empty' },
   { label: '> 0', value: 'gt0' },
@@ -506,29 +512,11 @@ function isNumericFormat(format) {
   )
 }
 
-watch(
-  () => props.metrics,
-  (list) => {
-    if (!Array.isArray(list)) return
-    list.forEach((metric) => {
-      if (!Array.isArray(metric.detailFields)) {
-        metric.detailFields = []
-      }
-      if (!metric.detailFilter || typeof metric.detailFilter !== 'object') {
-        metric.detailFilter = normalizeDetailFilter(null)
-      } else {
-        metric.detailFilter = normalizeDetailFilter(metric.detailFilter)
-      }
-    })
-  },
-  { deep: true, immediate: true },
-)
-
 function normalizeDetailFilter(value = null) {
   const safe = value && typeof value === 'object' ? value : {}
   const mode = detailFilterOptions.some((option) => option.value === safe.mode)
     ? safe.mode
-    : 'auto'
+    : 'none'
   const op = detailFilterOperatorOptions.some(
     (option) => option.value === safe.op,
   )
@@ -538,6 +526,32 @@ function normalizeDetailFilter(value = null) {
     safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
   return { mode, op, value: rawValue }
 }
+
+function getDetailFilter(metric) {
+  return normalizeDetailFilter(metric?.detailFilter)
+}
+
+function updateDetailFilter(metric, patch = {}) {
+  if (!metric) return
+  const current =
+    metric.detailFilter && typeof metric.detailFilter === 'object'
+      ? metric.detailFilter
+      : {}
+  metric.detailFilter = normalizeDetailFilter({ ...current, ...patch })
+}
+
+watch(
+  () => props.metrics,
+  (list) => {
+    if (!Array.isArray(list)) return
+    list.forEach((metric) => {
+      if (!Array.isArray(metric.detailFields)) {
+        metric.detailFields = []
+      }
+    })
+  },
+  { deep: true, immediate: true },
+)
 
 function formattingConfig(metric) {
   const config = metric.conditionalFormatting

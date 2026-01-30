@@ -431,13 +431,6 @@
                     >(date({{FactDateEnd}}) == date({{UpdatedAt}})) ? 1 : 0</code
                   >
                 </p>
-                <p class="muted">
-                  Формулы выполняются сверху вниз — можно ссылаться на поля,
-                  созданные выше.
-                </p>
-                <p v-if="!computedFieldOptions.length" class="muted">
-                  Загрузите данные, чтобы увидеть доступные ключи полей.
-                </p>
               </div>
             </details>
           </section>
@@ -985,7 +978,7 @@
             </div>
 
             <PivotLayout
-              :fields="fields"
+              :fields="pivotFields"
               :rows="pivotConfig.rows"
               :columns="pivotConfig.columns"
               :filters="pivotConfig.filters"
@@ -1558,7 +1551,15 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch, onMounted } from 'vue'
+import {
+  computed,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NButton, NTooltip, NSelect, NInput, NModal, NSwitch } from 'naive-ui'
 import ReportChart from '@/components/ReportChart.vue'
@@ -1635,7 +1636,7 @@ const selectedVisualizationId = ref('')
 const presentationName = ref('')
 const presentationDescription = ref('')
 const presentationSaving = ref(false)
-const result = ref(null)
+const result = shallowRef(null)
 const isCreatingSource = ref(false)
 const sourceSearch = ref('')
 const pendingNewSourceName = ref('')
@@ -1785,11 +1786,61 @@ watch(
   { immediate: true },
 )
 
-const records = ref([])
-const fields = ref([])
+const records = shallowRef([])
+const fields = shallowRef([])
+const computedFieldDescriptors = computed(() => {
+  const list = normalizeComputedFields(sourceDraft.computedFields || [])
+  return list
+    .map((field) => {
+      const key = String(field?.fieldKey || '').trim()
+      if (!key) return null
+      const label = `${humanizeKey(key)} (${key})`
+      const type =
+        field.resultType === 'date'
+          ? 'date'
+          : field.resultType === 'text'
+            ? 'string'
+            : 'number'
+      const datePartValues = {}
+      DATE_PARTS.forEach((part) => {
+        datePartValues[part.key] = []
+      })
+      const dateParts =
+        type === 'date'
+          ? DATE_PARTS.map((part) => ({
+              key: buildDatePartKey(key, part.key),
+              label: formatDatePartFieldLabel(label, part.key),
+              part: part.key,
+              values: [],
+            }))
+          : []
+      return {
+        key,
+        label,
+        sample: '',
+        values: [],
+        type,
+        dateParts,
+        datePartValues,
+        isComputed: true,
+      }
+    })
+    .filter(Boolean)
+})
+const pivotFields = computed(() => {
+  const base = Array.isArray(fields.value) ? [...fields.value] : []
+  const used = new Set(base.map((field) => field.key))
+  computedFieldDescriptors.value.forEach((field) => {
+    if (!used.has(field.key)) {
+      used.add(field.key)
+      base.push(field)
+    }
+  })
+  return base
+})
 const dimensionFieldKeys = computed(() => {
   const keys = []
-  fields.value.forEach((field) => {
+  pivotFields.value.forEach((field) => {
     if (!field?.key) return
     keys.push(field.key)
     if (field.type === 'date' && Array.isArray(field.dateParts)) {
@@ -1802,15 +1853,8 @@ const dimensionFieldKeys = computed(() => {
   })
   return keys
 })
-const computedFieldOptions = computed(() =>
-  fields.value.map((field) => ({
-    label: getFieldDisplayName(field),
-    value: field.key,
-  })),
-)
-const computedFieldRuntimeErrors = ref({})
 const computedFieldErrors = computed(() => {
-  const errors = { ...(computedFieldRuntimeErrors.value || {}) }
+  const errors = {}
   const list = Array.isArray(sourceDraft.computedFields)
     ? sourceDraft.computedFields
     : []
@@ -2884,7 +2928,7 @@ watch(
 )
 
 const fieldsMap = computed(() => {
-  return fields.value.reduce((acc, field) => {
+  return pivotFields.value.reduce((acc, field) => {
     acc.set(field.key, field)
     return acc
   }, new Map())
@@ -3220,147 +3264,6 @@ function validateComputedFieldExpression(expression = '') {
   return ''
 }
 
-function padTwoValue(value) {
-  return String(value).padStart(2, '0')
-}
-
-function normalizeComputedDate(value) {
-  const timestamp = parseDateValue(value)
-  if (!Number.isFinite(timestamp)) return ''
-  const date = new Date(timestamp)
-  if (!Number.isFinite(date.getTime())) return ''
-  const year = date.getUTCFullYear()
-  const month = padTwoValue(date.getUTCMonth() + 1)
-  const day = padTwoValue(date.getUTCDate())
-  return `${year}-${month}-${day}`
-}
-
-function normalizeComputedValue(value, resultType = 'number') {
-  if (resultType === 'date') {
-    return normalizeComputedDate(value) || null
-  }
-  if (resultType === 'text') {
-    if (value === null || typeof value === 'undefined') return ''
-    return String(value)
-  }
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : null
-}
-
-function buildComputedFieldHelpers() {
-  return {
-    date: (value) => normalizeComputedDate(value),
-    number: (value) => {
-      const numeric = Number(value)
-      return Number.isFinite(numeric) ? numeric : null
-    },
-    text: (value) => {
-      if (value === null || typeof value === 'undefined') return ''
-      return String(value)
-    },
-    len: (value) => {
-      if (value === null || typeof value === 'undefined') return 0
-      return String(value).length
-    },
-    empty: (value) =>
-      value === null ||
-      typeof value === 'undefined' ||
-      value === '' ||
-      (Array.isArray(value) && value.length === 0),
-  }
-}
-
-function compileComputedFieldExpression(expression = '') {
-  const trimmed = String(expression || '').trim()
-  const validationError = validateComputedFieldExpression(trimmed)
-  if (validationError) return { evaluate: null, error: validationError }
-  const jsExpression = trimmed.replace(COMPUTED_FIELD_TOKEN_REGEX, (_, key) => {
-    const token = String(key || '').trim()
-    return `__get(${JSON.stringify(token)})`
-  })
-  try {
-    const fn = new Function(
-      '__get',
-      '__fn',
-      'const { date, number, text, len, empty } = __fn; return (' +
-        jsExpression +
-        ');',
-    )
-    const helpers = buildComputedFieldHelpers()
-    return {
-      evaluate: (record) => {
-        try {
-          return fn((id) => record?.[id] ?? null, helpers)
-        } catch {
-          return null
-        }
-      },
-      error: '',
-    }
-  } catch {
-    return { evaluate: null, error: 'Некорректная формула.' }
-  }
-}
-
-function buildComputedFieldEvaluators(definitions = [], existingKeys = new Set()) {
-  const evaluators = []
-  const errors = {}
-  const usedKeys = new Set()
-  if (!Array.isArray(definitions) || !definitions.length) {
-    return { evaluators, errors }
-  }
-  definitions.forEach((field) => {
-    const id = field?.id || ''
-    const key = String(field?.fieldKey || '').trim()
-    const expression = String(field?.expression || '').trim()
-    if (!id || !key || !expression) return
-    if (usedKeys.has(key)) {
-      errors[id] = 'Ключ уже используется.'
-      return
-    }
-    usedKeys.add(key)
-    if (existingKeys.has(key)) {
-      errors[id] = 'Поле с таким ключом уже есть в источнике.'
-      return
-    }
-    const compiled = compileComputedFieldExpression(expression)
-    if (compiled.error) {
-      errors[id] = compiled.error
-      return
-    }
-    if (typeof compiled.evaluate !== 'function') {
-      errors[id] = 'Не удалось скомпилировать формулу.'
-      return
-    }
-    evaluators.push({
-      id,
-      key,
-      resultType: field.resultType || 'number',
-      evaluate: compiled.evaluate,
-    })
-  })
-  return { evaluators, errors }
-}
-
-function applyComputedFields(recordsList = [], definitions = []) {
-  const records = Array.isArray(recordsList) ? recordsList : []
-  if (!records.length) return { records, errors: {} }
-  const existingKeys = new Set(Object.keys(records[0] || {}))
-  const { evaluators, errors } = buildComputedFieldEvaluators(
-    definitions,
-    existingKeys,
-  )
-  if (!evaluators.length) return { records, errors }
-  records.forEach((record) => {
-    if (!record || typeof record !== 'object') return
-    evaluators.forEach((field) => {
-      const value = field.evaluate(record)
-      record[field.key] = normalizeComputedValue(value, field.resultType)
-    })
-  })
-  return { records, errors }
-}
-
 const backendPivotState = reactive({
   view: null,
   chart: null,
@@ -3553,6 +3456,69 @@ watch(
   { immediate: true },
 )
 
+const LOCAL_PIVOT_DEBOUNCE_MS = 200
+const localPivotResult = ref({ view: null, errorMetricId: null })
+let localPivotTimer = null
+
+const shouldComputeLocalPivot = computed(() => {
+  if (!pivotBackendActive.value) return true
+  const backendRows = backendPivotState.view?.rows || []
+  if (backendRows.length) return false
+  if (!backendPivotState.error) {
+    return Boolean(backendPivotState.view) && filteredPlanRecords.value.length > 0
+  }
+  return true
+})
+
+function computeLocalPivotResult() {
+  if (pivotWarnings.value.length) return { view: null, errorMetricId: null }
+  if (!filteredPlanRecords.value.length)
+    return { view: null, errorMetricId: null }
+  if (!computationBaseMetrics.value.length)
+    return { view: null, errorMetricId: null }
+  return buildBasePivotView()
+}
+
+function scheduleLocalPivotRecalc() {
+  if (localPivotTimer) {
+    clearTimeout(localPivotTimer)
+    localPivotTimer = null
+  }
+  if (!shouldComputeLocalPivot.value) {
+    return
+  }
+  if (
+    pivotWarnings.value.length ||
+    !filteredPlanRecords.value.length ||
+    !computationBaseMetrics.value.length
+  ) {
+    localPivotResult.value = computeLocalPivotResult()
+    return
+  }
+  localPivotTimer = setTimeout(() => {
+    localPivotResult.value = computeLocalPivotResult()
+    localPivotTimer = null
+  }, LOCAL_PIVOT_DEBOUNCE_MS)
+}
+
+watch(
+  [
+    () => filteredPlanRecords.value,
+    () => computationBaseMetrics.value,
+    () => pivotWarnings.value,
+    () => shouldComputeLocalPivot.value,
+  ],
+  scheduleLocalPivotRecalc,
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  if (localPivotTimer) {
+    clearTimeout(localPivotTimer)
+    localPivotTimer = null
+  }
+})
+
 const basePivotResult = computed(() => {
   if (pivotWarnings.value.length) return { view: null, errorMetricId: null }
   if (pivotBackendActive.value) {
@@ -3568,11 +3534,7 @@ const basePivotResult = computed(() => {
       return { view: null, errorMetricId: null }
     }
   }
-  if (!filteredPlanRecords.value.length)
-    return { view: null, errorMetricId: null }
-  if (!computationBaseMetrics.value.length)
-    return { view: null, errorMetricId: null }
-  return buildBasePivotView()
+  return localPivotResult.value
 })
 
 const pivotView = computed(() => {
@@ -3599,14 +3561,6 @@ watch(
       planError.value = ''
     }
   },
-)
-
-watch(
-  () => sourceDraft.computedFields,
-  () => {
-    computedFieldRuntimeErrors.value = {}
-  },
-  { deep: true },
 )
 const pivotReady = computed(() =>
   Boolean(pivotView.value && pivotView.value.rows.length),
@@ -4288,12 +4242,6 @@ async function loadFields() {
         .filter((item) => item.error)
         .map((item) => item.error)
     }
-    const computedResult = applyComputedFields(
-      mergedRecords,
-      sourceDraft.computedFields || [],
-    )
-    computedFieldRuntimeErrors.value = computedResult.errors || {}
-    mergedRecords = computedResult.records
     records.value = mergedRecords
     fields.value = extractFieldDescriptors(mergedRecords)
     result.value = mergedRecords
@@ -4321,7 +4269,6 @@ async function loadFields() {
       message: String(err?.message || err),
       totalRequests: requestPayloads?.length || 0,
     })
-    computedFieldRuntimeErrors.value = {}
     records.value = []
     fields.value = []
     result.value = null
@@ -5346,7 +5293,6 @@ function ensureMetricExists() {
 
 let metricCounter = 0
 const DETAIL_FILTER_MODES = new Set([
-  'auto',
   'none',
   'flag',
   'not_empty',
@@ -5365,7 +5311,7 @@ const DETAIL_FILTER_OPERATORS = new Set([
 
 function normalizeDetailFilter(value = null) {
   const safe = value && typeof value === 'object' ? value : {}
-  const mode = DETAIL_FILTER_MODES.has(safe.mode) ? safe.mode : 'auto'
+  const mode = DETAIL_FILTER_MODES.has(safe.mode) ? safe.mode : 'none'
   const op = DETAIL_FILTER_OPERATORS.has(safe.op) ? safe.op : 'eq'
   const rawValue =
     safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
@@ -6630,7 +6576,7 @@ function buildFiltersMetaSnapshot() {
 
 function buildFieldMetaSnapshot(limit = 20) {
   const meta = {}
-  fields.value.forEach((field) => {
+  pivotFields.value.forEach((field) => {
     if (!field?.key) return
     const key = String(field.key).trim()
     if (!key) return

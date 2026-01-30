@@ -482,6 +482,9 @@ function normalizeRemoteSource(entry = {}, index = 0) {
       bodyJoins.length
         ? bodyJoins
         : parseJoinConfig(entry.joinConfig || entry.JoinConfig),
+    computedFields: Array.isArray(entry?.computedFields)
+      ? entry.computedFields
+      : [],
   }
   if (pushdown) {
     source.pushdown = pushdown

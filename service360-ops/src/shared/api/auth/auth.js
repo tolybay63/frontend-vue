@@ -55,10 +55,6 @@ export async function getPersonnalInfo(userId) {
   }
 }
 
-/**
- * Проверить авторизован ли пользователь
- * @returns {boolean} true если пользователь авторизован
- */
 export function isAuthenticated() {
   const userAuth = localStorage.getItem('userAuth')
   const curUser = localStorage.getItem('curUser')
@@ -66,11 +62,7 @@ export function isAuthenticated() {
   return !!(userAuth && curUser)
 }
 
-/**
- * Выход из системы - очистка всех данных авторизации
- */
 export function logout() {
-  // Очищаем все данные связанные с авторизацией
   localStorage.removeItem('userAuth')
   localStorage.removeItem('curUser')
   localStorage.removeItem('personnalInfo')
@@ -79,7 +71,6 @@ export function logout() {
   localStorage.removeItem('user')
   localStorage.removeItem('authToken')
 
-  // Очищаем кэш пользователя (если есть)
   import('@/shared/api/common/userCache').then(module => {
     module.clearUserCache()
   })

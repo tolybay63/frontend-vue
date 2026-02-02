@@ -6,7 +6,7 @@
     @delete="handleDelete"
     :show-save="canUpdate"
     :show-delete="canDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
       <AppInput
@@ -108,6 +108,7 @@ const loadingSections = ref(false)
 // Confirmation modal
 const showConfirmModal = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 
 // Load sections
 const loadSectionsData = async () => {
@@ -211,7 +212,10 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteSection(props.stageData.id)
     notificationStore.showNotification('Перегон успешно удален', 'success')
@@ -220,6 +224,8 @@ const confirmDelete = async () => {
   } catch (error) {
     console.error('Ошибка при удалении перегона:', error)
     notificationStore.showNotification('Ошибка при удалении перегона', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

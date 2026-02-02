@@ -316,20 +316,19 @@ const columns = [
     label: 'ДЕЙСТВИЯ',
     component: {
       setup(props, context) {
-        const rowData = context.attrs.row;
-
-        const onClickHandler = (event) => {
-          event.stopPropagation();
-          openConfirmationModal(rowData);
-        };
-
         return () => {
+          // Получаем rowData на каждый рендер, чтобы данные были актуальными
+          const rowData = context.attrs.row;
+
           // Не показываем кнопку если работа уже завершена
           if (rowData?.status?.showCheck) return null;
 
           return h(UiButton, {
             text: 'Завершить работу',
-            onClick: onClickHandler,
+            onClick: (event) => {
+              event.stopPropagation();
+              openConfirmationModal(rowData);
+            },
           });
         };
       },

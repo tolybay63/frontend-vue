@@ -6,7 +6,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
 
@@ -169,6 +169,7 @@ const canDelete = computed(() => hasPermission('org:del'))
 
 const showConfirmModal = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 
 // Helper function to parse coordinates from km to km+pk
 const parseKmToPkFormat = (kmValue) => {
@@ -269,14 +270,20 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteLocation(props.locationData.id)
     notificationStore.showNotification('Организационная структура успешно удалена!', 'success')
     emit('deleted')
+    closeModal()
   } catch (error) {
     console.error('Ошибка при удалении организационной структуры:', error)
     notificationStore.showNotification('Ошибка при удалении организационной структуры.', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

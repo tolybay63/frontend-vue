@@ -5,7 +5,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
       <AppInput
@@ -109,6 +109,7 @@ const sectionOptions = ref([])
 const loadingEquipmentTypes = ref(false)
 const loadingSections = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 
 // Load equipment types
 const loadEquipmentTypesData = async () => {
@@ -190,14 +191,20 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteResource(props.equipmentData.id)
     notificationStore.showNotification('Техника успешно удалена!', 'success')
     emit('deleted')
+    closeModal()
   } catch (error) {
     console.error('Ошибка при удалении техники:', error)
     notificationStore.showNotification('Ошибка при удалении техники.', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

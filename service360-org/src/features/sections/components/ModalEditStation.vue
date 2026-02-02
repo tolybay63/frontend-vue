@@ -6,7 +6,7 @@
     @delete="handleDelete"
     :show-save="canUpdate"
     :show-delete="canDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
       <AppInput
@@ -91,6 +91,7 @@ const sectionOptions = ref([])
 const loadingSections = ref(false)
 const showConfirmModal = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 
 const loadSectionsData = async () => {
   loadingSections.value = true
@@ -173,7 +174,10 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteSection(props.stationData.id)
     notificationStore.showNotification('Раздельный пункт успешно удален', 'success')
@@ -181,6 +185,8 @@ const confirmDelete = async () => {
     closeModal()
   } catch (error) {
     notificationStore.showNotification('Ошибка при удалении раздельного пункта', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

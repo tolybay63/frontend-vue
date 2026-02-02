@@ -5,7 +5,7 @@
     :show-delete="canDelete"
     @save="saveData"
     @delete="handleDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
       <AppInput
@@ -85,6 +85,7 @@ const measureOptions = ref([])
 // Loading states
 const loadingMeasures = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 
 // Load measures
 const loadMeasuresData = async () => {
@@ -144,14 +145,20 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteResource(props.serviceData.id)
     notificationStore.showNotification('Услуга успешно удалена!', 'success')
     emit('deleted')
+    closeModal()
   } catch (error) {
     console.error('Ошибка при удалении услуги:', error)
     notificationStore.showNotification('Ошибка при удалении услуги.', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

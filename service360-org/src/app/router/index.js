@@ -13,6 +13,7 @@ import ThirdPartyServices from '@/views/ThirdPartyServices.vue'
 import Personnel from '@/views/Personnel.vue'
 import Clients from '@/views/Clients.vue'
 import PassportData from '@/views/PassportData.vue'
+import Profile from '@/views/Profile.vue'
 import { isAuthenticated } from '@/shared/api/auth/auth'
 
 const routes = [
@@ -102,6 +103,12 @@ const routes = [
     path: '/objects/:id/passport',
     name: 'PassportData',
     component: PassportData,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: Profile,
     meta: { requiresAuth: true }
   }
 ];

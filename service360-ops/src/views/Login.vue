@@ -17,22 +17,44 @@
             <div class="logo-mobile">
               <img src="@/assets/img/s360.PNG" alt="Service360 Logo" />
             </div>
-            <h2 class="login-title">Добро пожаловать</h2>
+            <h2 class="login-title">{{ showForgot ? 'Восстановление пароля' : 'Добро пожаловать' }}</h2>
             <p class="login-subtitle">
-              Для входа во внутреннюю систему DTJ Service введите логин и пароль
+              {{ showForgot ? 'Введите логин, и мы отправим инструкцию по восстановлению пароля' : 'Для входа во внутреннюю систему DTJ Service введите логин и пароль' }}
             </p>
           </div>
 
-          <form @submit.prevent="handleLogin">
-            <div class="form-fields">
-              <AppInput label="Логин" v-model="username" placeholder="Введите логин" />
-              <AppInput label="Пароль" v-model="password" type="password" placeholder="Введите пароль" />
-            </div>
+          <transition name="fade" mode="out-in">
+            <!-- Форма входа -->
+            <form v-if="!showForgot" key="login" @submit.prevent="handleLogin">
+              <div class="form-fields">
+                <AppInput label="Логин" v-model="username" placeholder="Введите логин" />
+                <AppInput label="Пароль" v-model="password" type="password" placeholder="Введите пароль" />
+              </div>
 
-            <div class="submit-button-wrapper">
-              <MainButton :label="'ВОЙТИ'" :loading="loading" type="submit" />
-            </div>
-          </form>
+              <div class="forgot-password-wrapper">
+                <a class="forgot-password-link" @click.prevent="showForgot = true">Забыли пароль?</a>
+              </div>
+
+              <div class="submit-button-wrapper">
+                <MainButton :label="'ВОЙТИ'" :loading="loading" type="submit" />
+              </div>
+            </form>
+
+            <!-- Форма восстановления -->
+            <form v-else key="forgot" @submit.prevent="handleForgotPassword">
+              <div class="form-fields">
+                <AppInput label="Логин" v-model="forgotLogin" placeholder="Введите ваш логин" />
+              </div>
+
+              <div class="submit-button-wrapper">
+                <MainButton :label="'ВОССТАНОВИТЬ'" :loading="forgotLoading" type="submit" />
+              </div>
+
+              <div class="back-to-login-wrapper">
+                <a class="back-to-login-link" @click.prevent="showForgot = false">Назад к входу</a>
+              </div>
+            </form>
+          </transition>
         </div>
       </div>
     </div>
@@ -50,6 +72,7 @@ import AppInput from "@/shared/ui/FormControls/AppInput.vue"
 import MainButton from "@/shared/ui/MainButton.vue"
 import AppNotification from "@/app/layouts/AppNotification.vue"
 import { login, getCurrentUser, getPersonnalInfo } from "@/shared/api/auth/auth"
+import { forgetPassword } from "@/shared/api/profile/profileApi"
 import { useNotificationStore } from "@/app/stores/notificationStore"
 
 export default {
@@ -64,9 +87,35 @@ export default {
       username: "",
       password: "",
       loading: false,
+      showForgot: false,
+      forgotLogin: "",
+      forgotLoading: false,
     }
   },
   methods: {
+    async handleForgotPassword() {
+      if (this.forgotLoading) return
+
+      const notify = useNotificationStore()
+
+      if (!this.forgotLogin) {
+        notify.showNotification("Введите логин", "error")
+        return
+      }
+
+      this.forgotLoading = true
+      try {
+        await forgetPassword(this.forgotLogin)
+        notify.showNotification("Инструкция по восстановлению пароля отправлена", "success")
+        this.showForgot = false
+        this.forgotLogin = ""
+      } catch (err) {
+        const msg = err.response?.data?.error?.message || err.message || "Ошибка при восстановлении пароля"
+        notify.showNotification(msg, "error")
+      } finally {
+        this.forgotLoading = false
+      }
+    },
     async handleLogin() {
       if (this.loading) return; // Предотвращаем повторные вызовы
 
@@ -197,35 +246,31 @@ export default {
 
 .login-card {
   background: #fff;
-  padding: 40px 30px;
+  padding: 48px 40px;
   width: 100%;
-  max-width: 400px;
-  min-height: 50vh;
+  max-width: 420px;
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
   text-align: center;
   box-sizing: border-box;
 }
 
 .header-section {
-  margin-bottom: 30px;
+  margin-bottom: 36px;
 }
 
 .login-title {
   font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 10px;
-  color: #1f2937;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1e293b;
 }
 
 .login-subtitle {
-  font-size: 15px;
-  color: #9ca3af;
+  font-size: 14px;
+  color: #94a3b8;
   margin-bottom: 0;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .input-label {
@@ -240,9 +285,53 @@ export default {
 .form-fields {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 24px;
+  gap: 16px;
+  margin-bottom: 12px;
   text-align: left;
+}
+
+.forgot-password-wrapper {
+  text-align: right;
+  margin-bottom: 24px;
+}
+
+.forgot-password-link {
+  font-size: 13px;
+  color: #2b6cb0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.forgot-password-link:hover {
+  text-decoration: underline;
+  color: #1a4d8f;
+}
+
+.back-to-login-wrapper {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.back-to-login-link {
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.back-to-login-link:hover {
+  text-decoration: underline;
+  color: #1e293b;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 .footer-note {
@@ -258,15 +347,11 @@ export default {
 .login-content {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
 }
 
 form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  height: 100%;
 }
 
 @media (max-width: 768px) {

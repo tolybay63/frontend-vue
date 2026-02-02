@@ -13,6 +13,7 @@ import ResourcePlanningEdit from '@/views/ResourcePlanningEdit.vue'
 import WorkLog from '@/views/WorkLog.vue'
 import WorkLogForm from '@/views/WorkLogForm.vue'
 import TrackGaugeImport from '@/views/TrackGaugeImport.vue'
+import Profile from '@/views/Profile.vue'
 import { isAuthenticated } from '@/shared/api/auth/auth'
 
 const routes = [
@@ -102,6 +103,12 @@ const routes = [
     path: '/track-gauge-import',
     name: 'TrackGaugeImport',
     component: TrackGaugeImport,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: Profile,
     meta: { requiresAuth: true }
   },
 ];

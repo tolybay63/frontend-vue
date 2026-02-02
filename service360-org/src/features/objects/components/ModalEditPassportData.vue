@@ -6,7 +6,7 @@
     @delete="handleDelete"
     :showSave="canUpdate"
     :showDelete="canDelete"
-    :loading="isSaving"
+    :loading="isSaving || isDeleting"
   >
     <div class="form-section">
       <div class="col-span-2">
@@ -118,6 +118,7 @@ const unitOptions = ref([])
 const loadingComponents = ref(false)
 const loadingUnits = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 const showConfirmModal = ref(false)
 
 const populateForm = async () => {
@@ -296,14 +297,20 @@ const handleDelete = () => {
 }
 
 const confirmDelete = async () => {
+  if (isDeleting.value) return
+
   showConfirmModal.value = false
+  isDeleting.value = true
   try {
     await deleteComplexObjectPassport(props.rowData.idPassportComplex)
     notificationStore.showNotification('Паспортные данные успешно удалены!', 'success')
     emit('deleted')
+    closeModal()
   } catch (error) {
     console.error('Ошибка при удалении паспортных данных:', error)
     notificationStore.showNotification('Ошибка при удалении паспортных данных', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 

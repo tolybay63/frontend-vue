@@ -195,7 +195,7 @@
               </select>
             </label>
           </div>
-          <p v-if="container.templateId" class="muted">
+          <p v-if="container.templateId" class="muted multiline-text">
             {{ templateMeta(container.templateId)?.description || 'Без описания' }}
           </p>
           <p v-else class="muted">

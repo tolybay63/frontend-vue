@@ -58,3 +58,9 @@ tr.is-overdue > td,
 .n-data-table .n-data-table-td {
   padding: 8px 12px !important;
 }
+
+/* Utility: preserve paragraph and bullet list formatting in descriptions */
+.multiline-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

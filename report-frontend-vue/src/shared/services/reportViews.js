@@ -16,8 +16,10 @@ const FALLBACK_AGGREGATORS = {
   avg: { label: 'Среднее', fvFieldVal: 1351, pvFieldVal: 1571 },
   value: { label: 'Значение', fvFieldVal: 0, pvFieldVal: 0 },
 }
+const LOCAL_SOURCES_STORAGE_KEY = 'report-data-sources'
 
 export async function fetchReportViewTemplates() {
+  const localComputedFields = loadLocalComputedFieldMap()
   const [
     presentationsRaw,
     configsRaw,
@@ -37,7 +39,7 @@ export async function fetchReportViewTemplates() {
   const visualizationMap = buildVisualizationLookup(vizRecords)
   const aggregatorMap = buildAggregatorMap(aggRecords)
   const sources = sourcesRaw.map((entry, index) =>
-    normalizeSource(entry, index),
+    normalizeSource(entry, index, localComputedFields),
   )
   const sourceMap = new Map(
     sources.map((source) => [source.remoteId || source.id, source]),
@@ -244,7 +246,7 @@ function normalizeFilterMode(mode) {
   return ''
 }
 
-function normalizeSource(entry = {}, index = 0) {
+function normalizeSource(entry = {}, index = 0, localComputedFields = new Map()) {
   const remoteId = toStableId(entry?.id ?? entry?.Id ?? entry?.ID)
   const baseBody =
     entry?.MethodBody ||
@@ -257,6 +259,16 @@ function normalizeSource(entry = {}, index = 0) {
   const formattedBody = cleanedBody || baseBody
   const parsedBody = parseMaybeJson(formattedBody || baseBody)
   const joinConfig = parseJoinConfig(entry?.joinConfig || entry?.JoinConfig)
+  const rawComputed =
+    entry?.computedFields ||
+    entry?.ComputedFields ||
+    entry?.computed_fields ||
+    null
+  const computedFields = Array.isArray(rawComputed)
+    ? rawComputed
+    : remoteId && localComputedFields.has(remoteId)
+      ? localComputedFields.get(remoteId)
+      : []
   return {
     id: remoteId || createLocalId(`source-${index}`),
     remoteId,
@@ -268,7 +280,35 @@ function normalizeSource(entry = {}, index = 0) {
     headers: parseHeaderPayload(entry?.headers || entry?.Headers),
     rawBody: formatRawBody(formattedBody),
     joins: embeddedJoins.length ? embeddedJoins : joinConfig,
+    computedFields,
     remoteMeta: entry || {},
+  }
+}
+
+function loadLocalComputedFieldMap() {
+  if (typeof window === 'undefined') return new Map()
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SOURCES_STORAGE_KEY)
+    if (!raw) return new Map()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Map()
+    const map = new Map()
+    parsed.forEach((source) => {
+      if (!source || !Array.isArray(source.computedFields)) return
+      const remoteId = toStableId(
+        source.remoteId ||
+          source.remoteMeta?.id ||
+          source.remoteMeta?.Id ||
+          source.remoteMeta?.ID ||
+          source.id,
+      )
+      if (remoteId) {
+        map.set(remoteId, source.computedFields)
+      }
+    })
+    return map
+  } catch {
+    return new Map()
   }
 }
 
@@ -322,6 +362,7 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           detailFields: Array.isArray(saved?.detailFields)
             ? saved.detailFields
             : [],
+          detailFilter: saved?.detailFilter || null,
         })
         return
       }
@@ -388,6 +429,7 @@ function buildNormalizedMetric(
     detailFields: Array.isArray(saved?.detailFields)
       ? saved.detailFields
       : [],
+    detailFilter: saved?.detailFilter || null,
     remoteMeta: entry || {},
   }
 }

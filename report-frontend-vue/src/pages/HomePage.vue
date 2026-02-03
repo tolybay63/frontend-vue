@@ -5587,7 +5587,11 @@ function loadDraftFromSource(source) {
       'Content-Type': 'application/json',
       ...(source.headers || {}),
     },
-    computedFields: normalizeComputedFields(source.computedFields || []),
+    computedFields: normalizeComputedFields(
+      parsedBody.computedFields !== null
+        ? parsedBody.computedFields
+        : source.computedFields || [],
+    ),
   })
 }
 
@@ -7872,9 +7876,9 @@ function normalizeDictionaryUrl(value) {
 }
 
 function parseSourceBodyForJoins(rawBody = '') {
-  const { cleanedBody, joins } = extractJoinsFromBody(rawBody)
+  const { cleanedBody, joins, computedFields } = extractJoinsFromBody(rawBody)
   const body = cleanedBody || rawBody || EMPTY_BODY_TEMPLATE
-  return { cleanedBody: body, joins }
+  return { cleanedBody: body, joins, computedFields }
 }
 
 function buildBasePivotView() {

@@ -1,6 +1,8 @@
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 
 const JOIN_TYPES = ['left', 'inner']
+const COMPUTED_FIELDS_KEY = '__computedFields'
+const LEGACY_COMPUTED_FIELDS_KEY = 'computedFields'
 
 export const SOURCE_JOIN_SCHEMA = {
   type: 'array',
@@ -45,35 +47,52 @@ export function normalizeJoinList(list = []) {
     .filter((entry) => Boolean(entry.targetSourceId))
 }
 
+export function normalizeComputedFieldsList(list = []) {
+  if (!Array.isArray(list)) return []
+  return list.filter(
+    (entry) => entry && typeof entry === 'object' && !Array.isArray(entry),
+  )
+}
+
 export function extractJoinsFromBody(rawBody = '') {
   if (!rawBody) {
-    return { cleanedBody: '', joins: [] }
+    return { cleanedBody: '', joins: [], computedFields: [] }
   }
   let payload = rawBody
   if (typeof payload !== 'string') {
     try {
       payload = JSON.stringify(payload)
     } catch {
-      return { cleanedBody: '', joins: [] }
+      return { cleanedBody: '', joins: [], computedFields: [] }
     }
   }
   try {
     const parsed = JSON.parse(payload)
     if (!parsed || typeof parsed !== 'object') {
-      return { cleanedBody: payload, joins: [] }
+      return { cleanedBody: payload, joins: [], computedFields: [] }
     }
     const joins = Array.isArray(parsed.__joins)
       ? normalizeJoinList(parsed.__joins)
       : []
+    const computedFields = normalizeComputedFieldsList(
+      parsed[COMPUTED_FIELDS_KEY] || parsed[LEGACY_COMPUTED_FIELDS_KEY],
+    )
     if ('__joins' in parsed) {
       delete parsed.__joins
+    }
+    if (COMPUTED_FIELDS_KEY in parsed) {
+      delete parsed[COMPUTED_FIELDS_KEY]
+    }
+    if (LEGACY_COMPUTED_FIELDS_KEY in parsed) {
+      delete parsed[LEGACY_COMPUTED_FIELDS_KEY]
     }
     return {
       cleanedBody: JSON.stringify(parsed, null, 2),
       joins,
+      computedFields,
     }
   } catch {
-    return { cleanedBody: payload, joins: [] }
+    return { cleanedBody: payload, joins: [], computedFields: [] }
   }
 }
 

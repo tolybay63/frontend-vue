@@ -1076,6 +1076,7 @@ import {
 import {
   createJoinTemplate,
   normalizeJoinList,
+  normalizeComputedFieldsList,
   mergeJoinedRecords,
   fetchJoinPayload,
   extractJoinsFromBody,
@@ -2443,6 +2444,9 @@ function buildBackendRemoteSource() {
     body,
     headers: sourceDraft.headers || {},
     joins: normalizeJoinList(sourceDraft.joins || []),
+    computedFields: normalizeComputedFieldsList(
+      sourceDraft.computedFields || [],
+    ),
     rawBody: sourceDraft.rawBody || '',
     remoteMeta: sourceDraft.remoteMeta || {},
   }

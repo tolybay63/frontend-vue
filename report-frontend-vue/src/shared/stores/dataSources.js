@@ -10,6 +10,7 @@ import {
   serializeJoinConfig,
   extractJoinsFromBody,
   stripJoinPresentationFields,
+  normalizeComputedFieldsList,
 } from '@/shared/lib/sourceJoins'
 
 const STORAGE_KEY = 'report-data-sources'
@@ -388,7 +389,8 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     entry.requestBody ||
     entry.rawBody ||
     entry.MethodBody
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(baseBody)
+  const { cleanedBody, joins: bodyJoins, computedFields } =
+    extractJoinsFromBody(baseBody)
   const rawBody = cleanedBody || toRawBody(baseBody)
   const headers = entry.headers ||
     entry.Headers || { 'Content-Type': 'application/json' }
@@ -404,6 +406,9 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     createdAt: entry.createdAt || new Date().toISOString(),
     updatedAt: entry.updatedAt || new Date().toISOString(),
     remoteMeta: buildRemoteMeta(entry),
+    computedFields: normalizeComputedFieldsList(
+      entry.computedFields || entry.ComputedFields || computedFields,
+    ),
     joins:
       bodyJoins.length
         ? bodyJoins
@@ -522,6 +527,10 @@ function serializeSourcePayload(source = {}) {
   if (Array.isArray(source.joins) && source.joins.length) {
     payload.__joins = source.joins.map(stripJoinPresentationFields)
   }
+  const computedFields = normalizeComputedFieldsList(source.computedFields || [])
+  if (computedFields.length) {
+    payload.__computedFields = computedFields
+  }
   return JSON.stringify(payload)
 }
 
@@ -590,7 +599,8 @@ function applyJoinDefaults(source = {}) {
     source.remoteMeta?.MethodBody ||
     source.remoteMeta?.methodBody ||
     ''
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(rawBodySource)
+  const { cleanedBody, joins: bodyJoins, computedFields } =
+    extractJoinsFromBody(rawBodySource)
   next.rawBody = cleanedBody || source.rawBody || rawBodySource || ''
   let normalized = normalizeJoinList(source.joins || [])
   if (!normalized.length) {
@@ -602,5 +612,8 @@ function applyJoinDefaults(source = {}) {
     normalized = bodyJoins
   }
   next.joins = normalized
+  if (!Array.isArray(next.computedFields) || !next.computedFields.length) {
+    next.computedFields = normalizeComputedFieldsList(computedFields)
+  }
   return next
 }

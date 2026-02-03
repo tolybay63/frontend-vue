@@ -7,6 +7,7 @@ import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
 import {
   parseJoinConfig,
   extractJoinsFromBody,
+  normalizeComputedFields,
 } from '@/shared/lib/sourceJoins.js'
 import { normalizeConditionalFormatting } from '@/shared/lib/conditionalFormatting'
 
@@ -255,7 +256,11 @@ function normalizeSource(entry = {}, index = 0, localComputedFields = new Map())
     entry?.requestBody ||
     entry?.rawBody ||
     ''
-  const { cleanedBody, joins: embeddedJoins } = extractJoinsFromBody(baseBody)
+  const {
+    cleanedBody,
+    joins: embeddedJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(baseBody)
   const formattedBody = cleanedBody || baseBody
   const parsedBody = parseMaybeJson(formattedBody || baseBody)
   const joinConfig = parseJoinConfig(entry?.joinConfig || entry?.JoinConfig)
@@ -264,11 +269,14 @@ function normalizeSource(entry = {}, index = 0, localComputedFields = new Map())
     entry?.ComputedFields ||
     entry?.computed_fields ||
     null
-  const computedFields = Array.isArray(rawComputed)
-    ? rawComputed
-    : remoteId && localComputedFields.has(remoteId)
-      ? localComputedFields.get(remoteId)
-      : []
+  let computedFields = bodyComputedFields
+  if (computedFields === null) {
+    computedFields = Array.isArray(rawComputed)
+      ? normalizeComputedFields(rawComputed)
+      : remoteId && localComputedFields.has(remoteId)
+        ? normalizeComputedFields(localComputedFields.get(remoteId))
+        : []
+  }
   return {
     id: remoteId || createLocalId(`source-${index}`),
     remoteId,

@@ -7,6 +7,7 @@ import { fetchMethodTypeRecords } from '@/shared/api/objects'
 import { fetchCurrentUserRecord, fetchPersonnelInfo } from '@/shared/api/user'
 import {
   normalizeJoinList,
+  normalizeComputedFields,
   parseJoinConfig,
   serializeJoinConfig,
   extractJoinsFromBody,
@@ -288,7 +289,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
           if (match?.pushdown) {
             remote.pushdown = match.pushdown
           }
-          if (Array.isArray(match?.computedFields)) {
+          if (!Array.isArray(remote.computedFields) && Array.isArray(match?.computedFields)) {
             remote.computedFields = match.computedFields
           }
           return applyJoinDefaults(remote)
@@ -461,11 +462,21 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     entry.requestBody ||
     entry.rawBody ||
     entry.MethodBody
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(baseBody)
+  const {
+    cleanedBody,
+    joins: bodyJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(baseBody)
   const rawBody = cleanedBody || toRawBody(baseBody)
   const headers = entry.headers ||
     entry.Headers || { 'Content-Type': 'application/json' }
   const pushdown = entry.pushdown || entry.Pushdown
+  let computedFields = bodyComputedFields
+  if (computedFields === null) {
+    computedFields = Array.isArray(entry?.computedFields)
+      ? normalizeComputedFields(entry.computedFields)
+      : null
+  }
   const source = {
     id,
     name,
@@ -482,9 +493,7 @@ function normalizeRemoteSource(entry = {}, index = 0) {
       bodyJoins.length
         ? bodyJoins
         : parseJoinConfig(entry.joinConfig || entry.JoinConfig),
-    computedFields: Array.isArray(entry?.computedFields)
-      ? entry.computedFields
-      : [],
+    computedFields,
   }
   if (pushdown) {
     source.pushdown = pushdown
@@ -600,8 +609,19 @@ function serializeSourcePayload(source = {}) {
       return base
     }
   }
+  if (payload && typeof payload === 'object') {
+    if ('__computedFields' in payload) {
+      delete payload.__computedFields
+    }
+    if ('computedFields' in payload) {
+      delete payload.computedFields
+    }
+  }
   if (Array.isArray(source.joins) && source.joins.length) {
     payload.__joins = source.joins.map(stripJoinPresentationFields)
+  }
+  if (Array.isArray(source.computedFields)) {
+    payload.__computedFields = normalizeComputedFields(source.computedFields)
   }
   return JSON.stringify(payload)
 }
@@ -671,7 +691,11 @@ function applyJoinDefaults(source = {}) {
     source.remoteMeta?.MethodBody ||
     source.remoteMeta?.methodBody ||
     ''
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(rawBodySource)
+  const {
+    cleanedBody,
+    joins: bodyJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(rawBodySource)
   next.rawBody = cleanedBody || source.rawBody || rawBodySource || ''
   let normalized = normalizeJoinList(source.joins || [])
   if (!normalized.length) {
@@ -683,8 +707,10 @@ function applyJoinDefaults(source = {}) {
     normalized = bodyJoins
   }
   next.joins = normalized
-  next.computedFields = Array.isArray(source.computedFields)
-    ? source.computedFields
-    : []
+  next.computedFields =
+    bodyComputedFields ??
+    (Array.isArray(source.computedFields)
+      ? source.computedFields
+      : [])
   return next
 }

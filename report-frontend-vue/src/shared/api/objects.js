@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { attachApiInterceptors } from '@/shared/api/http'
 
 const OBJECTS_API_URL = (import.meta.env.VITE_OBJECTS_API_BASE || '/dtj/api/objects').trim()
 
@@ -8,6 +9,8 @@ const objectsApi = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
+
+attachApiInterceptors(objectsApi, { source: 'objectsApi' })
 
 export async function callObjectsMethod(method, params = []) {
   const { data } = await objectsApi.post('', { method, params })

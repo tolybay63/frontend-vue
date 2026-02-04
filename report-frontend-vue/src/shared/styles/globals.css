@@ -10,6 +10,16 @@ body {
   color: var(--s360-text-primary);
   background: var(--s360-bg);
 }
+button,
+input,
+select,
+textarea,
+code,
+pre,
+kbd,
+samp {
+  font-family: inherit;
+}
 
 a {
   color: var(--s360-color-primary);
@@ -57,4 +67,10 @@ tr.is-overdue > td,
 .n-data-table .n-data-table-thead th,
 .n-data-table .n-data-table-td {
   padding: 8px 12px !important;
+}
+
+/* Utility: preserve paragraph and bullet list formatting in descriptions */
+.multiline-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }

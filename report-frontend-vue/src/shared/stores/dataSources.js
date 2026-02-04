@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { toRaw } from 'vue'
 import { DEFAULT_PLAN_PAYLOAD } from '@/shared/api/plan'
 import { DEFAULT_PARAMETER_PAYLOAD } from '@/shared/api/parameter'
 import { callReportMethod } from '@/shared/api/report'
@@ -6,6 +7,7 @@ import { fetchMethodTypeRecords } from '@/shared/api/objects'
 import { fetchCurrentUserRecord, fetchPersonnelInfo } from '@/shared/api/user'
 import {
   normalizeJoinList,
+  normalizeComputedFields,
   parseJoinConfig,
   serializeJoinConfig,
   extractJoinsFromBody,
@@ -35,6 +37,7 @@ const defaultSources = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     joins: [],
+    computedFields: [],
   },
   {
     id: 'source-parameters',
@@ -55,6 +58,7 @@ const defaultSources = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     joins: [],
+    computedFields: [],
   },
 ]
 
@@ -178,6 +182,22 @@ function createId(prefix = 'source') {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function cloneSourcePayload(payload) {
+  const raw = toRaw(payload)
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(raw)
+    } catch {
+      // Fallback for Vue proxies or non-clonable values.
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(raw))
+  } catch {
+    return raw
+  }
+}
+
 export const useDataSourcesStore = defineStore('dataSources', {
   state: () => ({
     sources: loadSources(),
@@ -195,7 +215,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
   },
   actions: {
     async saveSource(payload) {
-      const base = structuredClone(payload)
+      const base = cloneSourcePayload(payload)
       base.id = base.id || createId()
       base.name = base.name?.trim() || 'Без названия'
       base.url = base.url?.trim() || ''
@@ -204,6 +224,9 @@ export const useDataSourcesStore = defineStore('dataSources', {
       base.headers = base.headers || { 'Content-Type': 'application/json' }
       const index = this.sources.findIndex((item) => item.id === base.id)
       const existing = index >= 0 ? this.sources[index] : null
+      base.computedFields = Array.isArray(base.computedFields)
+        ? base.computedFields
+        : existing?.computedFields || []
       base.supportsPivot = payload.supportsPivot !== false
       base.updatedAt = new Date().toISOString()
       base.joins = normalizeJoinList(base.joins || existing?.joins || [])
@@ -244,15 +267,46 @@ export const useDataSourcesStore = defineStore('dataSources', {
         const data = await callReportMethod('report/loadReportSource', [0])
         const records = extractRecords(data)
         if (!records.length) return
-        const mapped = records.map((entry, index) =>
-          normalizeRemoteSource(entry, index),
-        )
-        const normalized = mapped.map(applyJoinDefaults)
+        const localById = new Map(this.sources.map((source) => [String(source.id || ''), source]))
+        const localByRemoteId = new Map()
+        this.sources.forEach((source) => {
+          const remoteId = toNumericId(
+            source.remoteId ||
+              source.remoteMeta?.id ||
+              source.remoteMeta?.Id ||
+              source.remoteMeta?.ID,
+          )
+          if (remoteId != null) {
+            localByRemoteId.set(String(remoteId), source)
+          }
+        })
+        const mapped = records.map((entry, index) => {
+          const remote = normalizeRemoteSource(entry, index)
+          const remoteId = toNumericId(remote.remoteMeta?.id || remote.remoteMeta?.Id || remote.remoteMeta?.ID)
+          const match =
+            localById.get(String(remote.id || '')) ||
+            (remoteId != null ? localByRemoteId.get(String(remoteId)) : null)
+          if (match?.pushdown) {
+            remote.pushdown = match.pushdown
+          }
+          if (!Array.isArray(remote.computedFields) && Array.isArray(match?.computedFields)) {
+            remote.computedFields = match.computedFields
+          }
+          return applyJoinDefaults(remote)
+        })
+        const normalized = mapped
         if (normalized.length) {
           const remoteIds = new Set(normalized.map((item) => item.id))
-          const locals = this.sources.filter(
-            (source) => !remoteIds.has(source.id),
-          )
+          const locals = this.sources.filter((source) => {
+            if (remoteIds.has(source.id)) return false
+            const remoteMetaId = toNumericId(
+              source.remoteId ||
+                source.remoteMeta?.id ||
+                source.remoteMeta?.Id ||
+                source.remoteMeta?.ID,
+            )
+            return !remoteMetaId
+          })
           this.sources = [...normalized, ...locals]
           this.loadedFromRemote = true
           persistSources(this.sources)
@@ -341,6 +395,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
       return this.userContext
     },
     async saveRemoteRecord(source) {
+      const previousId = source?.id
       const fallbackUserContext = loadExternalUserContext()
       const userContext = fallbackUserContext || (await this.fetchUserContext())
       const payload = buildRemotePayload(source, this.methodTypes, userContext)
@@ -354,8 +409,27 @@ export const useDataSourcesStore = defineStore('dataSources', {
       const saved = extractRecords(data)[0]
       if (saved) {
         source.remoteMeta = buildRemoteMeta(saved)
-        if (saved.id) {
-          source.id = String(saved.id)
+        if (saved.id !== null && typeof saved.id !== 'undefined') {
+          const normalizedId = String(saved.id)
+          source.id = normalizedId
+          const index = this.sources.findIndex(
+            (item) =>
+              item === source ||
+              item.id === previousId ||
+              String(item.remoteMeta?.id) === normalizedId,
+          )
+          if (index >= 0) {
+            const current = this.sources[index]
+            if (current !== source) {
+              this.sources.splice(index, 1, {
+                ...current,
+                ...source,
+                id: normalizedId,
+              })
+            } else if (current.id !== normalizedId) {
+              current.id = normalizedId
+            }
+          }
         }
         return source.id
       }
@@ -388,11 +462,22 @@ function normalizeRemoteSource(entry = {}, index = 0) {
     entry.requestBody ||
     entry.rawBody ||
     entry.MethodBody
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(baseBody)
+  const {
+    cleanedBody,
+    joins: bodyJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(baseBody)
   const rawBody = cleanedBody || toRawBody(baseBody)
   const headers = entry.headers ||
     entry.Headers || { 'Content-Type': 'application/json' }
-  return {
+  const pushdown = entry.pushdown || entry.Pushdown
+  let computedFields = bodyComputedFields
+  if (computedFields === null) {
+    computedFields = Array.isArray(entry?.computedFields)
+      ? normalizeComputedFields(entry.computedFields)
+      : null
+  }
+  const source = {
     id,
     name,
     description: entry.description || '',
@@ -408,7 +493,12 @@ function normalizeRemoteSource(entry = {}, index = 0) {
       bodyJoins.length
         ? bodyJoins
         : parseJoinConfig(entry.joinConfig || entry.JoinConfig),
+    computedFields,
   }
+  if (pushdown) {
+    source.pushdown = pushdown
+  }
+  return source
 }
 
 function normalizeMethodTypeRecord(entry = {}) {
@@ -519,8 +609,19 @@ function serializeSourcePayload(source = {}) {
       return base
     }
   }
+  if (payload && typeof payload === 'object') {
+    if ('__computedFields' in payload) {
+      delete payload.__computedFields
+    }
+    if ('computedFields' in payload) {
+      delete payload.computedFields
+    }
+  }
   if (Array.isArray(source.joins) && source.joins.length) {
     payload.__joins = source.joins.map(stripJoinPresentationFields)
+  }
+  if (Array.isArray(source.computedFields)) {
+    payload.__computedFields = normalizeComputedFields(source.computedFields)
   }
   return JSON.stringify(payload)
 }
@@ -590,7 +691,11 @@ function applyJoinDefaults(source = {}) {
     source.remoteMeta?.MethodBody ||
     source.remoteMeta?.methodBody ||
     ''
-  const { cleanedBody, joins: bodyJoins } = extractJoinsFromBody(rawBodySource)
+  const {
+    cleanedBody,
+    joins: bodyJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(rawBodySource)
   next.rawBody = cleanedBody || source.rawBody || rawBodySource || ''
   let normalized = normalizeJoinList(source.joins || [])
   if (!normalized.length) {
@@ -602,5 +707,10 @@ function applyJoinDefaults(source = {}) {
     normalized = bodyJoins
   }
   next.joins = normalized
+  next.computedFields =
+    bodyComputedFields ??
+    (Array.isArray(source.computedFields)
+      ? source.computedFields
+      : [])
   return next
 }

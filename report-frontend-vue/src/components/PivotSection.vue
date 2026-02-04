@@ -25,12 +25,24 @@
         переименования и фильтры для каждого поля.
       </p>
 
-      <ul v-if="modelValue.length" class="pivot-card__list">
-        <li v-for="(key, index) in modelValue" :key="`${section}-${key}`" class="pivot-card__item">
+      <ul v-if="selectedKeys.length" class="pivot-card__list">
+        <li
+          v-for="(key, index) in selectedKeys"
+          :key="`${section}-${key}`"
+          class="pivot-card__item"
+        >
           <div class="pivot-card__item-info">
             <span class="pivot-card__drag">☰</span>
             <div>
-              <div class="item-label">{{ displayName(key) }}</div>
+              <div class="item-label">
+                <span>{{ displayName(key) }}</span>
+                <span
+                  v-if="section === 'filters' && isFilterHidden(key)"
+                  class="item-badge"
+                >
+                  Скрыт на дашборде
+                </span>
+              </div>
               <div class="item-key">{{ key }}</div>
             </div>
           </div>
@@ -208,6 +220,17 @@
                 диапазона.
               </p>
             </div>
+            <div v-if="section === 'filters'" class="filter-visibility">
+              <n-switch
+                size="small"
+                :value="isFilterHidden(key)"
+                :disabled="!hasFilter(key)"
+                @update:value="updateFilterVisibility(key, $event)"
+              />
+              <span class="filter-visibility__label">
+                Скрывать на дашборде (значение фиксировано)
+              </span>
+            </div>
             <div class="filter-actions">
               <button class="btn-outline btn-sm" type="button" @click="applyFilters(key)">
                 Применить
@@ -231,6 +254,7 @@ import {
   NDatePicker,
   NInput,
   NInputNumber,
+  NSwitch,
   NTreeSelect,
   NTooltip,
 } from 'naive-ui'
@@ -281,6 +305,10 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  filterVisibilityStore: {
+    type: Object,
+    default: () => ({}),
+  },
   valueOptionsResolver: {
     type: Function,
     default: () => [],
@@ -313,6 +341,7 @@ const emit = defineEmits([
   'update-filter-values',
   'update-range-values',
   'update-filter-mode',
+  'update-filter-visibility',
   'update-sort',
 ])
 
@@ -325,8 +354,20 @@ const rangeDraft = ref(createEmptyRange())
 const activeRangeType = ref('number')
 
 const selectedKeys = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value.filter(Boolean)),
+  get: () => {
+    const value = props.modelValue
+    if (Array.isArray(value)) return value
+    if (value === null || typeof value === 'undefined') return []
+    return [value]
+  },
+  set: (value) => {
+    const next = Array.isArray(value)
+      ? value
+      : value === null || typeof value === 'undefined'
+        ? []
+        : [value]
+    emit('update:modelValue', next.filter(Boolean))
+  },
 })
 
 const fieldTreeOptions = computed(() =>
@@ -417,6 +458,14 @@ function supportsRangeKey(key) {
   return false
 }
 
+function isFilterHidden(key) {
+  return Boolean(props.filterVisibilityStore?.[key])
+}
+
+function updateFilterVisibility(key, hidden) {
+  emit('update-filter-visibility', { key, hidden: Boolean(hidden) })
+}
+
 function fieldRangeType(key) {
   const descriptor = fieldMap.value.get(key)
   if (descriptor?.type === 'date') return 'date'
@@ -488,16 +537,17 @@ function cycleSort(key, type) {
 }
 
 function move(index, delta) {
+  const list = selectedKeys.value
   const next = index + delta
-  if (next < 0 || next >= props.modelValue.length) return
-  const copy = [...props.modelValue]
+  if (next < 0 || next >= list.length) return
+  const copy = [...list]
   const [item] = copy.splice(index, 1)
   copy.splice(next, 0, item)
   emit('update:modelValue', copy)
 }
 
 function remove(key) {
-  const copy = props.modelValue.filter((item) => item !== key)
+  const copy = selectedKeys.value.filter((item) => item !== key)
   emit('update:modelValue', copy)
 }
 
@@ -666,6 +716,17 @@ function resolveInitialFilterMode(key, supports, hasRange) {
   font-size: 12px;
   color: #6b7280;
 }
+.filter-visibility {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #4b5563;
+}
+.filter-visibility__label {
+  line-height: 1.3;
+}
 .filter-actions {
   margin-top: 8px;
   display: flex;
@@ -675,5 +736,21 @@ function resolveInitialFilterMode(key, supports, hasRange) {
 .pivot-card__actions .active {
   border-color: #4338ca;
   color: #4338ca;
+}
+.item-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.item-badge {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 </style>

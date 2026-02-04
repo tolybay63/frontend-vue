@@ -5,6 +5,7 @@ import App from './app/App.vue'
 import { useAuthStore } from '@/shared/stores/auth'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
 import { useNavigationStore } from '@/shared/stores/navigation'
+import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 
 // базовые стили/токены из NSI
 import './shared/styles/tokens.css'
@@ -18,8 +19,19 @@ const authStore = useAuthStore(pinia)
 const pageStore = usePageBuilderStore(pinia)
 const navigationStore = useNavigationStore(pinia)
 
+async function resolveDefaultDashboard() {
+  await pageStore.fetchPages()
+  const orderedPages = pageStore.orderedPages || pageStore.pages
+  const firstPage = orderedPages[0]
+  if (firstPage?.id) {
+    return { path: `/dash/${firstPage.id}`, replace: true }
+  }
+  return null
+}
+
 router.beforeEach(async (to) => {
   await authStore.checkSession()
+  pageStore.syncDashboardOrderUser(authStore.user?.id)
 
   if (to.meta?.public) {
     if (to.path === '/login' && authStore.isAuthenticated) {
@@ -40,31 +52,27 @@ router.beforeEach(async (to) => {
     return loginRoute
   }
 
-  if (authStore.isAuthenticated) {
-    if (!pageStore.pagesLoaded && !pageStore.pagesLoading) {
-      pageStore.fetchPages()
-    }
-    if (to.path.startsWith('/pages')) {
-      pageStore.fetchTemplates(true)
-      pageStore.fetchPages(true)
-      pageStore.fetchLayoutOptions?.()
-      pageStore.fetchWidthOptions?.()
-      pageStore.fetchHeightOptions?.()
-    } else if (!pageStore.templatesLoaded && !pageStore.templatesLoading) {
-      pageStore.fetchTemplates()
-    }
+  const constructorAllowed = hasConstructorAccess(authStore.user)
+
+  if (to.meta?.requiresConstructor && !constructorAllowed) {
+    const redirect = await resolveDefaultDashboard()
+    if (redirect) return redirect
+    return { path: '/', replace: true }
   }
 
-  if (to.path === '/' && pageStore.pages.length) {
-    const firstPage = pageStore.pages[0]
-    if (firstPage?.id) {
-      return { path: `/dash/${firstPage.id}`, replace: true }
-    }
+  if (to.path === '/') {
+    const redirect = await resolveDefaultDashboard()
+    if (redirect) return redirect
   }
 
-  if (to.path === '/data' || to.path === '/') {
+  if (to.path === '/data') {
     if (!navigationStore.consumeDataAccess()) {
-      return { path: '/templates', replace: true }
+      if (constructorAllowed) {
+        return { path: '/templates', replace: true }
+      }
+      const redirect = await resolveDefaultDashboard()
+      if (redirect) return redirect
+      return { path: '/', replace: true }
     }
   }
 

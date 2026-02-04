@@ -7,8 +7,15 @@ import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
 import {
   parseJoinConfig,
   extractJoinsFromBody,
+  normalizeComputedFields,
 } from '@/shared/lib/sourceJoins.js'
 import { normalizeConditionalFormatting } from '@/shared/lib/conditionalFormatting'
+import {
+  DATE_PARTS,
+  buildDatePartKey,
+  formatDatePartFieldLabel,
+  humanizeKey,
+} from '@/shared/lib/pivotUtils'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
@@ -16,8 +23,10 @@ const FALLBACK_AGGREGATORS = {
   avg: { label: 'Среднее', fvFieldVal: 1351, pvFieldVal: 1571 },
   value: { label: 'Значение', fvFieldVal: 0, pvFieldVal: 0 },
 }
+const LOCAL_SOURCES_STORAGE_KEY = 'report-data-sources'
 
 export async function fetchReportViewTemplates() {
+  const localComputedFields = loadLocalComputedFieldMap()
   const [
     presentationsRaw,
     configsRaw,
@@ -37,7 +46,7 @@ export async function fetchReportViewTemplates() {
   const visualizationMap = buildVisualizationLookup(vizRecords)
   const aggregatorMap = buildAggregatorMap(aggRecords)
   const sources = sourcesRaw.map((entry, index) =>
-    normalizeSource(entry, index),
+    normalizeSource(entry, index, localComputedFields),
   )
   const sourceMap = new Map(
     sources.map((source) => [source.remoteId || source.id, source]),
@@ -66,6 +75,11 @@ export async function fetchReportViewTemplates() {
 }
 
 function buildTemplate(presentation, config, source, link) {
+  const snapshot = mergeComputedFieldsIntoSnapshot(
+    buildSnapshot(config),
+    source?.computedFields,
+    config?.headerOverrides,
+  )
   return {
     id: presentation.id,
     name: presentation.name,
@@ -74,7 +88,7 @@ function buildTemplate(presentation, config, source, link) {
     visualizationLabel: presentation.visualizationLabel,
     dataSource: source?.id || source?.remoteId || config?.parentId || '',
     remoteSource: source,
-    snapshot: buildSnapshot(config),
+    snapshot,
     remotePresentation: presentation.remoteMeta,
     remoteConfig: config?.remoteMeta,
     missingConfig: !config,
@@ -244,7 +258,103 @@ function normalizeFilterMode(mode) {
   return ''
 }
 
-function normalizeSource(entry = {}, index = 0) {
+function mergeComputedFieldsIntoSnapshot(
+  snapshot,
+  computedFields,
+  headerOverrides = {},
+) {
+  if (!snapshot || !Array.isArray(computedFields) || !computedFields.length) {
+    return snapshot
+  }
+  const fieldMeta = { ...(snapshot.fieldMeta || {}) }
+  const computedMeta = buildComputedFieldMeta(computedFields)
+  let updated = false
+  Object.entries(computedMeta).forEach(([key, meta]) => {
+    if (!fieldMeta[key]) {
+      fieldMeta[key] = meta
+      updated = true
+    }
+  })
+
+  const filtersMeta = Array.isArray(snapshot.filtersMeta)
+    ? [...snapshot.filtersMeta]
+    : []
+  const filterKeys = new Set(
+    filtersMeta
+      .map((meta) => String(meta?.key || meta?.fieldKey || '').trim())
+      .filter(Boolean),
+  )
+  const filterModes = snapshot.filterModes || {}
+  const filterCandidates = new Set()
+  const pivotFilters = Array.isArray(snapshot.pivot?.filters)
+    ? snapshot.pivot.filters
+    : []
+  pivotFilters.forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  Object.keys(snapshot.filterValues || {}).forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  Object.keys(snapshot.filterRanges || {}).forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  filterCandidates.forEach((key) => {
+    if (!key || filterKeys.has(key)) return
+    const label =
+      (headerOverrides[key] && headerOverrides[key].trim()) ||
+      fieldMeta[key]?.label ||
+      humanizeKey(key)
+    const mode = normalizeFilterMode(filterModes[key] || '')
+    filtersMeta.push({ key, label, values: [], mode })
+    filterKeys.add(key)
+    updated = true
+  })
+
+  if (!updated) return snapshot
+  return {
+    ...snapshot,
+    fieldMeta,
+    filtersMeta,
+  }
+}
+
+function buildComputedFieldMeta(list = []) {
+  const meta = {}
+  list.forEach((field) => {
+    if (!field || typeof field !== 'object') return
+    const key = String(field.fieldKey || '').trim()
+    if (!key || meta[key]) return
+    const type =
+      field.resultType === 'date'
+        ? 'date'
+        : field.resultType === 'text'
+          ? 'string'
+          : 'number'
+    const label = humanizeKey(key)
+    meta[key] = {
+      label,
+      sample: '',
+      values: [],
+      type,
+    }
+    if (type === 'date') {
+      DATE_PARTS.forEach((part) => {
+        const partKey = buildDatePartKey(key, part.key)
+        if (!meta[partKey]) {
+          meta[partKey] = {
+            label: formatDatePartFieldLabel(label, part.key),
+            sample: '',
+            values: [],
+            type: 'string',
+          }
+        }
+      })
+    }
+  })
+  return meta
+}
+
+function normalizeSource(entry = {}, index = 0, localComputedFields = new Map()) {
   const remoteId = toStableId(entry?.id ?? entry?.Id ?? entry?.ID)
   const baseBody =
     entry?.MethodBody ||
@@ -253,10 +363,27 @@ function normalizeSource(entry = {}, index = 0) {
     entry?.requestBody ||
     entry?.rawBody ||
     ''
-  const { cleanedBody, joins: embeddedJoins } = extractJoinsFromBody(baseBody)
+  const {
+    cleanedBody,
+    joins: embeddedJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(baseBody)
   const formattedBody = cleanedBody || baseBody
   const parsedBody = parseMaybeJson(formattedBody || baseBody)
   const joinConfig = parseJoinConfig(entry?.joinConfig || entry?.JoinConfig)
+  const rawComputed =
+    entry?.computedFields ||
+    entry?.ComputedFields ||
+    entry?.computed_fields ||
+    null
+  let computedFields = bodyComputedFields
+  if (computedFields === null) {
+    computedFields = Array.isArray(rawComputed)
+      ? normalizeComputedFields(rawComputed)
+      : remoteId && localComputedFields.has(remoteId)
+        ? normalizeComputedFields(localComputedFields.get(remoteId))
+        : []
+  }
   return {
     id: remoteId || createLocalId(`source-${index}`),
     remoteId,
@@ -268,8 +395,54 @@ function normalizeSource(entry = {}, index = 0) {
     headers: parseHeaderPayload(entry?.headers || entry?.Headers),
     rawBody: formatRawBody(formattedBody),
     joins: embeddedJoins.length ? embeddedJoins : joinConfig,
+    computedFields,
     remoteMeta: entry || {},
   }
+}
+
+function loadLocalComputedFieldMap() {
+  if (typeof window === 'undefined') return new Map()
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SOURCES_STORAGE_KEY)
+    if (!raw) return new Map()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Map()
+    const map = new Map()
+    parsed.forEach((source) => {
+      if (!source || !Array.isArray(source.computedFields)) return
+      const remoteId = toStableId(
+        source.remoteId ||
+          source.remoteMeta?.id ||
+          source.remoteMeta?.Id ||
+          source.remoteMeta?.ID ||
+          source.id,
+      )
+      if (remoteId) {
+        map.set(remoteId, source.computedFields)
+      }
+    })
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+function normalizeMetricEnabled(value) {
+  if (value === null || typeof value === 'undefined') return null
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return null
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  }
+  return null
+}
+
+function resolveMetricEnabled(saved) {
+  const normalized = normalizeMetricEnabled(saved?.enabled)
+  return normalized === null ? true : normalized
 }
 
 function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
@@ -290,7 +463,7 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           id: saved.id || createLocalId(`metric-${index}`),
           type: 'formula',
           title: saved.title || '',
-          enabled: saved.enabled !== false,
+          enabled: resolveMetricEnabled(saved),
           showRowTotals: saved.showRowTotals !== false,
           showColumnTotals: saved.showColumnTotals !== false,
           expression: saved.expression || '',
@@ -304,6 +477,7 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
           detailFields: Array.isArray(saved?.detailFields)
             ? saved.detailFields
             : [],
+          detailFilter: saved?.detailFilter || null,
         })
         return
       }
@@ -347,12 +521,15 @@ function buildNormalizedMetric(
     ? Number(saved.precision)
     : 2
   return {
-    id: entry?.idMetricsComplex
-      ? String(entry.idMetricsComplex)
-      : saved?.id || createLocalId(`metric-${index}`),
+    id:
+      saved?.id ||
+      (entry?.idMetricsComplex
+        ? String(entry.idMetricsComplex)
+        : createLocalId(`metric-${index}`)),
     type: 'base',
     fieldKey,
     aggregator,
+    enabled: resolveMetricEnabled(saved),
     fieldLabel: saved?.title || entry?.FieldLabel || fieldKey,
     outputFormat:
       saved?.outputFormat ||
@@ -367,6 +544,7 @@ function buildNormalizedMetric(
     detailFields: Array.isArray(saved?.detailFields)
       ? saved.detailFields
       : [],
+    detailFilter: saved?.detailFilter || null,
     remoteMeta: entry || {},
   }
 }

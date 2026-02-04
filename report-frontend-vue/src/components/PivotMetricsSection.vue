@@ -134,6 +134,43 @@
             Эти поля будут показаны при раскрытии значения.
           </small>
         </label>
+        <label v-if="metric.type !== 'formula'" class="metric-field">
+          <span>Фильтр детализации</span>
+          <n-select
+            :value="getDetailFilter(metric).mode"
+            :options="detailFilterOptions"
+            size="large"
+            @update:value="(value) => updateDetailFilter(metric, { mode: value })"
+          />
+          <small class="metric-hint">
+            Ограничивает записи в детализации по полю метрики.
+          </small>
+        </label>
+        <div
+          v-if="metric.type !== 'formula' && getDetailFilter(metric).mode === 'custom'"
+          class="metric-field metric-detail-filter"
+        >
+          <span>Условие</span>
+          <div class="metric-detail-filter__row">
+            <n-select
+              :value="getDetailFilter(metric).op"
+              :options="detailFilterOperatorOptions"
+              size="large"
+              class="metric-detail-filter__operator"
+              @update:value="
+                (value) => updateDetailFilter(metric, { op: value })
+              "
+            />
+            <n-input
+              :value="getDetailFilter(metric).value"
+              placeholder="Значение"
+              size="large"
+              @update:value="
+                (value) => updateDetailFilter(metric, { value })
+              "
+            />
+          </div>
+        </div>
         <div class="metric-settings">
           <n-checkbox v-model:checked="metric.enabled">
             Показывать в таблице
@@ -372,12 +409,31 @@ const fieldOptions = computed(() =>
     value: field.key,
   })),
 )
-const detailFieldOptions = computed(() =>
-  props.fields.map((field) => ({
-    label: props.getFieldLabel ? props.getFieldLabel(field.key) : field.label,
-    value: field.key,
-  })),
-)
+const detailFieldOptions = computed(() => {
+  const options = []
+  const seen = new Set()
+  const labelFor = (key, fallbackLabel) =>
+    props.getFieldLabel ? props.getFieldLabel(key) : fallbackLabel || key
+  props.fields.forEach((field) => {
+    if (!field?.key) return
+    const baseLabel = labelFor(field.key, field.label)
+    if (!seen.has(field.key)) {
+      seen.add(field.key)
+      options.push({ label: baseLabel, value: field.key })
+    }
+    if (Array.isArray(field.dateParts)) {
+      field.dateParts.forEach((part) => {
+        if (!part?.key || seen.has(part.key)) return
+        seen.add(part.key)
+        options.push({
+          label: labelFor(part.key, part.label || baseLabel),
+          value: part.key,
+        })
+      })
+    }
+  })
+  return options
+})
 const aggregatorOptions = computed(() => props.aggregators)
 const metricTokens = computed(() => props.metricTokens || [])
 const metricTypeOptions = [
@@ -404,6 +460,22 @@ const valueFormatOptions = [
   { label: 'Проценты', value: 'percent' },
   { label: 'Валюта (₽)', value: 'currency' },
   { label: 'Текст', value: 'text' },
+]
+const detailFilterOptions = [
+  { label: 'Нет', value: 'none' },
+  { label: 'Флаг = 1', value: 'flag' },
+  { label: 'Не пусто', value: 'not_empty' },
+  { label: '> 0', value: 'gt0' },
+  { label: '>= 1', value: 'gte1' },
+  { label: 'Кастом', value: 'custom' },
+]
+const detailFilterOperatorOptions = [
+  { label: '=', value: 'eq' },
+  { label: '!=', value: 'ne' },
+  { label: '>', value: 'gt' },
+  { label: '>=', value: 'gte' },
+  { label: '<', value: 'lt' },
+  { label: '<=', value: 'lte' },
 ]
 
 function switchMetricType(metric, nextType) {
@@ -438,6 +510,34 @@ function isNumericFormat(format) {
     format === 'percent' ||
     format === 'currency'
   )
+}
+
+function normalizeDetailFilter(value = null) {
+  const safe = value && typeof value === 'object' ? value : {}
+  const mode = detailFilterOptions.some((option) => option.value === safe.mode)
+    ? safe.mode
+    : 'none'
+  const op = detailFilterOperatorOptions.some(
+    (option) => option.value === safe.op,
+  )
+    ? safe.op
+    : 'eq'
+  const rawValue =
+    safe.value === null || typeof safe.value === 'undefined' ? '' : safe.value
+  return { mode, op, value: rawValue }
+}
+
+function getDetailFilter(metric) {
+  return normalizeDetailFilter(metric?.detailFilter)
+}
+
+function updateDetailFilter(metric, patch = {}) {
+  if (!metric) return
+  const current =
+    metric.detailFilter && typeof metric.detailFilter === 'object'
+      ? metric.detailFilter
+      : {}
+  metric.detailFilter = normalizeDetailFilter({ ...current, ...patch })
 }
 
 watch(
@@ -627,6 +727,14 @@ function clamp01(value) {
   font-size: 12px;
   color: #6b7280;
 }
+.metric-detail-filter__row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.metric-detail-filter__operator {
+  min-width: 90px;
+}
 .formula-hints {
   font-size: 12px;
   background: #fff;
@@ -640,7 +748,7 @@ function clamp01(value) {
   padding-left: 16px;
 }
 .formula-hints code {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
   font-size: 11px;
   background: #f3f4f6;
   padding: 2px 4px;

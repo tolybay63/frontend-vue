@@ -2,16 +2,31 @@
   <section class="page">
     <header class="page__header">
       <div>
-        <h1>Управление представлениями данных</h1>
+        <h1>Представления данных</h1>
         <p class="muted">
-          Создавайте и редактируйте сохраненные конфигурации данных. Их можно
-          повторно использовать при настройке произвольных страниц.
+          Представления — финальный результат работы конструктора. Источники и
+          конфигурации доступны как расширенные настройки.
         </p>
       </div>
       <button class="btn-primary" type="button" @click="goToData">
         Создать представление
       </button>
     </header>
+
+    <ConstructorTabs />
+
+    <div class="info-card">
+      <div>
+        <div class="info-card__title">Мастер создания представления</div>
+        <p class="muted">
+          Быстрый сценарий: источник → конфигурация → представление. Можно
+          вернуться на любой шаг и переиспользовать данные.
+        </p>
+      </div>
+      <button class="btn-outline btn-sm" type="button" @click="goToData">
+        Запустить мастер
+      </button>
+    </div>
 
     <div v-if="loading" class="empty-state">
       <p>Загружаем представления...</p>
@@ -30,136 +45,453 @@
       </p>
     </div>
 
-    <div v-else class="grid">
-      <article v-for="view in views" :key="view.id" class="card">
-        <header class="card__header">
-          <div>
-            <h2>{{ view.name }}</h2>
-          </div>
-          <span class="tag">{{
-            view.source?.name || 'Источник не найден'
-          }}</span>
-        </header>
-
-        <p class="card__description">
-          {{ view.description || 'Без описания' }}
-        </p>
-
-        <div class="card__actions">
-          <button
-            class="icon-btn"
-            type="button"
-            aria-label="Открыть представление"
-            title="Открыть представление"
-            @click="previewView(view)"
-          >
-            <span class="icon icon-eye" />
-          </button>
-          <button
-            class="icon-btn"
-            type="button"
-            :class="{ 'is-active': detailsId === view.id }"
-            :aria-label="
-              detailsId === view.id ? 'Скрыть детали' : 'Показать детали'
-            "
-            :title="detailsId === view.id ? 'Скрыть детали' : 'Показать детали'"
-            @click="toggleDetails(view.id)"
-          >
-            <span class="icon icon-info" />
-          </button>
-          <button
-            class="icon-btn"
-            type="button"
-            aria-label="Редактировать представление"
-            @click="startEdit(view)"
-          >
-            <span class="icon icon-edit" />
-          </button>
-          <button
-            class="icon-btn icon-btn--danger"
-            type="button"
-            aria-label="Удалить представление"
-            @click="removeView(view)"
-          >
-            <span class="icon icon-trash" />
-          </button>
-        </div>
-
-        <form
-          v-if="editingId === view.id"
-          class="edit-form"
-          @submit.prevent="submitEdit(view.id)"
-        >
-          <label class="field">
-            <span>Название</span>
-            <input v-model="editDraft.name" required />
-          </label>
-          <label class="field">
-            <span>Описание</span>
-            <textarea v-model="editDraft.description" rows="3" />
-          </label>
-          <label class="field">
-            <span>Визуализация</span>
-            <select
-              v-model="editDraft.visualization"
-              :disabled="!visualizationOptions.length"
-            >
-              <option value="" disabled>Выберите тип</option>
-              <option
-                v-for="option in visualizationOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <div class="edit-form__actions">
+    <template v-else>
+      <div class="page-toolbar">
+        <div class="view-controls">
+          <span class="muted">Вид:</span>
+          <div class="view-toggle">
             <button
-              class="btn-outline btn-sm"
+              v-for="option in viewModeOptions"
+              :key="option.value"
+              class="icon-btn"
+              :class="{ 'is-active': viewMode === option.value }"
               type="button"
-              @click="cancelEdit"
+              :title="option.label"
+              :aria-label="option.label"
+              @click="setViewMode(option.value)"
             >
-              Отмена
-            </button>
-            <button
-              class="btn-primary btn-sm"
-              type="submit"
-              :disabled="editSaving"
-            >
-              {{ editSaving ? 'Сохраняем...' : 'Сохранить' }}
+              <span class="icon" :class="option.icon" />
             </button>
           </div>
-        </form>
+        </div>
+      </div>
 
-        <transition name="fade">
-          <dl v-if="detailsId === view.id" class="card__details">
-            <dt>Источник</dt>
-            <dd>{{ view.source?.name || 'Не найден' }}</dd>
-            <dt>Конфигурация</dt>
-            <dd>{{ view.config?.name || '—' }}</dd>
-            <dt>Визуализация</dt>
-            <dd>{{ view.visualizationLabel || 'Тип не указан' }}</dd>
-            <dt>Строки</dt>
-            <dd>{{ formatFields(view.rows, view.headerOverrides) }}</dd>
-            <dt>Столбцы</dt>
-            <dd>{{ formatFields(view.columns, view.headerOverrides) }}</dd>
-            <dt>Фильтры</dt>
-            <dd>{{ formatFields(view.filters, view.headerOverrides) }}</dd>
-            <dt>Метрики</dt>
-            <dd>{{ formatMetrics(view.metrics) }}</dd>
-            <dt>Сохранено</dt>
-            <dd>{{ formatDate(view.createdAt) }}</dd>
-          </dl>
-        </transition>
-      </article>
-    </div>
+      <div v-if="viewMode === 'cards'" class="grid">
+        <article v-for="view in views" :key="view.id" class="card">
+          <header class="card__header">
+            <div>
+              <h2>{{ view.name }}</h2>
+            </div>
+            <span class="tag">{{
+              view.source?.name || 'Источник не найден'
+            }}</span>
+          </header>
+
+          <p class="card__description multiline-text">
+            {{ view.description || 'Без описания' }}
+          </p>
+
+          <div class="card__actions">
+            <button
+              class="icon-btn"
+              type="button"
+              aria-label="Открыть представление"
+              title="Открыть представление"
+              @click="previewView(view)"
+            >
+              <span class="icon icon-eye" />
+            </button>
+            <button
+              class="icon-btn"
+              type="button"
+              :class="{ 'is-active': detailsId === view.id }"
+              :aria-label="
+                detailsId === view.id ? 'Скрыть детали' : 'Показать детали'
+              "
+              :title="
+                detailsId === view.id ? 'Скрыть детали' : 'Показать детали'
+              "
+              @click="toggleDetails(view.id)"
+            >
+              <span class="icon icon-info" />
+            </button>
+            <button
+              class="icon-btn"
+              type="button"
+              aria-label="Редактировать представление"
+              @click="startEdit(view)"
+            >
+              <span class="icon icon-edit" />
+            </button>
+            <button
+              class="icon-btn icon-btn--danger"
+              type="button"
+              aria-label="Удалить представление"
+              @click="removeView(view)"
+            >
+              <span class="icon icon-trash" />
+            </button>
+          </div>
+
+          <form
+            v-if="editingId === view.id"
+            class="edit-form"
+            @submit.prevent="submitEdit(view.id)"
+          >
+            <label class="field">
+              <span>Название</span>
+              <input v-model="editDraft.name" required />
+            </label>
+            <label class="field">
+              <span>Описание</span>
+              <textarea v-model="editDraft.description" rows="3" />
+            </label>
+            <label class="field">
+              <span>Визуализация</span>
+              <select
+                v-model="editDraft.visualization"
+                :disabled="!visualizationOptions.length"
+              >
+                <option value="" disabled>Выберите тип</option>
+                <option
+                  v-for="option in visualizationOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <div class="edit-form__actions">
+              <button
+                class="btn-outline btn-sm"
+                type="button"
+                @click="cancelEdit"
+              >
+                Отмена
+              </button>
+              <button
+                class="btn-primary btn-sm"
+                type="submit"
+                :disabled="editSaving"
+              >
+                {{ editSaving ? 'Сохраняем...' : 'Сохранить' }}
+              </button>
+            </div>
+          </form>
+
+          <transition name="fade">
+            <dl v-if="detailsId === view.id" class="card__details">
+              <dt>Источник</dt>
+              <dd>{{ view.source?.name || 'Не найден' }}</dd>
+              <dt>Конфигурация</dt>
+              <dd>{{ view.config?.name || '—' }}</dd>
+              <dt>Визуализация</dt>
+              <dd>{{ view.visualizationLabel || 'Тип не указан' }}</dd>
+              <dt>Строки</dt>
+              <dd>{{ formatFields(view.rows, view.headerOverrides) }}</dd>
+              <dt>Столбцы</dt>
+              <dd>{{ formatFields(view.columns, view.headerOverrides) }}</dd>
+              <dt>Фильтры</dt>
+              <dd>{{ formatFields(view.filters, view.headerOverrides) }}</dd>
+              <dt>Метрики</dt>
+              <dd>{{ formatMetrics(view.metrics) }}</dd>
+              <dt>Сохранено</dt>
+              <dd>{{ formatDate(view.createdAt) }}</dd>
+            </dl>
+          </transition>
+        </article>
+      </div>
+
+      <div v-else-if="viewMode === 'table'" class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Представление</th>
+              <th>Источник</th>
+              <th>Визуализация</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="view in views" :key="view.id">
+              <tr>
+                <td>
+                  <div class="cell-title">{{ view.name }}</div>
+                  <div class="cell-muted">
+                    {{ view.description || 'Без описания' }}
+                  </div>
+                </td>
+                <td>{{ view.source?.name || 'Источник не найден' }}</td>
+                <td>{{ view.visualizationLabel || 'Тип не указан' }}</td>
+                <td class="cell-actions">
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    aria-label="Открыть представление"
+                    title="Открыть представление"
+                    @click="previewView(view)"
+                  >
+                    <span class="icon icon-eye" />
+                  </button>
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    :class="{ 'is-active': detailsId === view.id }"
+                    :aria-label="
+                      detailsId === view.id
+                        ? 'Скрыть детали'
+                        : 'Показать детали'
+                    "
+                    :title="
+                      detailsId === view.id
+                        ? 'Скрыть детали'
+                        : 'Показать детали'
+                    "
+                    @click="toggleDetails(view.id)"
+                  >
+                    <span class="icon icon-info" />
+                  </button>
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    aria-label="Редактировать представление"
+                    @click="startEdit(view)"
+                  >
+                    <span class="icon icon-edit" />
+                  </button>
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    type="button"
+                    aria-label="Удалить представление"
+                    @click="removeView(view)"
+                  >
+                    <span class="icon icon-trash" />
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="editingId === view.id">
+                <td colspan="4">
+                  <form
+                    class="edit-form edit-form--table"
+                    @submit.prevent="submitEdit(view.id)"
+                  >
+                    <label class="field">
+                      <span>Название</span>
+                      <input v-model="editDraft.name" required />
+                    </label>
+                    <label class="field">
+                      <span>Описание</span>
+                      <textarea v-model="editDraft.description" rows="3" />
+                    </label>
+                    <label class="field">
+                      <span>Визуализация</span>
+                      <select
+                        v-model="editDraft.visualization"
+                        :disabled="!visualizationOptions.length"
+                      >
+                        <option value="" disabled>Выберите тип</option>
+                        <option
+                          v-for="option in visualizationOptions"
+                          :key="option.value"
+                          :value="option.value"
+                        >
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+                    <div class="edit-form__actions">
+                      <button
+                        class="btn-outline btn-sm"
+                        type="button"
+                        @click="cancelEdit"
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        class="btn-primary btn-sm"
+                        type="submit"
+                        :disabled="editSaving"
+                      >
+                        {{ editSaving ? 'Сохраняем...' : 'Сохранить' }}
+                      </button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+              <tr v-if="detailsId === view.id">
+                <td colspan="4">
+                  <dl class="table-details">
+                    <dt>Источник</dt>
+                    <dd>{{ view.source?.name || 'Не найден' }}</dd>
+                    <dt>Конфигурация</dt>
+                    <dd>{{ view.config?.name || '—' }}</dd>
+                    <dt>Визуализация</dt>
+                    <dd>{{ view.visualizationLabel || 'Тип не указан' }}</dd>
+                    <dt>Строки</dt>
+                    <dd>{{ formatFields(view.rows, view.headerOverrides) }}</dd>
+                    <dt>Столбцы</dt>
+                    <dd>
+                      {{ formatFields(view.columns, view.headerOverrides) }}
+                    </dd>
+                    <dt>Фильтры</dt>
+                    <dd>{{ formatFields(view.filters, view.headerOverrides) }}</dd>
+                    <dt>Метрики</dt>
+                    <dd>{{ formatMetrics(view.metrics) }}</dd>
+                    <dt>Сохранено</dt>
+                    <dd>{{ formatDate(view.createdAt) }}</dd>
+                  </dl>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-else class="list">
+        <div v-for="view in views" :key="view.id" class="list-item">
+          <button
+            class="list-toggle"
+            type="button"
+            :aria-expanded="isExpanded(view.id)"
+            @click="toggleExpanded(view.id)"
+          >
+            <span>{{ view.name }}</span>
+            <span
+              class="list-chevron"
+              :class="{ 'is-open': isExpanded(view.id) }"
+            />
+          </button>
+          <div v-if="isExpanded(view.id)" class="list-card">
+            <article class="card">
+              <header class="card__header">
+                <div>
+                  <h2>{{ view.name }}</h2>
+                </div>
+                <span class="tag">{{
+                  view.source?.name || 'Источник не найден'
+                }}</span>
+              </header>
+
+              <p class="card__description multiline-text">
+                {{ view.description || 'Без описания' }}
+              </p>
+
+              <div class="card__actions">
+                <button
+                  class="icon-btn"
+                  type="button"
+                  aria-label="Открыть представление"
+                  title="Открыть представление"
+                  @click="previewView(view)"
+                >
+                  <span class="icon icon-eye" />
+                </button>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  :class="{ 'is-active': detailsId === view.id }"
+                  :aria-label="
+                    detailsId === view.id
+                      ? 'Скрыть детали'
+                      : 'Показать детали'
+                  "
+                  :title="
+                    detailsId === view.id
+                      ? 'Скрыть детали'
+                      : 'Показать детали'
+                  "
+                  @click="toggleDetails(view.id)"
+                >
+                  <span class="icon icon-info" />
+                </button>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  aria-label="Редактировать представление"
+                  @click="startEdit(view)"
+                >
+                  <span class="icon icon-edit" />
+                </button>
+                <button
+                  class="icon-btn icon-btn--danger"
+                  type="button"
+                  aria-label="Удалить представление"
+                  @click="removeView(view)"
+                >
+                  <span class="icon icon-trash" />
+                </button>
+              </div>
+
+              <form
+                v-if="editingId === view.id"
+                class="edit-form"
+                @submit.prevent="submitEdit(view.id)"
+              >
+                <label class="field">
+                  <span>Название</span>
+                  <input v-model="editDraft.name" required />
+                </label>
+                <label class="field">
+                  <span>Описание</span>
+                  <textarea v-model="editDraft.description" rows="3" />
+                </label>
+                <label class="field">
+                  <span>Визуализация</span>
+                  <select
+                    v-model="editDraft.visualization"
+                    :disabled="!visualizationOptions.length"
+                  >
+                    <option value="" disabled>Выберите тип</option>
+                    <option
+                      v-for="option in visualizationOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+                <div class="edit-form__actions">
+                  <button
+                    class="btn-outline btn-sm"
+                    type="button"
+                    @click="cancelEdit"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    class="btn-primary btn-sm"
+                    type="submit"
+                    :disabled="editSaving"
+                  >
+                    {{ editSaving ? 'Сохраняем...' : 'Сохранить' }}
+                  </button>
+                </div>
+              </form>
+
+              <transition name="fade">
+                <dl v-if="detailsId === view.id" class="card__details">
+                  <dt>Источник</dt>
+                  <dd>{{ view.source?.name || 'Не найден' }}</dd>
+                  <dt>Конфигурация</dt>
+                  <dd>{{ view.config?.name || '—' }}</dd>
+                  <dt>Визуализация</dt>
+                  <dd>{{ view.visualizationLabel || 'Тип не указан' }}</dd>
+                  <dt>Строки</dt>
+                  <dd>{{ formatFields(view.rows, view.headerOverrides) }}</dd>
+                  <dt>Столбцы</dt>
+                  <dd>{{ formatFields(view.columns, view.headerOverrides) }}</dd>
+                  <dt>Фильтры</dt>
+                  <dd>{{ formatFields(view.filters, view.headerOverrides) }}</dd>
+                  <dt>Метрики</dt>
+                  <dd>{{ formatMetrics(view.metrics) }}</dd>
+                  <dt>Сохранено</dt>
+                  <dd>{{ formatDate(view.createdAt) }}</dd>
+                </dl>
+              </transition>
+            </article>
+          </div>
+        </div>
+      </div>
+    </template>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ConstructorTabs from '@/components/ConstructorTabs.vue'
 import { fetchFactorValues } from '@/shared/api/objects'
 import {
   loadReportConfigurations,
@@ -171,6 +503,7 @@ import {
 import { useNavigationStore } from '@/shared/stores/navigation'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import { humanizeKey } from '@/shared/lib/pivotUtils'
+import { trackEvent } from '@/shared/lib/analytics'
 
 const router = useRouter()
 const navigationStore = useNavigationStore()
@@ -180,6 +513,14 @@ const loadError = ref('')
 const detailsId = ref('')
 const editingId = ref('')
 const editSaving = ref(false)
+const VIEW_MODE_KEY = 'constructor-view-mode:templates'
+const viewModeOptions = [
+  { value: 'cards', label: 'Карточки', icon: 'icon-cards' },
+  { value: 'table', label: 'Таблица', icon: 'icon-table' },
+  { value: 'list', label: 'Список', icon: 'icon-list' },
+]
+const viewMode = ref(loadViewMode())
+const expandedItems = reactive({})
 const visualizationTypes = ref([])
 const fieldDictionaryStore = useFieldDictionaryStore()
 const dictionaryLabels = computed(() => fieldDictionaryStore.labelMap || {})
@@ -191,10 +532,36 @@ const editDraft = reactive({
 })
 
 onMounted(() => {
+  trackEvent('constructor_nav_open', { section: 'presentations' })
   fieldDictionaryStore.fetchDictionary()
   fetchVisualizations()
   fetchViews()
 })
+
+function loadViewMode() {
+  if (typeof window === 'undefined') return 'cards'
+  const stored = window.localStorage.getItem(VIEW_MODE_KEY)
+  if (viewModeOptions.some((option) => option.value === stored)) {
+    return stored
+  }
+  return 'cards'
+}
+
+function setViewMode(mode) {
+  viewMode.value = mode
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(VIEW_MODE_KEY, mode)
+  }
+}
+
+function toggleExpanded(id) {
+  if (!id) return
+  expandedItems[id] = !expandedItems[id]
+}
+
+function isExpanded(id) {
+  return Boolean(expandedItems[id])
+}
 
 const visualizationLookup = computed(() => {
   const byValue = new Map()
@@ -222,6 +589,8 @@ const visualizationOptions = computed(() =>
 
 function goToData() {
   navigationStore.allowDataAccess()
+  navigationStore.startViewCreation()
+  trackEvent('view_creation_start', { source: 'templates' })
   router.push('/data')
 }
 
@@ -237,6 +606,7 @@ function previewView(view) {
     return
   }
   navigationStore.allowDataAccess()
+  trackEvent('presentation_open', { id: presentationId })
   router.push({
     path: '/data',
     query: { sourceId, configId, presentationId },
@@ -283,6 +653,9 @@ async function fetchViews() {
     })
   } catch (err) {
     console.warn('Failed to load report views', err)
+    trackEvent('presentation_load_error', {
+      message: String(err?.message || err),
+    })
     loadError.value = 'Не удалось загрузить представления. Попробуйте позже.'
     views.value = []
   } finally {
@@ -355,8 +728,13 @@ async function submitEdit(viewId) {
     await saveReportPresentation('upd', payload)
     await fetchViews()
     cancelEdit()
+    trackEvent('presentation_updated', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to update presentation', err)
+    trackEvent('presentation_update_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось сохранить представление. Попробуйте позже.')
   } finally {
     editSaving.value = false
@@ -379,8 +757,13 @@ async function removeView(view) {
       cancelEdit()
     }
     await fetchViews()
+    trackEvent('presentation_deleted', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to delete presentation', err)
+    trackEvent('presentation_delete_error', {
+      id: String(remoteId),
+      message: String(err?.message || err),
+    })
     alert('Не удалось удалить представление. Попробуйте позже.')
   }
 }
@@ -767,6 +1150,10 @@ function readUserMeta() {
   align-items: center;
   background: #f8fafc;
 }
+.info-card__title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
 .empty-state {
   border: 1px dashed #d1d5db;
   border-radius: 12px;
@@ -780,10 +1167,132 @@ function readUserMeta() {
   border-color: #fecaca;
   color: #b91c1c;
 }
+.page-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+.view-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.view-toggle .icon-btn.is-active {
+  background: #e0e7ff;
+  border-color: #c7d2fe;
+  color: #1d4ed8;
+}
 .grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+.table-wrap {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+.data-table th {
+  background: #f8fafc;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  font-weight: 600;
+}
+.data-table th:nth-child(2),
+.data-table td:nth-child(2) {
+  min-width: 180px;
+}
+.data-table th:nth-child(3),
+.data-table td:nth-child(3) {
+  min-width: 160px;
+}
+.data-table th:last-child,
+.data-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+.cell-title {
+  font-weight: 600;
+}
+.cell-muted {
+  color: #6b7280;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.cell-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.table-details {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.table-details dt {
+  color: #6b7280;
+}
+.table-details dd {
+  margin: 0;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.list-toggle {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.list-card {
+  margin-top: 6px;
+}
+.list-chevron {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  background: currentColor;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+.list-chevron.is-open {
+  transform: rotate(0deg);
 }
 .card {
   border: 1px solid #e5e7eb;

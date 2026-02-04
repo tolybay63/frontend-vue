@@ -1,9 +1,4 @@
 __pycache__/
 **/__pycache__/
 *.pyc
-
 batch_results/
-build/
-dist/
-.venv/
-

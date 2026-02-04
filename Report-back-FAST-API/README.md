@@ -50,8 +50,6 @@ docker images | grep report-back-fast-api
 cp .env.example .env
 
 Пример .env:
-
-SERVICE360_BASE_URL=http://77.245.107.213
 REPORT_FILTERS_MAX_VALUES=200
 REPORT_FILTERS_CACHE_TTL=30
 REPORT_FILTERS_CACHE_MAX=20
@@ -59,6 +57,7 @@ REPORT_MAX_RECORDS=100000
 REPORT_REMOTE_ALLOWLIST=77.245.107.213
 REPORT_DEBUG_FILTERS=0
 REPORT_DEBUG_JOINS=0
+CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 REDIS_URL=redis://localhost:6379/0
 BATCH_CONCURRENCY=5
 BATCH_MAX_ITEMS=100
@@ -68,6 +67,15 @@ UPSTREAM_BASE_URL=http://77.245.107.213
 # UPSTREAM_URL=http://77.245.107.213/dtj/api/plan
 UPSTREAM_TIMEOUT=30
 UPSTREAM_ALLOWLIST=77.245.107.213
+
+Пример .env.production (backend):
+UPSTREAM_BASE_URL=http://77.245.107.213
+UPSTREAM_ALLOWLIST=77.245.107.213
+REPORT_REMOTE_ALLOWLIST=77.245.107.213
+# CORS_ALLOW_ORIGINS=https://your-frontend-domain
+ASYNC_REPORTS=1
+# Для быстрых запросов фронт может добавить ?sync=1 или X-Report-Sync: 1.
+REPORT_STREAMING_ON_LIMIT=1
 
 3. Запустить контейнер
    docker rm -f report-back-fast-api 2>/dev/null || true
@@ -100,6 +108,8 @@ BATCH_RESULTS_TTL_SECONDS — TTL для файлов в ./batch_results (авт
 ASYNC_REPORTS — включает асинхронный режим для /api/report/view (0/1). По умолчанию 0.
 
 REPORT_STREAMING — включает потоковый режим построения /api/report/view (0/1). По умолчанию 0.
+REPORT_STREAMING_ON_LIMIT — автоматически переключает /api/report/view на streaming при превышении REPORT_MAX_RECORDS (0/1). По умолчанию 1.
+REPORT_STREAMING_MAX_RECORDS — лимит записей для streaming-режима (0 = без лимита).
 
 REPORT_CHUNK_SIZE — размер чанка для потоковой агрегации (по умолчанию 1000).
 
@@ -114,6 +124,8 @@ REPORT_PAGING_MAX_PAGES — максимальное число страниц �
 REPORT_UPSTREAM_PAGING — dev override для paging без allowlist (0/1).
 
 REPORT_JOIN_LOOKUP_MAX_KEYS — лимит уникальных ключей в lookup для join-источников (streaming-режим).
+REPORT_JOIN_MAX_RECORDS — лимит записей после применения joins (0 = без лимита).
+REPORT_JOIN_SOURCE_MAX_RECORDS — лимит записей в join-источниках (0 = без лимита).
 
 REPORT_JOB_TTL_SECONDS — TTL для report job и результатов.
 
@@ -139,6 +151,17 @@ REPORT_PUSHDOWN_SAFE_ONLY — разрешать pushdown только для б
 
 REPORT_PUSHDOWN_OVERRIDE — dev override для pushdown без allowlist (0/1). По умолчанию 0.
 
+CORS
+
+CORS_ALLOW_ORIGINS — список разрешённых origins через запятую.
+Если не задан — используется дефолтный список (localhost + 127.0.0.1 + 192.168.1.81).
+Если задано `*` — разрешены все origins (осторожно с `allow_credentials=true`).
+
+Профили окружений (рекомендации)
+
+- Dev: ASYNC_REPORTS=0, REPORT_STREAMING_ON_LIMIT=0 (проще дебажить и быстрее получать ошибки).
+- Prod: ASYNC_REPORTS=1, REPORT_STREAMING_ON_LIMIT=1 (нет таймаутов, плавный fallback на streaming).
+
 OTEL_ENABLED — включает OpenTelemetry tracing (0/1). По умолчанию 0.
 
 OTEL_SERVICE_NAME — имя сервиса для tracing (по умолчанию report-back-fast-api).
@@ -150,6 +173,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT — endpoint для OTLP exporter. Если NO_NETWO
 Async report mode (Stage 1)
 
 - Включение: ASYNC_REPORTS=1.
+- Переменная задаётся только на backend (env контейнера/процесса).
 - По умолчанию /api/report/view возвращает 202 + {job_id, status:"queued"}.
 - Принудительный синхронный режим (fallback): добавьте query `?sync=1` или заголовок `X-Report-Sync: 1`.
 - Статус/результат: GET /api/report/jobs/{job_id}.

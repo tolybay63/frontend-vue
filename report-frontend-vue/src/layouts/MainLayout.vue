@@ -39,21 +39,60 @@
         :style="siderStyle"
       >
         <nav class="sider__nav">
-          <div v-if="navPages.length" class="sider__section">
-            <div class="sider__section-title">Дашборды</div>
-            <RouterLink
-              v-for="page in navPages"
-              :key="page.id"
-              :to="`/dash/${page.id}`"
-              class="sider__link"
-              active-class="is-active"
-            >
-              <span class="sider__icon icon-chart" />
-              <span class="sider__label">{{
-                page.menuTitle || page.pageTitle
-              }}</span>
-            </RouterLink>
-          </div>
+            <div v-if="navPages.length" class="sider__section">
+              <div class="sider__section-title">Дашборды</div>
+              <div v-for="page in navPages" :key="page.id">
+                <div class="sider__link-row">
+                  <RouterLink
+                    :to="`/dash/${page.id}`"
+                    class="sider__link"
+                    active-class="is-active"
+                    :title="asideCollapsed ? (page.menuTitle || page.pageTitle) : ''"
+                    :aria-label="page.menuTitle || page.pageTitle"
+                  >
+                    <span
+                      class="sider__badge"
+                      :style="pageBadgeStyle(page)"
+                    >
+                      {{ pageBadgeText(page) }}
+                    </span>
+                    <span class="sider__label">{{
+                      page.menuTitle || page.pageTitle
+                    }}</span>
+                  </RouterLink>
+                  <button
+                    v-if="pageTabOptions(page).length > 1 && !asideCollapsed"
+                    class="sider__chevron"
+                    type="button"
+                    :aria-expanded="isPageMenuOpen(page)"
+                    @click.stop.prevent="togglePageMenu(page)"
+                  >
+                    <span
+                      class="chevron"
+                      :class="{ 'is-open': isPageMenuOpen(page) }"
+                    />
+                  </button>
+                </div>
+                <div
+                  v-if="
+                    pageTabOptions(page).length > 1 &&
+                    !asideCollapsed &&
+                    isPageMenuOpen(page)
+                  "
+                  class="sider__submenu"
+                >
+                  <RouterLink
+                    v-for="tab in pageTabOptions(page)"
+                    :key="`${page.id}-tab-${tab.value}`"
+                    :to="{ path: `/dash/${page.id}`, query: { tab: tab.value } }"
+                    class="sider__link sider__link--nested"
+                    active-class="is-active"
+                  >
+                    <span class="sider__label">{{ tab.label }}</span>
+                  </RouterLink>
+                </div>
+              </div>
+            </div>
           <div v-if="canUseConstructor" class="sider__section">
             <button
               class="sider__section-toggle"
@@ -81,6 +120,8 @@
                   replace
                   class="sider__link sider__link--nested"
                   active-class="is-active"
+                  :title="asideCollapsed ? item.label : ''"
+                  :aria-label="item.label"
                 >
                   <span :class="['sider__icon', `icon-${item.icon}`]" />
                   <span class="sider__label">{{ item.label }}</span>
@@ -104,8 +145,8 @@
 </template>
 
 <script setup>
-import { computed, ref, onBeforeUnmount } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, ref, onBeforeUnmount, reactive } from 'vue'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import logoUrl from '@/shared/assets/logo.png'
 import { useAuthStore } from '@/shared/stores/auth'
@@ -114,6 +155,7 @@ import { useNavigationStore } from '@/shared/stores/navigation'
 import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const pageStore = usePageBuilderStore()
@@ -134,6 +176,7 @@ const siderStyle = computed(() => {
 const minSiderWidth = 180
 const maxSiderWidth = 360
 let cleanupResize = null
+const dashboardMenus = reactive({})
 
 const constructorLinks = computed(() => {
   const links = []
@@ -153,6 +196,77 @@ const constructorLinks = computed(() => {
   )
   return links
 })
+
+function pageTabOptions(page) {
+  const settings = page?.layout?.settings || {}
+  const tabs = Math.max(1, Math.min(12, Number(settings.tabs) || 1))
+  const names = Array.isArray(settings.tabNames) ? settings.tabNames : []
+  return Array.from({ length: tabs }, (_, index) => ({
+    value: index + 1,
+    label: names[index] || `Вкладка ${index + 1}`,
+  }))
+}
+
+function normalizePageLabel(page) {
+  return String(page?.menuTitle || page?.pageTitle || '').trim()
+}
+
+function pageBadgeText(page) {
+  const label = normalizePageLabel(page)
+  if (!label) return '#'
+  const first = label.trim().charAt(0)
+  return first ? first.toUpperCase() : '#'
+}
+
+const badgePalette = [
+  '#1d4ed8',
+  '#0f766e',
+  '#7c3aed',
+  '#b45309',
+  '#be123c',
+  '#0ea5e9',
+  '#10b981',
+  '#f97316',
+]
+
+function hashLabel(value = '') {
+  const text = String(value || '')
+  let acc = 0
+  for (let i = 0; i < text.length; i += 1) {
+    acc = (acc * 31 + text.charCodeAt(i)) % 100000
+  }
+  return acc
+}
+
+function pageBadgeStyle(page) {
+  const label = normalizePageLabel(page)
+  const hash = hashLabel(label)
+  const color = badgePalette[hash % badgePalette.length]
+  return { background: color }
+}
+
+const activePageId = computed(() => {
+  if (route.path && route.path.startsWith('/dash/')) {
+    const parts = route.path.split('/')
+    return parts[2] || ''
+  }
+  return ''
+})
+
+function isPageMenuOpen(page) {
+  const key = String(page?.id || '')
+  if (!key) return false
+  if (Object.prototype.hasOwnProperty.call(dashboardMenus, key)) {
+    return Boolean(dashboardMenus[key])
+  }
+  return key === activePageId.value
+}
+
+function togglePageMenu(page) {
+  const key = String(page?.id || '')
+  if (!key) return
+  dashboardMenus[key] = !isPageMenuOpen(page)
+}
 
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value
@@ -403,6 +517,11 @@ async function handleLogout() {
   font-weight: 500;
   transition: background 0.2s;
 }
+.sider__link-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .sider__link:hover {
   background: #f5f7fb;
 }
@@ -417,8 +536,33 @@ async function handleLogout() {
   mask-repeat: no-repeat;
   background: currentColor;
 }
+.sider__badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
 .sider__label {
   flex: 1;
+}
+.sider__chevron {
+  border: none;
+  background: transparent;
+  padding: 6px;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+}
+.sider__chevron:hover {
+  background: #f1f5f9;
 }
 .sider__link--nested {
   padding-left: 18px;
@@ -429,6 +573,12 @@ async function handleLogout() {
 }
 .sider.collapsed .sider__mode-toggle {
   display: none;
+}
+.sider.collapsed .sider__section-toggle span:not(.chevron) {
+  display: none;
+}
+.sider.collapsed .sider__section-toggle {
+  justify-content: center;
 }
 .sider.collapsed .sider__link {
   justify-content: center;

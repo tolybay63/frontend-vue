@@ -1,13 +1,161 @@
 import { formatFormulaValue, formatNumber, formatValue } from '@/shared/lib/pivotUtils'
 import { logApiProbe } from '@/shared/api/reportApiProbe'
+import { handleApiError, normalizeApiError } from '@/shared/api/errorHandler'
 
 const RAW_BACKEND_URL = import.meta.env.VITE_REPORT_BACKEND_URL || ''
 const PIVOT_BACKEND_ENABLED =
   String(import.meta.env.VITE_PIVOT_BACKEND_ENABLED || '').toLowerCase() ===
   'true'
 const REQUEST_FIELD_PREFIX = 'request'
+const REPORT_JOB_POLL_MS = Number(import.meta.env.VITE_REPORT_JOB_POLL_MS) || 2000
+const REPORT_SYNC_MODE = String(import.meta.env.VITE_REPORT_SYNC_MODE || 'auto').toLowerCase()
+const REPORT_SYNC_THRESHOLD = Number(import.meta.env.VITE_REPORT_SYNC_THRESHOLD)
+const DEFAULT_REPORT_SYNC_THRESHOLD = 6
+const FILTERS_LIMIT_MESSAGE = 'Слишком много данных…'
+const DETAILS_LIMIT_MESSAGE = 'Слишком много данных…'
+const JOIN_RECORDS_LIMIT_MESSAGE =
+  'Слишком большой объём после соединения источников…'
+const JOIN_SOURCE_LIMIT_MESSAGE =
+  'Один из источников соединения слишком большой…'
+const REPORT_STATUS_LABELS = {
+  queued: 'Отчёт в очереди…',
+  running: 'Отчёт формируется…',
+}
 
 export const isPivotBackendEnabled = () => PIVOT_BACKEND_ENABLED
+
+async function fetchWithErrorHandling(url, options = {}, meta = {}) {
+  let response
+  try {
+    response = await fetch(url, options)
+  } catch (err) {
+    const handled = handleApiError(err, {
+      skipAuthRedirect: meta?.skipAuthRedirect,
+    })
+    if (handled?.humanMessage) {
+      handled.message = handled.humanMessage
+    }
+    throw handled
+  }
+
+  if (response.ok) return response
+
+  const data = await safeReadResponseData(response)
+  if (!meta?.silent) {
+    console.error(meta?.logLabel || 'Report backend error', response.status, data)
+  }
+  const error = buildFetchError({
+    status: response.status,
+    data,
+    headers: normalizeHeaders(response.headers),
+    url,
+    method: options?.method || 'GET',
+  })
+  const normalized = normalizeApiError(error)
+  error.normalized = normalized
+  error.humanMessage = normalized.message
+  if (!error.message || error.message === 'Network Error') {
+    error.message = normalized.message
+  }
+  const handled = handleApiError(error, {
+    skipAuthRedirect: meta?.skipAuthRedirect,
+  })
+  if (handled?.humanMessage) {
+    handled.message = handled.humanMessage
+  }
+  if (handled?.normalized?.status === 422) {
+    const limitMessage = resolveLimitMessage(
+      data,
+      handled?.normalized?.serverMessage,
+      meta?.recordsLimitMessage,
+    )
+    if (limitMessage) {
+      handled.humanMessage = limitMessage
+      handled.message = limitMessage
+    }
+  }
+  throw handled
+}
+
+async function pollReportJob(jobId, { baseUrl, signal, silent, onStatus } = {}) {
+  if (!jobId) {
+    throw new Error('Не удалось получить идентификатор задания.')
+  }
+  let lastStatus = ''
+  while (true) {
+    if (signal?.aborted) {
+      throw createAbortError()
+    }
+    const response = await fetchWithErrorHandling(`${baseUrl}/api/report/jobs/${jobId}`, {
+      method: 'GET',
+      signal,
+    }, {
+      silent,
+      logLabel: 'Report job status error',
+    })
+    const data = await safeReadResponseJson(response)
+    const status = data?.status
+    if (status === 'queued' || status === 'running') {
+      if (status !== lastStatus) {
+        lastStatus = status
+        notifyStatus(onStatus, status)
+      }
+      await waitFor(REPORT_JOB_POLL_MS, signal)
+      continue
+    }
+    if (status === 'failed') {
+      const message =
+        data?.error?.message ||
+        data?.error ||
+        data?.message ||
+        'Не удалось получить результат задания.'
+      throw new Error(message)
+    }
+    if (status === 'done') {
+      return data?.result ?? data?.data ?? data
+    }
+    if (!status) {
+      return data?.result ?? data
+    }
+    throw new Error(`Неизвестный статус задания: ${status}`)
+  }
+}
+
+function shouldRequestSync(payload, snapshot) {
+  if (REPORT_SYNC_MODE === 'force_sync') return true
+  if (REPORT_SYNC_MODE === 'force_async') return false
+  const joinsCount =
+    (payload?.remoteSource?.joins?.length || 0) +
+    (payload?.joins?.length || 0)
+  const computedCount =
+    (payload?.computedFields?.length || 0) +
+    (payload?.remoteSource?.computedFields?.length || 0)
+  if (joinsCount > 0 || computedCount > 0) {
+    return false
+  }
+  const threshold = Number.isFinite(REPORT_SYNC_THRESHOLD)
+    ? REPORT_SYNC_THRESHOLD
+    : DEFAULT_REPORT_SYNC_THRESHOLD
+  if (!Number.isFinite(threshold) || threshold <= 0) return false
+  const metricsCount = Array.isArray(snapshot?.metrics)
+    ? snapshot.metrics.length
+    : 0
+  const pivot = snapshot?.pivot || {}
+  const filtersCount = Array.isArray(pivot.filters) ? pivot.filters.length : 0
+  const rowsCount = Array.isArray(pivot.rows) ? pivot.rows.length : 0
+  const columnsCount = Array.isArray(pivot.columns) ? pivot.columns.length : 0
+  const complexityScore =
+    metricsCount + filtersCount + rowsCount + columnsCount
+  return complexityScore <= threshold
+}
+
+function notifyStatus(onStatus, status) {
+  if (typeof onStatus !== 'function') return
+  onStatus({
+    status,
+    message: REPORT_STATUS_LABELS[status] || '',
+  })
+}
 
 export async function fetchBackendView({
   templateId = '',
@@ -16,6 +164,7 @@ export async function fetchBackendView({
   filters,
   signal,
   silent = false,
+  onStatus,
 }) {
   const baseUrl = normalizeBackendUrl(RAW_BACKEND_URL)
   if (!baseUrl) {
@@ -38,22 +187,36 @@ export async function fetchBackendView({
     snapshot,
     filters,
   }
-  const response = await fetch(`${baseUrl}/api/report/view`, {
+  const headers = {
+    'Content-Type': 'application/json',
+  }
+  if (shouldRequestSync(payload, snapshot)) {
+    headers['X-Report-Sync'] = '1'
+  }
+  const response = await fetchWithErrorHandling(`${baseUrl}/api/report/view`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(payload),
     signal,
+  }, {
+    silent,
+    logLabel: 'Report view backend error',
+    recordsLimitMessage: FILTERS_LIMIT_MESSAGE,
   })
-  if (!response.ok) {
-    const details = await safeReadResponseText(response)
-    if (!silent) {
-      console.error('Report view backend error', response.status, details)
+  const data = await safeReadResponseJson(response)
+  const jobId = data?.job_id || data?.jobId || null
+  if (response.status === 202 || jobId) {
+    const result = await pollReportJob(jobId, {
+      baseUrl,
+      signal,
+      silent,
+      onStatus,
+    })
+    return {
+      view: result?.view || null,
+      chart: result?.chart || null,
     }
-    throw new Error('Не удалось получить представление с сервера.')
   }
-  const data = await response.json()
   return {
     view: data?.view || null,
     chart: data?.chart || null,
@@ -91,21 +254,18 @@ export async function fetchBackendFilters({
     filters,
   }
   const query = Number.isFinite(limit) ? `?limit=${limit}` : ''
-  const response = await fetch(`${baseUrl}/api/report/filters${query}`, {
+  const response = await fetchWithErrorHandling(`${baseUrl}/api/report/filters${query}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
     signal,
+  }, {
+    silent,
+    logLabel: 'Report filters backend error',
+    recordsLimitMessage: FILTERS_LIMIT_MESSAGE,
   })
-  if (!response.ok) {
-    const details = await safeReadResponseText(response)
-    if (!silent) {
-      console.error('Report filters backend error', response.status, details)
-    }
-    throw new Error('Не удалось получить значения фильтров.')
-  }
   return response.json()
 }
 
@@ -154,21 +314,18 @@ export async function fetchBackendDetails({
   if (detailMetricFilter) {
     payload.detailMetricFilter = detailMetricFilter
   }
-  const response = await fetch(`${baseUrl}/api/report/details`, {
+  const response = await fetchWithErrorHandling(`${baseUrl}/api/report/details`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
     signal,
+  }, {
+    silent,
+    logLabel: 'Report details backend error',
+    recordsLimitMessage: DETAILS_LIMIT_MESSAGE,
   })
-  if (!response.ok) {
-    const details = await safeReadResponseText(response)
-    if (!silent) {
-      console.error('Report details backend error', response.status, details)
-    }
-    throw new Error('Не удалось получить детализацию.')
-  }
   return response.json()
 }
 
@@ -319,6 +476,108 @@ async function safeReadResponseText(response) {
   } catch (err) {
     return ''
   }
+}
+
+async function safeReadResponseJson(response) {
+  try {
+    return await response.json()
+  } catch (err) {
+    return null
+  }
+}
+
+async function safeReadResponseData(response) {
+  const contentType = response?.headers?.get?.('content-type') || ''
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json()
+    } catch (err) {
+      return await safeReadResponseText(response)
+    }
+  }
+  return safeReadResponseText(response)
+}
+
+function waitFor(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError())
+      return
+    }
+    const onAbort = () => {
+      cleanup()
+      reject(createAbortError())
+    }
+    const cleanup = () => {
+      clearTimeout(timer)
+      if (signal) {
+        signal.removeEventListener('abort', onAbort)
+      }
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+  })
+}
+
+function createAbortError() {
+  const error = new Error('Aborted')
+  error.name = 'AbortError'
+  return error
+}
+
+function normalizeHeaders(headers) {
+  if (!headers || typeof headers.entries !== 'function') return {}
+  try {
+    return Object.fromEntries(headers.entries())
+  } catch (err) {
+    return {}
+  }
+}
+
+function buildFetchError({ status, data, headers, url, method }) {
+  const error = new Error('Request failed')
+  error.response = { status, data, headers }
+  error.config = { url, method }
+  return error
+}
+
+function resolveLimitMessage(data, serverMessage, fallbackMessage = '') {
+  const combined = [
+    extractErrorText(data),
+    extractErrorText(serverMessage),
+  ]
+    .join(' ')
+    .toLowerCase()
+  if (combined.includes('join source records limit exceeded')) {
+    return JOIN_SOURCE_LIMIT_MESSAGE
+  }
+  if (combined.includes('join records limit exceeded')) {
+    return JOIN_RECORDS_LIMIT_MESSAGE
+  }
+  if (combined.includes('records limit exceeded')) {
+    return fallbackMessage || ''
+  }
+  return ''
+}
+
+function extractErrorText(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') {
+    const candidate =
+      value?.message ||
+      value?.error ||
+      value?.detail ||
+      value?.errors?.[0]?.message ||
+      ''
+    if (typeof candidate === 'string') return candidate
+  }
+  return ''
 }
 
 function normalizeBackendColumns(rawColumns, metrics, metricMap) {

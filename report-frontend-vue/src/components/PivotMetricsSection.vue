@@ -748,7 +748,7 @@ function clamp01(value) {
   padding-left: 16px;
 }
 .formula-hints code {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
   font-size: 11px;
   background: #f3f4f6;
   padding: 2px 4px;

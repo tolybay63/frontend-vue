@@ -176,7 +176,10 @@
             v-if="containerState(container.id).loading"
             class="widget-placeholder"
           >
-            Загружаем данные...
+            {{
+              containerState(container.id).statusText ||
+              'Загружаем данные...'
+            }}
           </div>
           <div
             v-else-if="containerState(container.id).error"
@@ -811,6 +814,14 @@ const tabOptions = computed(() =>
     label,
   })),
 )
+const routeTabValue = computed(() => {
+  const raw = route.query?.tab
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === null || typeof value === 'undefined' || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.trunc(parsed)
+})
 const visibleContainers = computed(() => {
   if (!pageContainers.value.length) return []
   if (layoutSettings.value.tabs <= 1) return pageContainers.value
@@ -833,6 +844,18 @@ watch(
     }
     if (!values.includes(activeTab.value)) {
       activeTab.value = values[0]
+    }
+  },
+  { immediate: true },
+)
+watch(
+  [routeTabValue, () => layoutSettings.value.tabs],
+  ([tabValue]) => {
+    if (tabValue === null) return
+    const maxTab = Math.max(1, Number(layoutSettings.value.tabs) || 1)
+    const normalized = Math.min(maxTab, Math.max(1, tabValue))
+    if (normalized !== activeTab.value) {
+      activeTab.value = normalized
     }
   },
   { immediate: true },
@@ -925,6 +948,9 @@ const pageFilterValues = reactive({})
 const pageFilterRanges = reactive({})
 const pageFilterValuesByTab = reactive({})
 const pageFilterRangesByTab = reactive({})
+const pageFilterCleared = reactive({})
+const pageFilterClearedByTab = reactive({})
+const containerFilterCleared = reactive({})
 const commonFilterKeys = computed(() =>
   resolveCommonContainerFieldKeys(visibleContainers.value, store.templates),
 )
@@ -1041,6 +1067,8 @@ if (!containerStates[id]) {
   containerStates[id] = {
     loading: false,
     error: '',
+    status: '',
+    statusText: '',
     view: null,
     chart: null,
     signature: '',
@@ -1071,6 +1099,55 @@ function containerRangeStore(containerId) {
     containerFilterRanges[containerId] = {}
   }
   return containerFilterRanges[containerId]
+}
+
+function containerFilterClearedStore(containerId) {
+  if (!containerFilterCleared[containerId]) {
+    containerFilterCleared[containerId] = {}
+  }
+  return containerFilterCleared[containerId]
+}
+
+function setPageFilterCleared(key, value) {
+  if (!key) return
+  if (value) {
+    pageFilterCleared[key] = true
+  } else if (key in pageFilterCleared) {
+    delete pageFilterCleared[key]
+  }
+}
+
+function setContainerFilterCleared(containerId, key, value) {
+  if (!containerId || !key) return
+  const store = containerFilterClearedStore(containerId)
+  if (value) {
+    store[key] = true
+  } else if (key in store) {
+    delete store[key]
+  }
+}
+
+function isFilterCleared(key, containerId) {
+  if (pageFilterCleared[key]) return true
+  if (containerId) {
+    const store = containerFilterClearedStore(containerId)
+    return Boolean(store[key])
+  }
+  return false
+}
+
+function collectClearedFilterKeys(containerId) {
+  const keys = new Set()
+  Object.entries(pageFilterCleared).forEach(([key, value]) => {
+    if (value) keys.add(key)
+  })
+  if (containerId) {
+    const store = containerFilterClearedStore(containerId)
+    Object.entries(store).forEach(([key, value]) => {
+      if (value) keys.add(key)
+    })
+  }
+  return keys
 }
 
 function hasActiveContainerFilter(containerId, key) {
@@ -1140,6 +1217,11 @@ function ensurePageFilters(keys = []) {
       delete pageFilterRanges[key]
     }
   })
+  Object.keys(pageFilterCleared).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete pageFilterCleared[key]
+    }
+  })
 }
 
 function normalizeTabKey(tabId) {
@@ -1159,6 +1241,13 @@ function cloneFilterRangesStore(store = {}) {
     if (sanitized) {
       acc[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
     }
+    return acc
+  }, {})
+}
+
+function cloneFilterClearedStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, value]) => {
+    if (value) acc[key] = true
     return acc
   }, {})
 }
@@ -1184,16 +1273,29 @@ function replaceFilterRangesStore(next = {}) {
   })
 }
 
+function replaceFilterClearedStore(next = {}) {
+  Object.keys(pageFilterCleared).forEach((key) => {
+    delete pageFilterCleared[key]
+  })
+  Object.entries(next || {}).forEach(([key, value]) => {
+    if (value) {
+      pageFilterCleared[key] = true
+    }
+  })
+}
+
 function persistTabFilterState(tabId) {
   const key = normalizeTabKey(tabId)
   pageFilterValuesByTab[key] = cloneFilterValuesStore(pageFilterValues)
   pageFilterRangesByTab[key] = cloneFilterRangesStore(pageFilterRanges)
+  pageFilterClearedByTab[key] = cloneFilterClearedStore(pageFilterCleared)
 }
 
 function restoreTabFilterState(tabId) {
   const key = normalizeTabKey(tabId)
   replaceFilterValuesStore(pageFilterValuesByTab[key] || {})
   replaceFilterRangesStore(pageFilterRangesByTab[key] || {})
+  replaceFilterClearedStore(pageFilterClearedByTab[key] || {})
 }
 
 function resetTabFilterState() {
@@ -1203,8 +1305,12 @@ function resetTabFilterState() {
   Object.keys(pageFilterRangesByTab).forEach((key) => {
     delete pageFilterRangesByTab[key]
   })
+  Object.keys(pageFilterClearedByTab).forEach((key) => {
+    delete pageFilterClearedByTab[key]
+  })
   replaceFilterValuesStore({})
   replaceFilterRangesStore({})
+  replaceFilterClearedStore({})
   lastTabFilterKeysSignature = ''
 }
 
@@ -1900,7 +2006,7 @@ async function handleCellDetails(container, row, columnEntry) {
     detailDialog.request = {
       templateId: tpl.id,
       remoteSource: tpl.remoteSource,
-      snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+      snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys(), container.id),
       filters: buildBackendFilters(container.id),
       rowKey,
       columnKey,
@@ -2412,6 +2518,11 @@ function filterRecords(records, snapshot, source, containerId) {
   const filterRanges = {
     ...(snapshot?.filterRanges || {}),
   }
+  const clearedKeys = collectClearedFilterKeys(containerId)
+  clearedKeys.forEach((key) => {
+    delete filterValues[key]
+    delete filterRanges[key]
+  })
   const containerOverrides = containerFilterValues[containerId] || {}
   Object.entries(containerOverrides).forEach(([key, values]) => {
     filterValues[key] = [...values]
@@ -2481,6 +2592,8 @@ function buildBackendFilters(containerId) {
     const values = normalizeSelectedValues(pageFilterValues[key])
     if (values.length) {
       acc[key] = values
+    } else if (pageFilterCleared[key]) {
+      acc[key] = []
     }
     return acc
   }, {})
@@ -2497,6 +2610,8 @@ function buildBackendFilters(containerId) {
     const list = normalizeSelectedValues(values)
     if (list.length) {
       acc[key] = list
+    } else if (containerFilterClearedStore(containerId)[key]) {
+      acc[key] = []
     }
     return acc
   }, {})
@@ -2562,12 +2677,16 @@ function buildDetailFilterSummary(tpl, containerId) {
     entry.range = sanitized
   }
 
-  Object.entries(snapshot?.filterValues || {}).forEach(([key, values]) =>
-    addValues(key, values),
-  )
-  Object.entries(snapshot?.filterRanges || {}).forEach(([key, range]) =>
-    addRange(key, range),
-  )
+  Object.entries(snapshot?.filterValues || {}).forEach(([key, values]) => {
+    if (!isFilterCleared(key, containerId)) {
+      addValues(key, values)
+    }
+  })
+  Object.entries(snapshot?.filterRanges || {}).forEach(([key, range]) => {
+    if (!isFilterCleared(key, containerId)) {
+      addRange(key, range)
+    }
+  })
 
   activePageFilters.value.forEach((filter) => {
     const key = filter?.key
@@ -2656,7 +2775,7 @@ function resolvePageFilterKeys() {
   return resolved
 }
 
-function buildBackendSnapshot(tpl, commonKeys = []) {
+function buildBackendSnapshot(tpl, commonKeys = [], containerId = '') {
   const snapshot = tpl?.snapshot || {}
   const pivot = snapshot.pivot || {}
   const normalizedCommon = Array.isArray(commonKeys)
@@ -2673,8 +2792,21 @@ function buildBackendSnapshot(tpl, commonKeys = []) {
       'Filter keys are empty; sending empty pivot.filters in backend payload.',
     )
   }
+  const filterValues = {
+    ...(snapshot?.filterValues || {}),
+  }
+  const filterRanges = {
+    ...(snapshot?.filterRanges || {}),
+  }
+  const clearedKeys = collectClearedFilterKeys(containerId)
+  clearedKeys.forEach((key) => {
+    delete filterValues[key]
+    delete filterRanges[key]
+  })
   return {
     ...snapshot,
+    filterValues,
+    filterRanges,
     pivot: {
       ...pivot,
       filters: [...filterKeys],
@@ -2984,6 +3116,8 @@ async function hydrateContainer(container) {
   state.inFlightSignature = signature
   state.loading = true
   state.error = ''
+  state.status = ''
+  state.statusText = ''
   state.view = null
   state.chart = null
   state.records = []
@@ -3044,10 +3178,14 @@ async function hydrateContainer(container) {
         const { view: backendView } = await fetchBackendView({
           templateId: tpl.id,
           remoteSource: tpl.remoteSource,
-          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys(), container.id),
           filters: buildBackendFilters(container.id),
           signal: viewAbortController.signal,
           silent: hadData,
+          onStatus: (payload) => {
+            state.status = payload?.status || ''
+            state.statusText = payload?.message || ''
+          },
         })
         if (debugLogsEnabled) {
           const backendColumns = Array.isArray(backendView?.columns)
@@ -3153,6 +3291,8 @@ async function hydrateContainer(container) {
     state.error = err?.message || 'Не удалось построить виджет.'
   } finally {
     state.loading = false
+    state.status = ''
+    state.statusText = ''
     if (state.inFlightSignature === signature) {
       state.inFlightSignature = ''
     }
@@ -3185,6 +3325,9 @@ function refreshContainers() {
   })
   Object.keys(containerFilterRanges).forEach((id) => {
     if (!ids.has(id)) delete containerFilterRanges[id]
+  })
+  Object.keys(containerFilterCleared).forEach((id) => {
+    if (!ids.has(id)) delete containerFilterCleared[id]
   })
   Object.keys(containerTableSizing).forEach((id) => {
     if (!ids.has(id)) delete containerTableSizing[id]
@@ -3823,7 +3966,7 @@ async function runBackendFilterRefresh() {
       const tpl = template(container.templateId)
       if (!tpl || !tpl.remoteSource) return null
       const silent = Boolean(containerState(id).rawRecords?.length)
-      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys())
+      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys(), id)
       const signature = buildContainerFilterSignature(id, pageSignature)
       if (
         scope === 'container' &&
@@ -4609,6 +4752,7 @@ function resetPageFilters() {
   activePageFilters.value.forEach((filter) => {
     pageFilterValues[filter.key] = []
     delete pageFilterRanges[filter.key]
+    setPageFilterCleared(filter.key, true)
   })
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4623,6 +4767,7 @@ function resetContainerFilter(containerId, key) {
   const store = containerFilterStore(containerId)
   store[key] = []
   delete containerRangeStore(containerId)[key]
+  setContainerFilterCleared(containerId, key, true)
   if (pivotBackendActive.value) {
     abortContainerViewRequests([containerId])
     queueBackendFilterRefresh('container', containerId)
@@ -4642,6 +4787,11 @@ function handlePageFilterValuesChange(key, values, forcedMode = '') {
   pageFilterValues[key] = next
   if (forcedMode !== 'range') {
     delete pageFilterRanges[key]
+  }
+  if (next.length) {
+    setPageFilterCleared(key, false)
+  } else if (!hasActiveRange(pageFilterRanges[key])) {
+    setPageFilterCleared(key, true)
   }
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4669,6 +4819,7 @@ function handlePageFilterRangeChange(key, range) {
     if (pageFilterValues[key]?.length) {
       pageFilterValues[key] = []
     }
+    setPageFilterCleared(key, false)
     if (pivotBackendActive.value) {
       abortContainerViewRequests(
         (visibleContainers.value || []).map((container) => container.id),
@@ -4683,6 +4834,9 @@ function handlePageFilterRangeChange(key, range) {
   }
   if (current) {
     delete pageFilterRanges[key]
+    if (!pageFilterValues[key]?.length) {
+      setPageFilterCleared(key, true)
+    }
   }
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4712,6 +4866,11 @@ function handleContainerFilterValuesChange(containerId, filter, values) {
   if (!isContainerRangeFilter(filter)) {
     delete containerRangeStore(containerId)[key]
   }
+  if (next.length) {
+    setContainerFilterCleared(containerId, key, false)
+  } else if (!hasActiveRange(containerRangeStore(containerId)[key])) {
+    setContainerFilterCleared(containerId, key, true)
+  }
   if (pivotBackendActive.value) {
     abortContainerViewRequests([containerId])
     queueBackendFilterRefresh('container', containerId)
@@ -4736,6 +4895,7 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
     if (filterStore[key]?.length) {
       filterStore[key] = []
     }
+    setContainerFilterCleared(containerId, key, false)
     if (changedRange || filterStore[key]?.length === 0) {
       if (pivotBackendActive.value) {
         abortContainerViewRequests([containerId])
@@ -4750,6 +4910,9 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
   }
   if (currentRange) {
     delete rangeStore[key]
+    if (!filterStore[key]?.length) {
+      setContainerFilterCleared(containerId, key, true)
+    }
     if (pivotBackendActive.value) {
       abortContainerViewRequests([containerId])
       queueBackendFilterRefresh('container', containerId)

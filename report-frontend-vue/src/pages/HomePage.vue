@@ -849,6 +849,13 @@
             <span class="dot dot--success"></span>
             Таблица готова
           </div>
+          <div
+            v-else-if="backendPivotState.loading && backendPivotState.statusText"
+            class="step__status step__status--loading"
+          >
+            <span class="dot"></span>
+            {{ backendPivotState.statusText }}
+          </div>
           <n-tooltip trigger="hover">
             <template #trigger>
               <n-button
@@ -3269,6 +3276,8 @@ const backendPivotState = reactive({
   chart: null,
   error: '',
   loading: false,
+  status: '',
+  statusText: '',
   signature: '',
   inFlightSignature: '',
 })
@@ -3399,6 +3408,8 @@ watch(
       backendPivotState.chart = null
       backendPivotState.error = ''
       backendPivotState.loading = false
+      backendPivotState.status = ''
+      backendPivotState.statusText = ''
       backendPivotState.signature = ''
       backendPivotState.inFlightSignature = ''
       return
@@ -3416,12 +3427,18 @@ watch(
     backendPivotState.error = ''
     backendPivotState.view = null
     backendPivotState.chart = null
+    backendPivotState.status = ''
+    backendPivotState.statusText = ''
     // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
     // Локальный buildPivotView оставлен как fallback до полной миграции.
     try {
       const { view, chart } = await fetchBackendView({
         ...backendPayload.value,
         silent: suppressBackendErrors.value,
+        onStatus: (payload) => {
+          backendPivotState.status = payload?.status || ''
+          backendPivotState.statusText = payload?.message || ''
+        },
       })
       if (
         !view ||
@@ -3448,6 +3465,8 @@ watch(
       backendPivotState.chart = null
     } finally {
       backendPivotState.loading = false
+      backendPivotState.status = ''
+      backendPivotState.statusText = ''
       if (backendPivotState.inFlightSignature === signature) {
         backendPivotState.inFlightSignature = ''
       }
@@ -8040,6 +8059,10 @@ function resolveMetricLabelById(metricId) {
   color: var(--s360-text-success, #198754);
   font-weight: 600;
 }
+.step__status--loading {
+  color: var(--s360-text-secondary, #475569);
+  font-weight: 500;
+}
 .dot {
   width: 8px;
   height: 8px;
@@ -8233,7 +8256,7 @@ function resolveMetricLabelById(metricId) {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Crect x='7' y='7' width='10' height='10' rx='1'/%3E%3Crect x='3' y='3' width='10' height='10' rx='1'/%3E%3C/svg%3E");
 }
 .raw-body {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
   min-height: 160px;
   resize: vertical;
 }
@@ -8430,7 +8453,7 @@ function resolveMetricLabelById(metricId) {
 .tabs__body pre {
   margin: 0;
   font-size: 13px;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
 }
 .preview-table {
   width: 100%;

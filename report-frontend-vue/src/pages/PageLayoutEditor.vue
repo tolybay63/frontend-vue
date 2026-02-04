@@ -195,7 +195,7 @@
               </select>
             </label>
           </div>
-          <p v-if="container.templateId" class="muted multiline-text">
+          <p v-if="container.templateId" class="muted">
             {{ templateMeta(container.templateId)?.description || 'Без описания' }}
           </p>
           <p v-else class="muted">
@@ -560,8 +560,12 @@ watch(isPrivateSelection, (next) => {
 onMounted(async () => {
   try {
     await Promise.all([
-      store.ensureReferences(),
-      store.fetchPages(),
+      store.fetchLayoutOptions(),
+      store.fetchWidthOptions(),
+      store.fetchHeightOptions(),
+      store.fetchTemplates(true),
+      store.fetchPages(true),
+      store.fetchPrivacyOptions(),
       store.fetchPageUsers(),
       fieldDictionaryStore.fetchDictionary(),
     ])
@@ -582,11 +586,9 @@ onMounted(async () => {
   }
 })
 
-async function loadExistingPage(targetId = pageId.value, { force = false } = {}) {
-  loadError.value = ''
+async function loadExistingPage() {
   deletedContainerIds.value = []
-  const resolvedId = String(targetId || '')
-  const existing = store.getPageById(resolvedId)
+  const existing = store.getPageById(pageId.value)
   if (!existing) {
     loadError.value = 'Страница не найдена или удалена.'
     return
@@ -616,9 +618,7 @@ async function loadExistingPage(targetId = pageId.value, { force = false } = {})
     : defaultLayoutSettings()
   draft.layout.containerTabs = { ...(existing.layout?.containerTabs || {}) }
   syncTabNames(draft.layout.settings?.tabs || 1)
-  const containers = force
-    ? await store.fetchPageContainers(existing.id, true)
-    : store.getContainers(existing.id)
+  const containers = await store.fetchPageContainers(existing.id, true)
   draft.layout.containers.splice(0, draft.layout.containers.length)
   containers.forEach((container, index) => {
     draft.layout.containers.push({
@@ -657,7 +657,7 @@ function templateMeta(templateId) {
 }
 
 function refreshTemplates() {
-  store.fetchTemplates({ force: true, skipCooldown: true })
+  store.fetchTemplates(true)
 }
 
 function resolveFieldLabel(key) {
@@ -729,12 +729,9 @@ async function save() {
   try {
     const payload = JSON.parse(JSON.stringify(draft))
     payload.layout.preset = draft.layout.preset
-    const savedId = await store.savePageDraft(payload, deletedContainerIds.value)
+    const pageId = await store.savePageDraft(payload, deletedContainerIds.value)
     deletedContainerIds.value = []
-    if (route.params.pageId !== String(savedId)) {
-      await router.push(`/pages/${savedId}/edit`)
-    }
-    await loadExistingPage(savedId, { force: false })
+    router.push(`/pages/${pageId}/edit`)
   } catch (err) {
     console.warn('Failed to save page', err)
     alert('Не удалось сохранить страницу. Попробуйте позже.')

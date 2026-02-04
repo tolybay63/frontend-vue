@@ -16,13 +16,7 @@
     </div>
     <div v-else-if="pagesError" class="empty-state empty-state--error">
       <p>{{ pagesError }}</p>
-      <button
-        class="btn-outline btn-sm"
-        type="button"
-        @click="store.fetchPages({ force: true, skipCooldown: true })"
-      >
-        Повторить
-      </button>
+      <button class="btn-outline btn-sm" type="button" @click="store.fetchPages(true)">Повторить</button>
     </div>
     <div v-else-if="!pages.length" class="empty-state">
       <p>Страниц пока нет. Нажмите «Создать страницу», чтобы начать.</p>
@@ -40,19 +34,6 @@
         <dl>
           <dt>Пункт меню</dt>
           <dd>{{ page.menuTitle }}</dd>
-          <dt>Порядок в меню</dt>
-          <dd>
-            <input
-              class="order-input"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              :value="menuOrderValue(page.id)"
-              placeholder="-"
-              @change="updateMenuOrder(page.id, $event)"
-            />
-          </dd>
           <dt>Глобальные фильтры</dt>
           <dd>{{ pageFilterLabels(page).length ? pageFilterLabels(page).join(', ') : 'Нет' }}</dd>
           <dt>Контейнеры</dt>
@@ -113,7 +94,7 @@ const store = usePageBuilderStore()
 const fieldDictionaryStore = useFieldDictionaryStore()
 const authStore = useAuthStore()
 
-const pages = computed(() => store.orderedPages)
+const pages = computed(() => store.pages)
 const pagesLoading = computed(() => store.pagesLoading)
 const pagesError = computed(() => store.pagesError)
 const layoutLabels = computed(() => store.layoutLabelMap)
@@ -126,7 +107,7 @@ const currentUserMeta = computed(() => {
 })
 
 onMounted(() => {
-  store.fetchPages()
+  store.fetchPages(true)
   fieldDictionaryStore.fetchDictionary()
 })
 
@@ -171,14 +152,6 @@ function resolveFieldLabel(key) {
 function createPage() {
   router.push('/pages/new')
 }
-function menuOrderValue(pageId) {
-  const value = store.getDashboardOrderForPage(pageId)
-  return value == null ? '' : value
-}
-function updateMenuOrder(pageId, event) {
-  const nextValue = event?.target?.value ?? ''
-  store.setDashboardOrder(pageId, nextValue)
-}
 function canInteractWithPage(page) {
   return canUserAccessPage(page, currentUserMeta.value)
 }
@@ -203,7 +176,7 @@ async function removePage(pageId) {
   if (confirm('Удалить страницу?')) {
     try {
       await store.removePage(pageId)
-      store.fetchPages({ force: true, skipCooldown: true })
+      store.fetchPages(true)
     } catch (err) {
       alert('Не удалось удалить страницу. Попробуйте позже.')
     }
@@ -254,14 +227,6 @@ async function removePage(pageId) {
   border-radius: 999px;
   font-size: 12px;
   text-transform: uppercase;
-}
-.order-input {
-  width: 100%;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  padding: 6px 10px;
-  font-size: 13px;
-  background: #fff;
 }
 dl {
   margin: 0;

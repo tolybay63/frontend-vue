@@ -2,31 +2,16 @@
   <section class="page">
     <header class="page__header">
       <div>
-        <h1>Представления данных</h1>
+        <h1>Управление представлениями данных</h1>
         <p class="muted">
-          Представления — финальный результат работы конструктора. Источники и
-          конфигурации доступны как расширенные настройки.
+          Создавайте и редактируйте сохраненные конфигурации данных. Их можно
+          повторно использовать при настройке произвольных страниц.
         </p>
       </div>
       <button class="btn-primary" type="button" @click="goToData">
         Создать представление
       </button>
     </header>
-
-    <ConstructorTabs />
-
-    <div class="info-card">
-      <div>
-        <div class="info-card__title">Мастер создания представления</div>
-        <p class="muted">
-          Быстрый сценарий: источник → конфигурация → представление. Можно
-          вернуться на любой шаг и переиспользовать данные.
-        </p>
-      </div>
-      <button class="btn-outline btn-sm" type="button" @click="goToData">
-        Запустить мастер
-      </button>
-    </div>
 
     <div v-if="loading" class="empty-state">
       <p>Загружаем представления...</p>
@@ -56,7 +41,7 @@
           }}</span>
         </header>
 
-        <p class="card__description multiline-text">
+        <p class="card__description">
           {{ view.description || 'Без описания' }}
         </p>
 
@@ -175,7 +160,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import ConstructorTabs from '@/components/ConstructorTabs.vue'
 import { fetchFactorValues } from '@/shared/api/objects'
 import {
   loadReportConfigurations,
@@ -187,7 +171,6 @@ import {
 import { useNavigationStore } from '@/shared/stores/navigation'
 import { useFieldDictionaryStore } from '@/shared/stores/fieldDictionary'
 import { humanizeKey } from '@/shared/lib/pivotUtils'
-import { trackEvent } from '@/shared/lib/analytics'
 
 const router = useRouter()
 const navigationStore = useNavigationStore()
@@ -208,7 +191,6 @@ const editDraft = reactive({
 })
 
 onMounted(() => {
-  trackEvent('constructor_nav_open', { section: 'presentations' })
   fieldDictionaryStore.fetchDictionary()
   fetchVisualizations()
   fetchViews()
@@ -240,8 +222,6 @@ const visualizationOptions = computed(() =>
 
 function goToData() {
   navigationStore.allowDataAccess()
-  navigationStore.startViewCreation()
-  trackEvent('view_creation_start', { source: 'templates' })
   router.push('/data')
 }
 
@@ -257,7 +237,6 @@ function previewView(view) {
     return
   }
   navigationStore.allowDataAccess()
-  trackEvent('presentation_open', { id: presentationId })
   router.push({
     path: '/data',
     query: { sourceId, configId, presentationId },
@@ -304,9 +283,6 @@ async function fetchViews() {
     })
   } catch (err) {
     console.warn('Failed to load report views', err)
-    trackEvent('presentation_load_error', {
-      message: String(err?.message || err),
-    })
     loadError.value = 'Не удалось загрузить представления. Попробуйте позже.'
     views.value = []
   } finally {
@@ -379,13 +355,8 @@ async function submitEdit(viewId) {
     await saveReportPresentation('upd', payload)
     await fetchViews()
     cancelEdit()
-    trackEvent('presentation_updated', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to update presentation', err)
-    trackEvent('presentation_update_error', {
-      id: String(remoteId),
-      message: String(err?.message || err),
-    })
     alert('Не удалось сохранить представление. Попробуйте позже.')
   } finally {
     editSaving.value = false
@@ -408,13 +379,8 @@ async function removeView(view) {
       cancelEdit()
     }
     await fetchViews()
-    trackEvent('presentation_deleted', { id: String(remoteId) })
   } catch (err) {
     console.warn('Failed to delete presentation', err)
-    trackEvent('presentation_delete_error', {
-      id: String(remoteId),
-      message: String(err?.message || err),
-    })
     alert('Не удалось удалить представление. Попробуйте позже.')
   }
 }
@@ -800,10 +766,6 @@ function readUserMeta() {
   gap: 16px;
   align-items: center;
   background: #f8fafc;
-}
-.info-card__title {
-  font-weight: 600;
-  margin-bottom: 4px;
 }
 .empty-state {
   border: 1px dashed #d1d5db;

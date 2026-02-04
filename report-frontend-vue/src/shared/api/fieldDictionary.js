@@ -84,11 +84,6 @@ export async function loadFieldDictionaryConstant(preferredId = DEFAULT_FIELD_DI
       method: 'data/loadConstant',
       params: [],
     },
-    retry: {
-      retries: 2,
-      delay: 600,
-      methods: ['post'],
-    },
   })
   const records = extractRecords(response)
   const target = chooseDictionaryRecord(records, preferredId)

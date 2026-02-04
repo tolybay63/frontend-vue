@@ -54,7 +54,7 @@
               }}</span>
             </RouterLink>
           </div>
-          <div v-if="canUseConstructor" class="sider__section">
+          <div class="sider__section">
             <button
               class="sider__section-toggle"
               type="button"
@@ -65,17 +65,8 @@
             </button>
             <transition name="fade">
               <div v-show="constructorOpen" class="sider__submenu">
-                <div class="sider__mode-toggle">
-                  <label class="mode-toggle">
-                    <input v-model="advancedMode" type="checkbox" />
-                    <span>
-                      Показывать расширенные настройки
-                      (источники/конфигурации)
-                    </span>
-                  </label>
-                </div>
                 <RouterLink
-                  v-for="item in constructorLinks"
+                  v-for="item in navLinks"
                   :key="item.to"
                   :to="item.to"
                   replace
@@ -110,23 +101,15 @@ import { storeToRefs } from 'pinia'
 import logoUrl from '@/shared/assets/logo.png'
 import { useAuthStore } from '@/shared/stores/auth'
 import { usePageBuilderStore } from '@/shared/stores/pageBuilder'
-import { useNavigationStore } from '@/shared/stores/navigation'
-import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const pageStore = usePageBuilderStore()
-const navigationStore = useNavigationStore()
-const navPages = computed(() => pageStore.orderedPages || pageStore.pages)
+const navPages = computed(() => pageStore.pages)
 const asideCollapsed = ref(false)
 const constructorOpen = ref(true)
 const siderWidth = ref(248)
-const canUseConstructor = computed(() => hasConstructorAccess(user.value))
-const advancedMode = computed({
-  get: () => navigationStore.isAdvancedMode,
-  set: (value) => navigationStore.setAdvancedMode(value),
-})
 const siderStyle = computed(() => {
   if (asideCollapsed.value) return { width: '84px' }
   return { width: `${siderWidth.value}px` }
@@ -135,24 +118,10 @@ const minSiderWidth = 180
 const maxSiderWidth = 360
 let cleanupResize = null
 
-const constructorLinks = computed(() => {
-  const links = []
-  if (navigationStore.isAdvancedMode) {
-    links.push(
-      { to: '/data-sources', label: 'Источники данных', icon: 'database' },
-      {
-        to: '/data-configurations',
-        label: 'Конфигурации данных',
-        icon: 'sliders',
-      },
-    )
-  }
-  links.push(
-    { to: '/templates', label: 'Представления', icon: 'layers' },
-    { to: '/pages', label: 'Страницы', icon: 'layout' },
-  )
-  return links
-})
+const navLinks = [
+  { to: '/templates', label: 'Представления', icon: 'layers' },
+  { to: '/pages', label: 'Страницы', icon: 'layout' },
+]
 
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value
@@ -361,24 +330,6 @@ async function handleLogout() {
   gap: 4px;
   padding-left: 8px;
 }
-.sider__mode-toggle {
-  padding: 4px 8px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  margin-bottom: 6px;
-}
-.mode-toggle {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 12px;
-  color: #4b5563;
-  line-height: 1.3;
-}
-.mode-toggle input {
-  accent-color: #2563eb;
-}
 .chevron {
   width: 14px;
   height: 14px;
@@ -427,9 +378,6 @@ async function handleLogout() {
 .sider.collapsed .sider__section-title {
   display: none;
 }
-.sider.collapsed .sider__mode-toggle {
-  display: none;
-}
 .sider.collapsed .sider__link {
   justify-content: center;
 }
@@ -475,12 +423,6 @@ async function handleLogout() {
 }
 .icon-layout {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M9 3v18M3 9h18'/%3E%3C/svg%3E");
-}
-.icon-database {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='5' rx='9' ry='3'/%3E%3Cpath d='M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5'/%3E%3Cpath d='M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6'/%3E%3C/svg%3E");
-}
-.icon-sliders {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cline x1='4' y1='6' x2='20' y2='6'/%3E%3Cline x1='4' y1='12' x2='20' y2='12'/%3E%3Cline x1='4' y1='18' x2='20' y2='18'/%3E%3Ccircle cx='9' cy='6' r='2'/%3E%3Ccircle cx='15' cy='12' r='2'/%3E%3Ccircle cx='7' cy='18' r='2'/%3E%3C/svg%3E");
 }
 .icon-info {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2318283a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");

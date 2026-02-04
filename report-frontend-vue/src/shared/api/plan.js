@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { attachApiInterceptors } from '@/shared/api/http'
 
 const PLAN_BASE_URL = (import.meta.env.VITE_PLAN_API_BASE || '/dtj/api').trim()
 
@@ -9,8 +8,6 @@ export const planApi = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
-
-attachApiInterceptors(planApi, { source: 'planApi' })
 
 export const DEFAULT_PLAN_PAYLOAD = {
   date: '2025-11-21',

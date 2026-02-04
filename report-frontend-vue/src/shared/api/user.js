@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { attachApiInterceptors } from '@/shared/api/http'
 
 const USER_API_URL = (import.meta.env.VITE_USER_API_BASE || '/userapi').trim()
 const USERINFO_API_URL = (import.meta.env.VITE_USERINFO_API_BASE || '/userinfo').trim()
@@ -17,9 +16,6 @@ const userInfoApi = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
-
-attachApiInterceptors(userApi, { source: 'userApi' })
-attachApiInterceptors(userInfoApi, { source: 'userInfoApi' })
 
 export async function fetchCurrentUserRecord() {
   const { data } = await userApi.post('', {

@@ -10,6 +10,16 @@ body {
   color: var(--s360-text-primary);
   background: var(--s360-bg);
 }
+button,
+input,
+select,
+textarea,
+code,
+pre,
+kbd,
+samp {
+  font-family: inherit;
+}
 
 a {
   color: var(--s360-color-primary);

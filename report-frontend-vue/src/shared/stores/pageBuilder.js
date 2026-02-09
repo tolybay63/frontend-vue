@@ -440,6 +440,7 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
       if (!layoutMeta) {
         throw new Error('Выберите макет страницы.')
       }
+      let didRefetch = false
       const remoteMeta = draft.remoteMeta || {}
       const resolvedNumericId =
         toNumericId(draft.remoteId) ||
@@ -468,9 +469,13 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
         applyUpdateIdentifiers(payload, draft)
       }
       const saved = await saveReportPage(operation, payload)
+      if (saved && typeof saved === 'object') {
+        draft.remoteMeta = mergeRemoteMeta(draft.remoteMeta, saved)
+      }
       let remoteId = toStableId(saved?.id ?? saved?.Id ?? saved?.ID ?? payload.id ?? resolvedRawId)
       if (!remoteId) {
         await this.fetchPages({ force: true, skipCooldown: true })
+        didRefetch = true
         const match = this.pages.find(
           (page) =>
             page.menuTitle === payload.MenuItem &&
@@ -478,19 +483,34 @@ export const usePageBuilderStore = defineStore('pageBuilder', {
             page.description === payload.Description,
         )
         remoteId = match?.remoteId || match?.id || ''
+        if (match) {
+          draft.remoteMeta = mergeRemoteMeta(draft.remoteMeta, match.remoteMeta || match)
+        }
       }
       if (!remoteId) throw new Error('Сервер не вернул идентификатор страницы.')
+      draft.remoteId = remoteId
       const existingContainers = this.pageContainers[remoteId]?.items || []
       const autoDeleteIds = collectRemovedContainerIds(existingContainers, draft.layout?.containers || [])
       await this.deleteContainers([...autoDeleteIds, ...deletedContainerIds])
       await this.saveContainers(remoteId, draft.layout?.containers || [])
       const finalContainerTabs = buildContainerTabMap(draft.layout?.containers || [])
       if (!areTabMapsEqual(initialContainerTabs, finalContainerTabs)) {
-        draft.remoteId = remoteId
+        if (shouldRefreshPageMeta(draft)) {
+          await this.fetchPages({ force: true, skipCooldown: true })
+          didRefetch = true
+          const refreshed = this.pages.find(
+            (page) => page.remoteId === String(remoteId) || page.id === String(remoteId),
+          )
+          if (refreshed) {
+            draft.remoteMeta = mergeRemoteMeta(draft.remoteMeta, refreshed.remoteMeta || refreshed)
+          }
+        }
         await this.updatePageLayoutMeta(draft, layoutMeta, normalizedDescription, finalContainerTabs, userMeta)
         draft.layout.containerTabs = { ...finalContainerTabs }
       }
-      await this.fetchPages({ force: true, skipCooldown: true })
+      if (!didRefetch) {
+        await this.fetchPages({ force: true, skipCooldown: true })
+      }
       return remoteId
     },
     async updatePageLayoutMeta(draft, layoutMeta, normalizedDescription, containerTabMap, userMeta) {
@@ -919,9 +939,25 @@ function applyUpdateIdentifiers(payload, draft) {
   payload.idMenuItem = idMenuItem
   payload.idPageTitle = idPageTitle
   payload.idLayout = idLayout
-  const idDescription = readMetaNumber(remoteMeta, 'idDescription', 'IdDescription', 'IDDescription')
+  const idDescription = readMetaNumber(
+    remoteMeta,
+    'idDescription',
+    'IdDescription',
+    'IDDescription',
+    'idDiscription',
+    'IdDiscription',
+    'IDDiscription',
+  )
   if (idDescription) payload.idDescription = idDescription
-  const idGlobalFilter = readMetaNumber(remoteMeta, 'idGlobalFilter', 'IdGlobalFilter', 'IDGlobalFilter')
+  const idGlobalFilter = readMetaNumber(
+    remoteMeta,
+    'idGlobalFilter',
+    'IdGlobalFilter',
+    'IDGlobalFilter',
+    'idGlobalFilters',
+    'IdGlobalFilters',
+    'IDGlobalFilters',
+  )
   if (idGlobalFilter) payload.idGlobalFilter = idGlobalFilter
   const idUpdatedAt = readMetaNumber(remoteMeta, 'idUpdatedAt', 'IdUpdatedAt', 'IDUpdatedAt')
   const idUser = readMetaNumber(remoteMeta, 'idUser', 'IdUser', 'IDUser')
@@ -1113,6 +1149,40 @@ function readMetaString(meta = {}, ...keys) {
     }
   }
   return null
+}
+
+function mergeRemoteMeta(current = {}, incoming = {}) {
+  const base = current && typeof current === 'object' ? { ...current } : {}
+  if (!incoming || typeof incoming !== 'object') return base
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (value !== null && typeof value !== 'undefined') {
+      base[key] = value
+    }
+  })
+  return base
+}
+
+function shouldRefreshPageMeta(draft = {}) {
+  const meta = draft?.remoteMeta || {}
+  const missingDescription = !readMetaNumber(
+    meta,
+    'idDescription',
+    'IdDescription',
+    'IDDescription',
+    'idDiscription',
+    'IdDiscription',
+    'IDDiscription',
+  )
+  const missingGlobalFilter = !readMetaNumber(
+    meta,
+    'idGlobalFilter',
+    'IdGlobalFilter',
+    'IDGlobalFilter',
+    'idGlobalFilters',
+    'IdGlobalFilters',
+    'IDGlobalFilters',
+  )
+  return missingDescription || missingGlobalFilter
 }
 
 function readStoredUserValue(key) {

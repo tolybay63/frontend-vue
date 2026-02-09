@@ -61,7 +61,8 @@ async function runBatchJob(batchPayload) {
   if (!jobId) {
     throw new Error('Не удалось запустить пакетную загрузку.')
   }
-  while (true) {
+  let polling = true
+  while (polling) {
     const status = await getBatchStatus(jobId)
     if (!status || !status.status) {
       throw new Error('Не удалось получить статус пакетной загрузки.')
@@ -70,6 +71,7 @@ async function runBatchJob(batchPayload) {
       await waitFor(BATCH_POLL_MS)
       continue
     }
+    polling = false
     return status
   }
 }

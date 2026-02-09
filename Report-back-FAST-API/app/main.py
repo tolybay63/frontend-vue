@@ -14,6 +14,7 @@ from app.api.batch import router as batch_router
 from app.config import get_settings
 from app.models.view_request import ViewRequest
 from app.models.view import ViewResponse
+from app.models.report_job import ReportJobQueuedResponse
 from app.observability.metrics import record_http_request, set_report_jobs_queue_size
 from app.observability.otel import configure_otel
 from app.observability.request_context import set_request_id
@@ -41,6 +42,19 @@ app = FastAPI(
 
 logger = logging.getLogger(__name__)
 configure_otel(app)
+
+
+def _get_cors_allow_origins() -> list[str]:
+    value = os.getenv("CORS_ALLOW_ORIGINS")
+    if value is None or not value.strip():
+        return [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://192.168.1.81:5173",
+        ]
+    if value.strip() == "*":
+        return ["*"]
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def _enforce_records_limit(count: int, limit: int | None, stage: str) -> None:
@@ -101,11 +115,7 @@ async def request_context_middleware(request: Request, call_next):  # type: igno
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://192.168.1.81:5173",
-    ],
+    allow_origins=_get_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -131,7 +141,18 @@ async def metrics() -> Response:
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 
 
-@app.post("/api/report/view", response_model=ViewResponse, tags=["report"])
+@app.post(
+    "/api/report/view",
+    response_model=ViewResponse,
+    tags=["report"],
+    responses={
+        202: {
+            "model": ReportJobQueuedResponse,
+            "description": "Async report queued",
+        },
+        429: {"description": "Report job queue is full"},
+    },
+)
 async def build_report_view(payload: ViewRequest, request: Request) -> ViewResponse:
     """
     Основной endpoint для конструктора дашбордов.
@@ -187,7 +208,11 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
         cache_hit = joined_records is not None
         if joined_records is None:
             load_started = time.monotonic()
-            records = await async_load_records(payload.remoteSource, payload_filters=payload.filters)
+            records = await async_load_records(
+                payload.remoteSource,
+                payload_filters=None,
+                pushdown_enabled=False,
+            )
             _enforce_records_limit(len(records), max_records, "load_records")
             logger.info(
                 "report.filters.load_records",
@@ -280,6 +305,7 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
         debug["recordsAfterFilter"] = len(filtered_records)
         debug["truncated"] = truncated
         debug["cacheHit"] = cache_hit
+        debug["pushdownDisabled"] = True
         if selected_pruned:
             debug["selectedPruned"] = selected_pruned
         if join_debug:
@@ -323,7 +349,12 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
 
     try:
         joins = await resolve_joins(view_payload.remoteSource)
-        cache_key = build_records_cache_key(view_payload.templateId, view_payload.remoteSource, joins)
+        cache_key = build_records_cache_key(
+            view_payload.templateId,
+            view_payload.remoteSource,
+            joins,
+            view_payload.filters,
+        )
         joined_records = await get_cached_records(cache_key)
         join_debug: Dict[str, Any] = {}
         cache_hit = joined_records is not None

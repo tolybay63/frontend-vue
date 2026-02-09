@@ -1,6 +1,39 @@
 import { sendDataSourceRequest } from '@/shared/api/dataSource'
 
 const JOIN_TYPES = ['left', 'inner']
+const COMPUTED_FIELD_RESULT_TYPES = new Set(['number', 'text', 'date'])
+
+function normalizeComputedFieldEntry(entry = {}) {
+  if (!entry || typeof entry !== 'object') return null
+  const rawKey =
+    typeof entry.fieldKey === 'string'
+      ? entry.fieldKey
+      : typeof entry.key === 'string'
+        ? entry.key
+        : typeof entry.name === 'string'
+          ? entry.name
+          : ''
+  const resultType = COMPUTED_FIELD_RESULT_TYPES.has(entry.resultType)
+    ? entry.resultType
+    : 'number'
+  const normalized = {
+    fieldKey: String(rawKey || '').trim(),
+    expression:
+      typeof entry.expression === 'string' ? entry.expression.trim() : '',
+    resultType,
+  }
+  if (typeof entry.id === 'string' && entry.id.trim()) {
+    normalized.id = entry.id.trim()
+  }
+  return normalized
+}
+
+export function normalizeComputedFields(list = []) {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((entry) => normalizeComputedFieldEntry(entry))
+    .filter((entry) => entry !== null)
+}
 
 export const SOURCE_JOIN_SCHEMA = {
   type: 'array',
@@ -47,33 +80,46 @@ export function normalizeJoinList(list = []) {
 
 export function extractJoinsFromBody(rawBody = '') {
   if (!rawBody) {
-    return { cleanedBody: '', joins: [] }
+    return { cleanedBody: '', joins: [], computedFields: null }
   }
   let payload = rawBody
   if (typeof payload !== 'string') {
     try {
       payload = JSON.stringify(payload)
     } catch {
-      return { cleanedBody: '', joins: [] }
+      return { cleanedBody: '', joins: [], computedFields: null }
     }
   }
   try {
     const parsed = JSON.parse(payload)
     if (!parsed || typeof parsed !== 'object') {
-      return { cleanedBody: payload, joins: [] }
+      return { cleanedBody: payload, joins: [], computedFields: null }
     }
     const joins = Array.isArray(parsed.__joins)
       ? normalizeJoinList(parsed.__joins)
       : []
+    let computedFields = null
+    if (Array.isArray(parsed.__computedFields)) {
+      computedFields = normalizeComputedFields(parsed.__computedFields)
+    } else if (Array.isArray(parsed.computedFields)) {
+      computedFields = normalizeComputedFields(parsed.computedFields)
+    }
     if ('__joins' in parsed) {
       delete parsed.__joins
+    }
+    if ('__computedFields' in parsed) {
+      delete parsed.__computedFields
+    }
+    if ('computedFields' in parsed) {
+      delete parsed.computedFields
     }
     return {
       cleanedBody: JSON.stringify(parsed, null, 2),
       joins,
+      computedFields,
     }
   } catch {
-    return { cleanedBody: payload, joins: [] }
+    return { cleanedBody: payload, joins: [], computedFields: null }
   }
 }
 

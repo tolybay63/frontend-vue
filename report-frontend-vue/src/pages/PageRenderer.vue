@@ -23,9 +23,9 @@
           <span>{{ pageRefreshing ? 'Обновляем…' : 'Обновить' }}</span>
         </button>
         <button
+          v-if="canConfigurePage"
           class="btn-outline btn-outline--icon"
           type="button"
-          v-if="canConfigurePage"
           @click="editPage"
         >
           <span>Настроить</span>
@@ -176,7 +176,10 @@
             v-if="containerState(container.id).loading"
             class="widget-placeholder"
           >
-            Загружаем данные...
+            {{
+              containerState(container.id).statusText ||
+              'Загружаем данные...'
+            }}
           </div>
           <div
             v-else-if="containerState(container.id).error"
@@ -225,14 +228,6 @@
                         </span>
                       </div>
                     </th>
-                    <th
-                      v-if="shouldShowRowTotals(container)"
-                      :rowspan="containerRowHeaderRowSpan(container)"
-                      :colspan="containerRowTotalHeaders(container).length || 1"
-                      class="column-field-group"
-                    >
-                      <span class="column-field-value">Итоги</span>
-                    </th>
                   </tr>
                   <template v-if="containerColumnFieldRows(container).length">
                     <tr
@@ -279,6 +274,7 @@
                             :style="
                               tableColumnStyle(container.id, cell.styleKey)
                             "
+                            :rowspan="cell.rowspan || 1"
                             class="column-field-group"
                             :title="cell.label || ''"
                           >
@@ -289,6 +285,19 @@
                               >
                                 {{ cell.label }}
                               </span>
+                              <button
+                                v-if="cell.canCollapse && !cell.isTotal"
+                                class="column-toggle"
+                                type="button"
+                                @click="
+                                  toggleContainerColumn(
+                                    container.id,
+                                    cell.collapseKey,
+                                  )
+                                "
+                              >
+                                {{ cell.isCollapsed ? '+' : '−' }}
+                              </button>
                               <span
                                 class="resize-handle"
                                 @mousedown.prevent="
@@ -307,83 +316,82 @@
                             class="column-field-group"
                             :title="cell.label || ''"
                           >
-                            <span
-                              class="column-field-value"
-                              :title="cell.label || ''"
-                            >
-                              {{ cell.label }}
-                            </span>
+                            <div class="th-content">
+                              <span
+                                class="column-field-value"
+                                :title="cell.label || ''"
+                              >
+                                {{ cell.label }}
+                              </span>
+                              <button
+                                v-if="cell.canCollapse && !cell.isTotal"
+                                class="column-toggle"
+                                type="button"
+                                @click="
+                                  toggleContainerColumn(
+                                    container.id,
+                                    cell.collapseKey,
+                                  )
+                                "
+                              >
+                                {{ cell.isCollapsed ? '+' : '−' }}
+                              </button>
+                            </div>
                           </th>
                         </template>
                       </template>
-                      <th
-                        v-if="
-                          !hasMetricGroups(container) &&
-                          rowIndex === 0 &&
-                          shouldShowRowTotals(container)
-                        "
-                        :rowspan="containerColumnFieldRows(container).length"
-                        class="column-field-group"
-                      >
-                        <span class="column-field-value">Итоги</span>
-                      </th>
                     </tr>
                   </template>
-                  <tr v-else-if="!hasMetricGroups(container)">
+                  <tr v-else>
+                    <template v-if="!hasMetricGroups(container)">
+                      <th
+                        v-for="(label, index) in containerRowHeaderColumns(container)"
+                        :key="`row-header-${container.id}-${index}`"
+                        :style="
+                          rowHeaderStyle(
+                            container.id,
+                            containerRowHeaderColumnCount(container),
+                          )
+                        "
+                        class="row-header-title"
+                      >
+                        <div class="th-content">
+                          {{ label }}
+                          <span
+                            v-if="index === containerRowHeaderColumnCount(container) - 1"
+                            class="resize-handle"
+                            @mousedown.prevent="
+                              startRowHeaderResize(container.id, $event)
+                            "
+                          ></span>
+                        </div>
+                      </th>
+                    </template>
                     <th
-                      v-for="(label, index) in containerRowHeaderColumns(container)"
-                      :key="`row-header-${container.id}-${index}`"
-                      :style="
-                        rowHeaderStyle(container.id, containerRowHeaderColumnCount(container))
-                      "
-                      class="row-header-title"
-                    >
-                      <div class="th-content">
-                        {{ label }}
-                        <span
-                          v-if="index === containerRowHeaderColumnCount(container) - 1"
-                          class="resize-handle"
-                          @mousedown.prevent="
-                            startRowHeaderResize(container.id, $event)
-                          "
-                        ></span>
-                      </div>
-                    </th>
-                    <th
-                      v-for="column in containerState(container.id).view
-                        .columns"
+                      v-for="column in containerDisplayColumns(container)"
                       :key="column.key"
-                      :style="tableColumnStyle(container.id, column.key)"
-                      :title="resolveColumnHeaderLabel(column)"
+                      :style="tableColumnStyle(container.id, column.styleKey)"
+                      :title="containerColumnHeaderLabel(container, column)"
                     >
                       <div class="th-content">
                         <span
                           class="column-field-value"
-                          :title="resolveColumnHeaderLabel(column)"
+                          :title="containerColumnHeaderLabel(container, column)"
                         >
-                          {{ resolveColumnHeaderLabel(column) }}
+                          {{ containerColumnHeaderLabel(container, column) }}
                         </span>
                         <span
                           class="resize-handle"
                           @mousedown.prevent="
                             startTableColumnResize(
                               container.id,
-                              column.key,
+                              column.styleKey,
                               $event,
                             )
                           "
                         ></span>
                       </div>
                     </th>
-                    <template v-if="shouldShowRowTotals(container)">
-                      <th
-                        v-for="total in containerRowTotalHeaders(container)"
-                        :key="`row-total-${total.metricId}`"
-                        class="column-field-group column-field-group--total"
-                      >
-                        ИТОГО
-                      </th>
-                    </template>
                   </tr>
                 </thead>
                 <tbody>
@@ -409,7 +417,19 @@
                           "
                         >
                           <div class="row-content">
-                            <span>{{ cell.value }}</span>
+                            <button
+                              v-if="row.hasChildren && levelIndex === row.depth"
+                              class="row-toggle"
+                              type="button"
+                              @click="toggleContainerRow(container.id, row.key)"
+                            >
+                              {{
+                                isContainerRowCollapsed(container.id, row.key)
+                                  ? '+'
+                                  : '−'
+                              }}
+                            </button>
+                            <span>{{ cell.value === '—' ? '' : cell.value }}</span>
                           </div>
                           <span
                             v-if="
@@ -462,48 +482,35 @@
                       ></span>
                     </td>
                     <td
-                      v-for="(cell, cellIndex) in row.cells"
-                      :key="cell.key"
+                      v-for="column in containerDisplayColumns(container)"
+                      :key="`${row.key}-${column.key}`"
                       class="cell"
                       :class="{
-                        'cell--clickable': canShowCellDetails(
-                          container,
-                          columnEntry(container, cellIndex),
-                        ),
+                        total: column.kind === 'total',
+                        'cell--clickable':
+                          column.kind === 'data' &&
+                          canShowCellDetails(
+                            container,
+                            column.column,
+                          ),
                       }"
                       @click="
+                        column.kind === 'data' &&
                         handleCellDetails(
                           container,
                           row,
-                          columnEntry(container, cellIndex),
+                          column.column,
                         )
                       "
                     >
                       <ConditionalCellValue
-                        :display="cell.display"
-                        :formatting="cell.formatting"
+                        :display="containerCellDisplay(container, row, column)"
+                        :formatting="containerCellFormatting(container, row, column)"
                       />
                     </td>
-                    <template v-if="shouldShowRowTotals(container)">
-                      <td
-                        v-for="total in containerRowTotals(container, row)"
-                        :key="`row-${row.key}-${total.metricId}`"
-                        class="total"
-                      >
-                        <ConditionalCellValue
-                          :display="total.display"
-                          :formatting="total.formatting"
-                        />
-                      </td>
-                    </template>
                   </tr>
                 </tbody>
-                <tfoot
-                  v-if="
-                    shouldShowRowTotals(container) ||
-                    shouldShowColumnTotals(container)
-                  "
-                >
+                <tfoot v-if="shouldShowColumnTotals(container)">
                   <tr>
                     <td
                       v-if="shouldShowColumnTotals(container)"
@@ -515,42 +522,46 @@
                       v-else
                       :colspan="containerRowHeaderColumnCount(container)"
                     ></td>
-                    <template v-if="shouldShowColumnTotals(container)">
-                      <td
-                        v-for="column in containerState(container.id).view
-                          .columns"
-                        :key="`total-${column.key}`"
-                        class="total"
-                      >
+                    <td
+                      v-for="column in containerDisplayColumns(container)"
+                      :key="`total-${container.id}-${column.key}`"
+                      class="total"
+                      :class="{ 'grand-total': column.kind === 'total' }"
+                    >
+                      <template v-if="column.kind === 'data'">
                         <ConditionalCellValue
                           v-if="
                             shouldDisplayColumnTotal(container, column.metricId)
                           "
-                          :display="column.totalDisplay"
-                          :formatting="column.totalFormatting"
+                          :display="
+                            containerColumnTotalDisplay(
+                              container,
+                              column,
+                            )
+                          "
+                          :formatting="
+                            containerColumnTotalFormatting(
+                              container,
+                              column,
+                            )
+                          "
                         />
                         <span v-else>—</span>
-                      </td>
-                    </template>
-                    <template v-if="shouldShowRowTotals(container)">
-                      <td
-                        v-for="total in containerRowTotalHeaders(container)"
-                        :key="`grand-${total.metricId}`"
-                        class="grand-total"
-                      >
+                      </template>
+                      <template v-else>
                         <ConditionalCellValue
                           :display="
-                            containerGrandTotalDisplay(container, total.metricId)
+                            containerGrandTotalDisplay(container, column.metricId)
                           "
                           :formatting="
                             containerGrandTotalFormatting(
                               container,
-                              total.metricId,
+                              column.metricId,
                             )
                           "
                         />
-                      </td>
-                    </template>
+                      </template>
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -723,11 +734,16 @@ import {
   normalizeValue,
   humanizeKey,
   augmentPivotViewWithFormulas,
+  compileFormulaExpression,
   filterPivotViewByVisibility,
+  formatNumber,
   formatValue,
+  formatFormulaValue,
+  extractFormulaMetricIds,
   resolvePivotFieldValue,
   parseDatePartKey,
   formatDatePartFieldLabel,
+  resolveFormulaTokenValue,
 } from '@/shared/lib/pivotUtils'
 import {
   applyConditionalFormattingToView,
@@ -811,6 +827,14 @@ const tabOptions = computed(() =>
     label,
   })),
 )
+const routeTabValue = computed(() => {
+  const raw = route.query?.tab
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === null || typeof value === 'undefined' || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.trunc(parsed)
+})
 const visibleContainers = computed(() => {
   if (!pageContainers.value.length) return []
   if (layoutSettings.value.tabs <= 1) return pageContainers.value
@@ -838,12 +862,26 @@ watch(
   { immediate: true },
 )
 watch(
+  [routeTabValue, () => layoutSettings.value.tabs],
+  ([tabValue]) => {
+    if (tabValue === null) return
+    const maxTab = Math.max(1, Number(layoutSettings.value.tabs) || 1)
+    const normalized = Math.min(maxTab, Math.max(1, tabValue))
+    if (normalized !== activeTab.value) {
+      activeTab.value = normalized
+    }
+  },
+  { immediate: true },
+)
+watch(
   () => activeTab.value,
   (next, prev) => {
-    if (prev != null && prev !== next) {
-      persistTabFilterState(prev)
+    if (!hasConfiguredPageFilters.value) {
+      if (prev != null && prev !== next) {
+        persistTabFilterState(prev)
+      }
+      restoreTabFilterState(next)
     }
-    restoreTabFilterState(next)
     ensurePageFilters(resolvedPageFilterKeys.value)
     if (pivotBackendActive.value) {
       queueBackendFilterRefresh('tab-change')
@@ -869,6 +907,7 @@ const availableContainerFilterValues = reactive({})
 const containerRefreshTimers = reactive({})
 const containerTableSizing = reactive({})
 const containerRowCollapse = reactive({})
+const containerColumnCollapse = reactive({})
 const detailDialog = reactive({
   visible: false,
   containerId: '',
@@ -925,8 +964,17 @@ const pageFilterValues = reactive({})
 const pageFilterRanges = reactive({})
 const pageFilterValuesByTab = reactive({})
 const pageFilterRangesByTab = reactive({})
+const pageFilterCleared = reactive({})
+const pageFilterClearedByTab = reactive({})
+const containerFilterCleared = reactive({})
 const commonFilterKeys = computed(() =>
   resolveCommonContainerFieldKeys(visibleContainers.value, store.templates),
+)
+const configuredPageFilterKeys = computed(() =>
+  (page.value?.filters || []).filter(Boolean),
+)
+const hasConfiguredPageFilters = computed(
+  () => configuredPageFilterKeys.value.length > 0,
 )
 const resolvedPageFilterKeys = computed(() => resolvePageFilterKeys())
 const hasResolvedPageFilters = computed(
@@ -1041,6 +1089,8 @@ if (!containerStates[id]) {
   containerStates[id] = {
     loading: false,
     error: '',
+    status: '',
+    statusText: '',
     view: null,
     chart: null,
     signature: '',
@@ -1071,6 +1121,55 @@ function containerRangeStore(containerId) {
     containerFilterRanges[containerId] = {}
   }
   return containerFilterRanges[containerId]
+}
+
+function containerFilterClearedStore(containerId) {
+  if (!containerFilterCleared[containerId]) {
+    containerFilterCleared[containerId] = {}
+  }
+  return containerFilterCleared[containerId]
+}
+
+function setPageFilterCleared(key, value) {
+  if (!key) return
+  if (value) {
+    pageFilterCleared[key] = true
+  } else if (key in pageFilterCleared) {
+    delete pageFilterCleared[key]
+  }
+}
+
+function setContainerFilterCleared(containerId, key, value) {
+  if (!containerId || !key) return
+  const store = containerFilterClearedStore(containerId)
+  if (value) {
+    store[key] = true
+  } else if (key in store) {
+    delete store[key]
+  }
+}
+
+function isFilterCleared(key, containerId) {
+  if (pageFilterCleared[key]) return true
+  if (containerId) {
+    const store = containerFilterClearedStore(containerId)
+    return Boolean(store[key])
+  }
+  return false
+}
+
+function collectClearedFilterKeys(containerId) {
+  const keys = new Set()
+  Object.entries(pageFilterCleared).forEach(([key, value]) => {
+    if (value) keys.add(key)
+  })
+  if (containerId) {
+    const store = containerFilterClearedStore(containerId)
+    Object.entries(store).forEach(([key, value]) => {
+      if (value) keys.add(key)
+    })
+  }
+  return keys
 }
 
 function hasActiveContainerFilter(containerId, key) {
@@ -1108,13 +1207,52 @@ function rowCollapseStore(containerId) {
   return containerRowCollapse[containerId]
 }
 
+function refreshContainerRowHeaderMatrix(container) {
+  if (!container) return
+  const state = containerState(container.id)
+  const meta = state.meta
+  if (!meta?.useRowHeaderColumns) {
+    if (meta) meta.rowHeaderMatrix = []
+    return
+  }
+  const levelCount = meta.rowHeaderFields?.length || 0
+  if (!levelCount || !state.view) {
+    meta.rowHeaderMatrix = []
+    return
+  }
+  const rows = flattenContainerRows(container.id, state.view)
+  meta.rowHeaderMatrix = buildRowHeaderMatrix(rows, levelCount)
+}
+
 function toggleContainerRow(containerId, nodeKey) {
   const store = rowCollapseStore(containerId)
   store[nodeKey] = !store[nodeKey]
+  const container = pageContainers.value.find((item) => item.id === containerId)
+  if (container) {
+    refreshContainerRowHeaderMatrix(container)
+  }
 }
 
 function isContainerRowCollapsed(containerId, nodeKey) {
   return Boolean(rowCollapseStore(containerId)[nodeKey])
+}
+
+function columnCollapseStore(containerId) {
+  if (!containerColumnCollapse[containerId]) {
+    containerColumnCollapse[containerId] = reactive({})
+  }
+  return containerColumnCollapse[containerId]
+}
+
+function toggleContainerColumn(containerId, nodeKey) {
+  const store = columnCollapseStore(containerId)
+  const current =
+    typeof store[nodeKey] === 'undefined' ? true : Boolean(store[nodeKey])
+  store[nodeKey] = !current
+  const container = pageContainers.value.find((item) => item.id === containerId)
+  if (container) {
+    refreshContainerColumnMeta(container)
+  }
 }
 
 function ensurePageFilters(keys = []) {
@@ -1140,6 +1278,11 @@ function ensurePageFilters(keys = []) {
       delete pageFilterRanges[key]
     }
   })
+  Object.keys(pageFilterCleared).forEach((key) => {
+    if (!keys.includes(key)) {
+      delete pageFilterCleared[key]
+    }
+  })
 }
 
 function normalizeTabKey(tabId) {
@@ -1159,6 +1302,13 @@ function cloneFilterRangesStore(store = {}) {
     if (sanitized) {
       acc[key] = { start: sanitized.start ?? null, end: sanitized.end ?? null }
     }
+    return acc
+  }, {})
+}
+
+function cloneFilterClearedStore(store = {}) {
+  return Object.entries(store).reduce((acc, [key, value]) => {
+    if (value) acc[key] = true
     return acc
   }, {})
 }
@@ -1184,16 +1334,29 @@ function replaceFilterRangesStore(next = {}) {
   })
 }
 
+function replaceFilterClearedStore(next = {}) {
+  Object.keys(pageFilterCleared).forEach((key) => {
+    delete pageFilterCleared[key]
+  })
+  Object.entries(next || {}).forEach(([key, value]) => {
+    if (value) {
+      pageFilterCleared[key] = true
+    }
+  })
+}
+
 function persistTabFilterState(tabId) {
   const key = normalizeTabKey(tabId)
   pageFilterValuesByTab[key] = cloneFilterValuesStore(pageFilterValues)
   pageFilterRangesByTab[key] = cloneFilterRangesStore(pageFilterRanges)
+  pageFilterClearedByTab[key] = cloneFilterClearedStore(pageFilterCleared)
 }
 
 function restoreTabFilterState(tabId) {
   const key = normalizeTabKey(tabId)
   replaceFilterValuesStore(pageFilterValuesByTab[key] || {})
   replaceFilterRangesStore(pageFilterRangesByTab[key] || {})
+  replaceFilterClearedStore(pageFilterClearedByTab[key] || {})
 }
 
 function resetTabFilterState() {
@@ -1203,8 +1366,12 @@ function resetTabFilterState() {
   Object.keys(pageFilterRangesByTab).forEach((key) => {
     delete pageFilterRangesByTab[key]
   })
+  Object.keys(pageFilterClearedByTab).forEach((key) => {
+    delete pageFilterClearedByTab[key]
+  })
   replaceFilterValuesStore({})
   replaceFilterRangesStore({})
+  replaceFilterClearedStore({})
   lastTabFilterKeysSignature = ''
 }
 
@@ -1381,6 +1548,10 @@ function columnTotalsAllowed(container) {
   return containerState(container.id).meta?.columnTotalsAllowed || EMPTY_SET
 }
 
+function buildRowTotalColumnKey(metricId) {
+  return `__row_total__:${metricId}`
+}
+
 function containerRowTotalHeaders(container) {
   const state = containerState(container.id)
   const view = state.view
@@ -1388,12 +1559,6 @@ function containerRowTotalHeaders(container) {
   const allowed = rowTotalsAllowed(container)
   if (!allowed.size) return []
   return view.rowTotalHeaders.filter((header) => allowed.has(header.metricId))
-}
-
-function containerRowTotals(container, row) {
-  const allowed = rowTotalsAllowed(container)
-  if (!allowed.size) return []
-  return (row.totals || []).filter((total) => allowed.has(total.metricId))
 }
 
 function containerGrandTotalEntry(container, metricId) {
@@ -1410,12 +1575,381 @@ function containerGrandTotalFormatting(container, metricId) {
   return entry?.formatting || null
 }
 
+const containerColumnIndexCache = new WeakMap()
+const containerColumnTotalsCache = new WeakMap()
+
+function buildFormulaMeta(metrics = []) {
+  const baseMetricMap = new Map()
+  const formulaMetricMap = new Map()
+  const formulaDependencies = new Map()
+  const formulaEvaluators = new Map()
+  metrics.forEach((metric) => {
+    if (!metric?.id) return
+    if (metric.type === 'formula') {
+      formulaMetricMap.set(metric.id, metric)
+      formulaDependencies.set(
+        metric.id,
+        extractFormulaMetricIds(metric.expression || ''),
+      )
+      const compiled = compileFormulaExpression(metric.expression || '')
+      if (compiled) {
+        formulaEvaluators.set(metric.id, compiled)
+      }
+      return
+    }
+    baseMetricMap.set(metric.id, metric)
+  })
+  return { baseMetricMap, formulaMetricMap, formulaDependencies, formulaEvaluators }
+}
+
+function containerFormulaMeta(container) {
+  return (
+    containerState(container.id).meta?.formulaMeta || {
+      baseMetricMap: new Map(),
+      formulaMetricMap: new Map(),
+      formulaDependencies: new Map(),
+      formulaEvaluators: new Map(),
+    }
+  )
+}
+
+function buildTotalsMapFromArray(totals = []) {
+  const map = new Map()
+  if (!Array.isArray(totals)) return map
+  totals.forEach((entry) => {
+    if (!entry?.metricId) return
+    map.set(entry.metricId, entry?.value ?? null)
+  })
+  return map
+}
+
+function buildTotalsMapFromObject(totals = {}) {
+  const map = new Map()
+  if (!totals || typeof totals !== 'object') return map
+  Object.keys(totals).forEach((metricId) => {
+    map.set(metricId, totals[metricId]?.value ?? null)
+  })
+  return map
+}
+
+function containerColumnIndexByMetricBaseKey(container) {
+  const view = containerState(container.id).view
+  if (!view) return new Map()
+  if (containerColumnIndexCache.has(view)) {
+    return containerColumnIndexCache.get(view)
+  }
+  const map = new Map()
+  ;(view.columns || []).forEach((column, index) => {
+    if (!column?.metricId) return
+    if (!map.has(column.metricId)) {
+      map.set(column.metricId, new Map())
+    }
+    map.get(column.metricId).set(column.baseKey, index)
+  })
+  containerColumnIndexCache.set(view, map)
+  return map
+}
+
+function resolveLeafBaseKeys(container, entry) {
+  if (!entry) return []
+  const view = containerState(container.id).view
+  if (!view || !Array.isArray(view.columns)) return []
+  if (Array.isArray(entry.leafIndices) && entry.leafIndices.length) {
+    const keys = entry.leafIndices
+      .map((index) => view.columns?.[index]?.baseKey)
+      .filter(Boolean)
+    return Array.from(new Set(keys))
+  }
+  return entry.baseKey ? [entry.baseKey] : []
+}
+
+function computeContainerRowBaseValues(
+  container,
+  row,
+  leafBaseKeys = [],
+  metricIds = [],
+) {
+  const result = new Map()
+  if (!row || !leafBaseKeys.length || !metricIds.length) return result
+  const { baseMetricMap } = containerFormulaMeta(container)
+  const indexMap = containerColumnIndexByMetricBaseKey(container)
+  metricIds.forEach((metricId) => {
+    const metric = baseMetricMap.get(metricId)
+    if (!metric) return
+    const indices = leafBaseKeys
+      .map((baseKey) => indexMap.get(metricId)?.get(baseKey))
+      .filter((idx) => Number.isFinite(idx))
+    const values = indices.map((idx) => row.cells?.[idx]?.value)
+    const value = computeAggregatedValue(values, metric)
+    result.set(metricId, value)
+  })
+  return result
+}
+
+function computeContainerColumnBaseTotals(container, entry) {
+  if (!entry) return new Map()
+  if (containerColumnTotalsCache.has(entry)) {
+    return containerColumnTotalsCache.get(entry)
+  }
+  const view = containerState(container.id).view
+  if (!view) return new Map()
+  const { baseMetricMap } = containerFormulaMeta(container)
+  const leafBaseKeys = resolveLeafBaseKeys(container, entry)
+  const indexMap = containerColumnIndexByMetricBaseKey(container)
+  const totals = new Map()
+  baseMetricMap.forEach((metric, metricId) => {
+    const indices = leafBaseKeys
+      .map((baseKey) => indexMap.get(metricId)?.get(baseKey))
+      .filter((idx) => Number.isFinite(idx))
+    const values = []
+    ;(view.rows || []).forEach((row) => {
+      indices.forEach((idx) => {
+        values.push(row.cells?.[idx]?.value)
+      })
+    })
+    const value = computeAggregatedValue(values, metric)
+    totals.set(metricId, value)
+  })
+  containerColumnTotalsCache.set(entry, totals)
+  return totals
+}
+
+function evaluateContainerFormula(container, metric, context = {}) {
+  if (!metric?.id) return null
+  const { formulaEvaluators } = containerFormulaMeta(container)
+  const evaluator = formulaEvaluators.get(metric.id)
+  if (!evaluator) return null
+  return evaluator((id) => resolveFormulaTokenValue(id, context))
+}
+
+function containerColumnTotalEntry(container, displayColumn) {
+  const entry = displayColumn?.column || displayColumn
+  if (!entry) return null
+  const view = containerState(container.id).view
+  const metric =
+    entry.metric ||
+    containerState(container.id).meta?.metrics?.find(
+      (item) => item.id === entry.metricId,
+    )
+  if (metric?.type === 'formula') {
+    const columnTotals = computeContainerColumnBaseTotals(container, entry)
+    const value = evaluateContainerFormula(container, metric, {
+      values: columnTotals,
+      columnTotals,
+      grandTotals: buildTotalsMapFromObject(view?.grandTotals || {}),
+    })
+    return {
+      value,
+      display: formatFormulaValue(value, metric.outputFormat, metric.precision),
+      formatting: null,
+    }
+  }
+  const needsRecalc =
+    entry.isAggregated ||
+    entry.leafIndices?.length > 1 ||
+    !entry.totalDisplay ||
+    entry.totalDisplay === '—' ||
+    entry.value === null ||
+    typeof entry.value === 'undefined'
+  if (!needsRecalc) {
+    return entry
+  }
+  const indices = []
+  if (Array.isArray(entry.leafIndices) && entry.leafIndices.length) {
+    entry.leafIndices.forEach((index) => {
+      if (Number.isFinite(index)) indices.push(index)
+    })
+  } else if (Number.isFinite(displayColumn?.columnIndex)) {
+    indices.push(displayColumn.columnIndex)
+  } else if (view?.columns?.length) {
+    const index = view.columns.findIndex((col) => col.key === entry.key)
+    if (index >= 0) indices.push(index)
+  }
+  if (!indices.length) {
+    return entry
+  }
+  const values = []
+  if (Array.isArray(view?.rows)) {
+    view.rows.forEach((row) => {
+      indices.forEach((index) => {
+        values.push(row.cells?.[index]?.value)
+      })
+    })
+  }
+  const value = computeAggregatedValue(values, metric)
+  return {
+    value,
+    display: formatMetricDisplay(value, metric),
+    formatting: null,
+  }
+}
+
+function containerColumnTotalDisplay(container, displayColumn) {
+  const entry = containerColumnTotalEntry(container, displayColumn)
+  return entry?.display ?? entry?.totalDisplay ?? '—'
+}
+
+function containerColumnTotalFormatting(container, displayColumn) {
+  const entry = containerColumnTotalEntry(container, displayColumn)
+  return entry?.formatting || null
+}
+
 function containerMetricColumnGroups(container) {
   return containerState(container.id).meta?.metricGroups || []
 }
 
 function hasMetricGroups(container) {
-  return containerMetricColumnGroups(container).length > 0
+  return (
+    containerMetricColumnGroups(container).length > 0 &&
+    containerColumnFieldRows(container).length > 0
+  )
+}
+
+function containerDisplayColumns(container) {
+  return containerState(container.id).meta?.displayColumns || []
+}
+
+function containerMetricLabel(container, metricId) {
+  if (!metricId) return ''
+  const metrics = containerState(container.id).meta?.metrics || []
+  const match = metrics.find((metric) => String(metric.id) === String(metricId))
+  if (!match) return ''
+  return (
+    match.label ||
+    (typeof match.title === 'string' ? match.title.trim() : '') ||
+    match.fieldKey ||
+    match.id ||
+    ''
+  )
+}
+
+function containerColumnHeaderLabel(container, column) {
+  if (!column) return ''
+  if (column.kind === 'total') return 'Итого'
+  if (column.kind === 'data') {
+    if (!containerColumnFieldRows(container).length) {
+      const metricId = column.metricId || column.column?.metricId
+      const metricLabel =
+        containerMetricLabel(container, metricId) ||
+        column.column?.metric?.label ||
+        column.column?.metric?.title ||
+        column.column?.metric?.fieldKey ||
+        metricId
+      if (metricLabel) return metricLabel
+    }
+    return resolveColumnHeaderLabel(column.column)
+  }
+  return ''
+}
+
+function containerCellDisplay(container, row, column) {
+  const cell = resolveContainerCell(container, row, column)
+  return cell?.display ?? '—'
+}
+
+function containerCellFormatting(container, row, column) {
+  const cell = resolveContainerCell(container, row, column)
+  return cell?.formatting || null
+}
+
+function toNumericValue(value) {
+  if (value === null || typeof value === 'undefined') return null
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  const normalized = String(value).trim()
+  if (!normalized) return null
+  const compact = normalized.replace(/\s/g, '')
+  const numeric = Number(compact.replace(',', '.'))
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function computeAggregatedValue(values = [], metric) {
+  const list = Array.isArray(values) ? values : []
+  if (!metric) return list.length ? list[0] ?? null : null
+  if (metric.aggregator === 'value') {
+    const defined = list.filter((value) => value !== null && value !== undefined)
+    return defined.length === 1 ? defined[0] : null
+  }
+  const numeric = list
+    .map((value) => toNumericValue(value))
+    .filter((value) => Number.isFinite(value))
+  if (!numeric.length) return null
+  if (metric.aggregator === 'avg') {
+    return numeric.reduce((sum, value) => sum + value, 0) / numeric.length
+  }
+  return numeric.reduce((sum, value) => sum + value, 0)
+}
+
+function formatMetricDisplay(value, metric) {
+  if (!metric) return formatValue(value)
+  const format = metric.outputFormat || 'auto'
+  const precision = Number.isFinite(metric.precision)
+    ? Number(metric.precision)
+    : 2
+  if (format && format !== 'auto') {
+    return formatFormulaValue(value, format, precision)
+  }
+  if (metric.aggregator === 'value') {
+    return formatValue(value)
+  }
+  return formatNumber(value, precision)
+}
+
+function buildAggregatedCell(row, columnEntry, container) {
+  if (!row || !columnEntry?.leafIndices?.length) return null
+  const metric =
+    columnEntry.metric || { aggregator: columnEntry.aggregator || 'sum' }
+  if (metric?.type === 'formula' && container) {
+    const { formulaDependencies } = containerFormulaMeta(container)
+    const deps = formulaDependencies.get(metric.id) || []
+    const leafBaseKeys = resolveLeafBaseKeys(container, columnEntry)
+    const values = computeContainerRowBaseValues(
+      container,
+      row,
+      leafBaseKeys,
+      deps,
+    )
+    const rowTotals = buildTotalsMapFromArray(row.totals || [])
+    const columnTotals = computeContainerColumnBaseTotals(container, columnEntry)
+    const value = evaluateContainerFormula(container, metric, {
+      values,
+      rowTotals,
+      columnTotals,
+      grandTotals: buildTotalsMapFromObject(
+        containerState(container.id).view?.grandTotals || {},
+      ),
+    })
+    return {
+      value,
+      display: formatFormulaValue(value, metric.outputFormat, metric.precision),
+    }
+  }
+  const values = columnEntry.leafIndices.map(
+    (index) => row.cells?.[index]?.value,
+  )
+  const value = computeAggregatedValue(values, metric)
+  return {
+    value,
+    display: formatMetricDisplay(value, metric),
+  }
+}
+
+function resolveContainerCell(container, row, column) {
+  if (!row || !column || !container) return null
+  if (column.kind === 'total') {
+    return (row.totals || []).find((total) => total.metricId === column.metricId) || null
+  }
+  if (column.kind === 'data') {
+    const entry = column.column || {}
+    if (entry.isAggregated || entry.leafIndices?.length > 1) {
+      return buildAggregatedCell(row, entry, container)
+    }
+    const index = Number.isFinite(column.columnIndex) ? column.columnIndex : null
+    if (index === null) return null
+    return row.cells?.[index] || null
+  }
+  return null
 }
 
 function templateFieldMetaMap(template) {
@@ -1497,6 +2031,8 @@ function flattenRowTree(nodes = [], collapseState = {}) {
         hasChildren: Boolean(node.children?.length),
         cells: node.cells,
         totals: node.totals,
+        levels: node.levels || [],
+        values: node.values || [],
       }
       result.push(item)
       if (!collapseState[node.key] && node.children?.length) {
@@ -1506,6 +2042,20 @@ function flattenRowTree(nodes = [], collapseState = {}) {
   }
   walk(nodes)
   return result
+}
+
+function applyRowCollapseDefaults(nodes = [], store = {}) {
+  const walk = (list) => {
+    list.forEach((node) => {
+      if (node?.children?.length) {
+        if (typeof store[node.key] === 'undefined') {
+          store[node.key] = true
+        }
+        walk(node.children)
+      }
+    })
+  }
+  walk(nodes)
 }
 
 function tableSizing(containerId) {
@@ -1528,6 +2078,13 @@ function isTextColumn(column = {}) {
 
 function preferredColumnWidth(column = {}) {
   return isTextColumn(column) ? textColumnWidth : numericColumnWidth
+}
+
+function preferredDisplayColumnWidth(column = {}) {
+  if (column?.kind === 'data') {
+    return preferredColumnWidth(column.column || column)
+  }
+  return numericColumnWidth
 }
 
 function tableColumnStyle(containerId, columnKey) {
@@ -1605,17 +2162,23 @@ function startRowHeaderResize(containerId, event) {
   window.addEventListener('mouseup', onUp)
 }
 
-function syncTableSizing(containerId, view, rowHeaderColumns = 1) {
+function syncTableSizing(containerId, view, rowHeaderColumns = 1, displayColumns = []) {
   const sizing = tableSizing(containerId)
-  const columnKeys = new Set(view.columns.map((column) => column.key))
+  const hasDisplayColumns = Array.isArray(displayColumns) && displayColumns.length
+  const columnKeys = new Set(
+    (hasDisplayColumns ? displayColumns : view.columns || []).map((column) =>
+      hasDisplayColumns ? column.styleKey : column.key,
+    ),
+  )
   Object.keys(sizing.columnWidths).forEach((key) => {
     if (!columnKeys.has(key) && key !== '__rows__') {
       delete sizing.columnWidths[key]
     }
   })
-  view.columns.forEach((column) => {
-    if (!Number.isFinite(sizing.columnWidths[column.key])) {
-      sizing.columnWidths[column.key] = preferredColumnWidth(column)
+  ;(hasDisplayColumns ? displayColumns : view.columns || []).forEach((column) => {
+    const key = hasDisplayColumns ? column.styleKey : column.key
+    if (!Number.isFinite(sizing.columnWidths[key])) {
+      sizing.columnWidths[key] = preferredDisplayColumnWidth(column)
     }
   })
   const rowKeys =
@@ -1647,30 +2210,15 @@ function collectTreeKeys(tree = []) {
   const keys = new Set()
   const walk = (nodes) => {
     nodes.forEach((node) => {
-      keys.add(node.key)
+      if (!node) return
+      if (typeof node.key !== 'undefined') {
+        keys.add(node.key)
+      }
       if (node.children?.length) walk(node.children)
     })
   }
   walk(tree)
   return keys
-}
-
-function groupColumnsByLevel(columns, levelIndex) {
-  const cells = []
-  let pointer = 0
-  while (pointer < columns.length) {
-    const value = getColumnLevelValue(columns[pointer], levelIndex)
-    let span = 1
-    while (
-      pointer + span < columns.length &&
-      getColumnLevelValue(columns[pointer + span], levelIndex) === value
-    ) {
-      span += 1
-    }
-    cells.push({ label: value, colspan: span })
-    pointer += span
-  }
-  return cells
 }
 
 function getColumnLevelValue(column, levelIndex) {
@@ -1705,8 +2253,27 @@ function resolveRowLevelValues(row, levelCount = 0) {
     values = levels.map((level) => formatValue(level?.value))
   } else if (Array.isArray(row?.values) && row.values.length) {
     values = row.values.map((value) => formatValue(value))
-  } else if (row?.label) {
-    values = splitRowLabel(row.label).map((value) => formatValue(value))
+  } else {
+    const labelValues = row?.label
+      ? splitRowLabel(row.label).map((value) => formatValue(value))
+      : []
+    if (labelValues.length > 1) {
+      values = labelValues
+    } else {
+      const keyValues = typeof row?.key === 'string'
+        ? row.key.split('|').map((part) => {
+            const text = String(part || '')
+            const index = text.indexOf(':')
+            const raw = index === -1 ? text : text.slice(index + 1)
+            return formatValue(raw)
+          })
+        : []
+      if (keyValues.length > 1) {
+        values = keyValues
+      } else if (labelValues.length) {
+        values = labelValues
+      }
+    }
   }
   if (!levelCount) return values
   const normalized = values.slice(0, levelCount)
@@ -1818,16 +2385,11 @@ function flattenContainerRows(containerId, view) {
   }))
 }
 
-function containerColumns(container) {
-  return containerState(container.id).view?.columns || []
-}
-
-function columnEntry(container, index) {
-  return containerColumns(container)[index] || null
-}
-
 function canShowCellDetails(container, columnEntry) {
   if (!columnEntry) return false
+  if (columnEntry.isAggregated || columnEntry.leafIndices?.length > 1) {
+    return false
+  }
   const metrics = containerState(container.id).meta?.metrics || []
   const metric = metrics.find((item) => item.id === columnEntry.metricId)
   return Boolean(metric && metric.type !== 'formula' && metric.fieldKey)
@@ -1900,7 +2462,7 @@ async function handleCellDetails(container, row, columnEntry) {
     detailDialog.request = {
       templateId: tpl.id,
       remoteSource: tpl.remoteSource,
-      snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+      snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys(), container.id),
       filters: buildBackendFilters(container.id),
       rowKey,
       columnKey,
@@ -2412,6 +2974,11 @@ function filterRecords(records, snapshot, source, containerId) {
   const filterRanges = {
     ...(snapshot?.filterRanges || {}),
   }
+  const clearedKeys = collectClearedFilterKeys(containerId)
+  clearedKeys.forEach((key) => {
+    delete filterValues[key]
+    delete filterRanges[key]
+  })
   const containerOverrides = containerFilterValues[containerId] || {}
   Object.entries(containerOverrides).forEach(([key, values]) => {
     filterValues[key] = [...values]
@@ -2475,12 +3042,210 @@ function normalizeSelectedValues(values = []) {
   })
 }
 
+function normalizeDimensionValueStore(store = {}) {
+  return Object.entries(store || {}).reduce((acc, [key, values]) => {
+    const normalized = normalizeSelectedValues(values).map((value) =>
+      normalizeValue(value),
+    )
+    if (normalized.length) {
+      acc[key] = normalized
+    }
+    return acc
+  }, {})
+}
+
+function hasActiveDimensionFilters(valueStore = {}, rangeStore = {}) {
+  const hasValues = Object.values(valueStore).some(
+    (values) => Array.isArray(values) && values.length > 0,
+  )
+  if (hasValues) return true
+  return Object.values(rangeStore || {}).some((range) => hasActiveRange(range))
+}
+
+function extractValueFromDimensionKey(rawKey = '', fieldKey = '') {
+  const base = String(rawKey || '')
+  if (!base || base === '__all__') return null
+  const parts = base.split('|')
+  for (const part of parts) {
+    const index = part.indexOf(':')
+    if (index === -1) continue
+    const key = part.slice(0, index)
+    if (key === fieldKey) {
+      return part.slice(index + 1)
+    }
+  }
+  return null
+}
+
+function normalizeEntryValue(value) {
+  if (value === '—') return ''
+  return normalizeValue(value)
+}
+
+function extractDimensionValue(entry, fieldKey, dimensionKeys = []) {
+  if (!entry || !fieldKey) return null
+  const levels = Array.isArray(entry.levels) ? entry.levels : []
+  const level = levels.find((item) => item?.fieldKey === fieldKey)
+  if (level && typeof level.value !== 'undefined') {
+    return level.value
+  }
+  const values = Array.isArray(entry.values) ? entry.values : []
+  if (values.length && Array.isArray(dimensionKeys)) {
+    const index = dimensionKeys.indexOf(fieldKey)
+    if (index >= 0 && index < values.length) {
+      return values[index]
+    }
+  }
+  const rawKey =
+    typeof entry.baseKey === 'string'
+      ? entry.baseKey
+      : typeof entry.key === 'string'
+        ? entry.key
+        : ''
+  return extractValueFromDimensionKey(rawKey, fieldKey)
+}
+
+function matchesDimensionFilters(
+  entry,
+  dimensionKeys = [],
+  valueFilters = {},
+  rangeFilters = {},
+  fieldMetaMap = new Map(),
+) {
+  return (dimensionKeys || []).every((fieldKey) => {
+    const selected = valueFilters?.[fieldKey]
+    if (selected && selected.length) {
+      const value = extractDimensionValue(entry, fieldKey, dimensionKeys)
+      const normalized = normalizeEntryValue(value)
+      if (!selected.includes(normalized)) {
+        return false
+      }
+    }
+    const range = rangeFilters?.[fieldKey]
+    if (range && hasActiveRange(range)) {
+      const descriptor = resolveFieldMetaEntry(fieldMetaMap, fieldKey)
+      const value = extractDimensionValue(entry, fieldKey, dimensionKeys)
+      if (!valueSatisfiesRange(value, range, descriptor)) {
+        return false
+      }
+    }
+    return true
+  })
+}
+
+function filterRowTreeByKeys(nodes = [], allowedKeys, cellFilter) {
+  return (nodes || [])
+    .map((node) => {
+      const children = filterRowTreeByKeys(
+        node?.children || [],
+        allowedKeys,
+        cellFilter,
+      )
+      const keep = allowedKeys.has(node?.key) || children.length > 0
+      if (!keep) return null
+      const next = {
+        ...node,
+        children,
+      }
+      if (cellFilter && Array.isArray(node?.cells)) {
+        next.cells = cellFilter(node.cells)
+      }
+      return next
+    })
+    .filter(Boolean)
+}
+
+function applyDimensionFiltersToView(view, snapshot = {}) {
+  if (!view) return { view, hasFilters: false }
+  const pivot = snapshot?.pivot || {}
+  const rowKeys = Array.isArray(pivot.rows) ? pivot.rows : []
+  const columnKeys = Array.isArray(pivot.columns) ? pivot.columns : []
+  const dimensionValues = snapshot?.dimensionValues || {}
+  const dimensionRanges = snapshot?.dimensionRanges || {}
+  const rowValueFilters = normalizeDimensionValueStore(dimensionValues.rows || {})
+  const columnValueFilters = normalizeDimensionValueStore(dimensionValues.columns || {})
+  const rowRangeFilters = dimensionRanges.rows || {}
+  const columnRangeFilters = dimensionRanges.columns || {}
+  const hasRowFilters = hasActiveDimensionFilters(rowValueFilters, rowRangeFilters)
+  const hasColumnFilters = hasActiveDimensionFilters(
+    columnValueFilters,
+    columnRangeFilters,
+  )
+  const hasFilters = hasRowFilters || hasColumnFilters
+  if (!hasFilters) return { view, hasFilters: false }
+
+  const fieldMetaMap = new Map(Object.entries(snapshot?.fieldMeta || {}))
+
+  const originalColumns = Array.isArray(view.columns) ? view.columns : []
+  let filteredColumns = originalColumns
+  let columnIndices = originalColumns.map((_, index) => index)
+  if (hasColumnFilters && columnKeys.length) {
+    const indices = []
+    filteredColumns = originalColumns.filter((column, index) => {
+      const matches = matchesDimensionFilters(
+        column,
+        columnKeys,
+        columnValueFilters,
+        columnRangeFilters,
+        fieldMetaMap,
+      )
+      if (matches) indices.push(index)
+      return matches
+    })
+    columnIndices = indices
+  }
+
+  const filterCells = (cells = []) =>
+    columnIndices
+      .map((idx) => (Array.isArray(cells) ? cells[idx] : undefined))
+      .filter((cell) => typeof cell !== 'undefined')
+
+  let filteredRows = Array.isArray(view.rows) ? view.rows : []
+  if (hasRowFilters && rowKeys.length) {
+    filteredRows = filteredRows.filter((row) =>
+      matchesDimensionFilters(
+        row,
+        rowKeys,
+        rowValueFilters,
+        rowRangeFilters,
+        fieldMetaMap,
+      ),
+    )
+  }
+  filteredRows = filteredRows.map((row) => ({
+    ...row,
+    cells: filterCells(row.cells || []),
+  }))
+
+  let filteredRowTree = Array.isArray(view.rowTree) ? view.rowTree : []
+  if (filteredRowTree.length) {
+    const allowedKeys = new Set(filteredRows.map((row) => row.key))
+    filteredRowTree = filterRowTreeByKeys(
+      filteredRowTree,
+      allowedKeys,
+      filterCells,
+    )
+  }
+
+  return {
+    view: {
+      ...view,
+      columns: filteredColumns,
+      rows: filteredRows,
+      rowTree: filteredRowTree,
+    },
+    hasFilters,
+  }
+}
+
 function buildBackendFilters(containerId) {
   const pageKeys = resolvePageFilterKeys()
   const globalValues = pageKeys.reduce((acc, key) => {
     const values = normalizeSelectedValues(pageFilterValues[key])
     if (values.length) {
       acc[key] = values
+    } else if (pageFilterCleared[key]) {
+      acc[key] = []
     }
     return acc
   }, {})
@@ -2497,6 +3262,8 @@ function buildBackendFilters(containerId) {
     const list = normalizeSelectedValues(values)
     if (list.length) {
       acc[key] = list
+    } else if (containerFilterClearedStore(containerId)[key]) {
+      acc[key] = []
     }
     return acc
   }, {})
@@ -2562,12 +3329,16 @@ function buildDetailFilterSummary(tpl, containerId) {
     entry.range = sanitized
   }
 
-  Object.entries(snapshot?.filterValues || {}).forEach(([key, values]) =>
-    addValues(key, values),
-  )
-  Object.entries(snapshot?.filterRanges || {}).forEach(([key, range]) =>
-    addRange(key, range),
-  )
+  Object.entries(snapshot?.filterValues || {}).forEach(([key, values]) => {
+    if (!isFilterCleared(key, containerId)) {
+      addValues(key, values)
+    }
+  })
+  Object.entries(snapshot?.filterRanges || {}).forEach(([key, range]) => {
+    if (!isFilterCleared(key, containerId)) {
+      addRange(key, range)
+    }
+  })
 
   activePageFilters.value.forEach((filter) => {
     const key = filter?.key
@@ -2619,6 +3390,9 @@ function buildDetailFilterSummary(tpl, containerId) {
 }
 
 function resolvePageFilterKeys() {
+  if (configuredPageFilterKeys.value.length) {
+    return Array.from(new Set(configuredPageFilterKeys.value))
+  }
   const containers = visibleContainers.value || []
   let keys = commonFilterKeys.value || []
   if (!keys.length && containers.length) {
@@ -2656,9 +3430,12 @@ function resolvePageFilterKeys() {
   return resolved
 }
 
-function buildBackendSnapshot(tpl, commonKeys = []) {
+function buildBackendSnapshot(tpl, commonKeys = [], containerId = '') {
   const snapshot = tpl?.snapshot || {}
   const pivot = snapshot.pivot || {}
+  const backendMetrics = Array.isArray(snapshot.metrics)
+    ? snapshot.metrics.filter((metric) => metric?.type !== 'formula')
+    : []
   const normalizedCommon = Array.isArray(commonKeys)
     ? commonKeys.filter(Boolean)
     : []
@@ -2673,8 +3450,22 @@ function buildBackendSnapshot(tpl, commonKeys = []) {
       'Filter keys are empty; sending empty pivot.filters in backend payload.',
     )
   }
+  const filterValues = {
+    ...(snapshot?.filterValues || {}),
+  }
+  const filterRanges = {
+    ...(snapshot?.filterRanges || {}),
+  }
+  const clearedKeys = collectClearedFilterKeys(containerId)
+  clearedKeys.forEach((key) => {
+    delete filterValues[key]
+    delete filterRanges[key]
+  })
   return {
     ...snapshot,
+    metrics: backendMetrics,
+    filterValues,
+    filterRanges,
     pivot: {
       ...pivot,
       filters: [...filterKeys],
@@ -2901,6 +3692,15 @@ function displayColumnLabel(column, index) {
   return `Колонка ${index + 1}`
 }
 
+function displayExportColumnLabel(column, index) {
+  if (!column) return ''
+  if (column.kind === 'total') return 'Итого'
+  if (column.kind === 'data') {
+    return displayColumnLabel(column.column, index)
+  }
+  return displayColumnLabel(column, index)
+}
+
 function columnMetricLabel(column = {}) {
   const sources = [
     column?.metric?.label,
@@ -2943,6 +3743,7 @@ async function hydrateContainer(container) {
   const state = containerState(container.id)
   const hadData = Boolean(state.rawRecords && state.rawRecords.length)
   let viewAbortController = null
+  let usedLocalFallback = false
   if (!tpl) {
     state.loading = false
     state.error = 'Привяжите представление для отображения данных.'
@@ -2984,6 +3785,8 @@ async function hydrateContainer(container) {
   state.inFlightSignature = signature
   state.loading = true
   state.error = ''
+  state.status = ''
+  state.statusText = ''
   state.view = null
   state.chart = null
   state.records = []
@@ -2992,6 +3795,8 @@ async function hydrateContainer(container) {
   state.meta.columnTotalsAllowed = new Set()
   state.meta.metricGroups = []
   state.meta.columnFieldRows = []
+  state.meta.displayColumns = []
+  state.meta.columnTree = []
   state.meta.rowHeaderTitle = 'Строки'
   state.meta.rowHeaderFields = ['Строки']
   state.meta.useRowHeaderColumns = false
@@ -3018,6 +3823,7 @@ async function hydrateContainer(container) {
     state.meta.rowTotalsAllowed = rowTotalsAllowed
     state.meta.columnTotalsAllowed = columnTotalsAllowed
     state.meta.metrics = metrics
+    state.meta.formulaMeta = buildFormulaMeta(metrics)
     if (!metrics.length) {
       throw new Error('В представлении не выбраны метрики.')
     }
@@ -3031,7 +3837,6 @@ async function hydrateContainer(container) {
     }
 
     let baseView = null
-    let usedLocalFallback = false
     if (pivotBackendActive.value) {
       // TODO: pivot расчёт перенесён на FastAPI-бэк (/api/report/view).
       // Локальный buildPivotView оставлен как fallback до полной миграции.
@@ -3044,10 +3849,14 @@ async function hydrateContainer(container) {
         const { view: backendView } = await fetchBackendView({
           templateId: tpl.id,
           remoteSource: tpl.remoteSource,
-          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys()),
+          snapshot: buildBackendSnapshot(tpl, resolvePageFilterKeys(), container.id),
           filters: buildBackendFilters(container.id),
           signal: viewAbortController.signal,
           silent: hadData,
+          onStatus: (payload) => {
+            state.status = payload?.status || ''
+            state.statusText = payload?.message || ''
+          },
         })
         if (debugLogsEnabled) {
           const backendColumns = Array.isArray(backendView?.columns)
@@ -3069,8 +3878,12 @@ async function hydrateContainer(container) {
           })
         }
         const normalized = normalizeBackendView(backendView, baseMetrics)
-        if (normalized?.rows?.length) {
-          baseView = normalized
+        const { view: filteredView, hasFilters } = applyDimensionFiltersToView(
+          normalized,
+          tpl.snapshot,
+        )
+        if (filteredView?.rows?.length || hasFilters) {
+          baseView = filteredView
         }
       } catch (err) {
         if (err?.name === 'AbortError') {
@@ -3127,32 +3940,43 @@ async function hydrateContainer(container) {
       rowTotalsAllowed,
       metrics,
     )
+    const enabledMetrics = metrics.filter((metric) => metric.enabled !== false)
+    const rowTotalsEnabled = shouldShowRowTotals(container)
     const headerMeta = buildHeaderMeta(
       tpl,
-      metrics.filter((metric) => metric.enabled !== false),
+      enabledMetrics,
       view,
+      rowTotalsEnabled ? rowTotalsAllowed : new Set(),
+      columnCollapseStore(container.id),
     )
     state.meta.metricGroups = headerMeta.metricGroups
     state.meta.columnFieldRows = headerMeta.columnFieldRows
+    state.meta.displayColumns = headerMeta.displayColumns || []
+    state.meta.columnTree = headerMeta.columnTree || []
     state.meta.rowHeaderTitle = headerMeta.rowHeaderTitle
     state.meta.rowHeaderFields = headerMeta.rowHeaderFields || ['Строки']
-    const hasTree = Boolean(view.rowTree && view.rowTree.length)
-    state.meta.useRowHeaderColumns =
-      !hasTree && state.meta.rowHeaderFields.length > 1
-    state.meta.rowHeaderMatrix = state.meta.useRowHeaderColumns
-      ? buildRowHeaderMatrix(view.rows || [], state.meta.rowHeaderFields.length)
-      : []
-    syncTableSizing(container.id, view, headerMeta.rowHeaderFields?.length || 1)
+    state.meta.useRowHeaderColumns = state.meta.rowHeaderFields.length > 1
+    state.meta.rowHeaderMatrix = []
+    syncTableSizing(
+      container.id,
+      view,
+      headerMeta.rowHeaderFields?.length || 1,
+      headerMeta.displayColumns || [],
+    )
     const collapseStore = rowCollapseStore(container.id)
+    applyRowCollapseDefaults(view.rowTree || [], collapseStore)
     Object.keys(collapseStore).forEach((key) => {
       if (!(view.rowTree || []).some((node) => includesNodeKey(node, key))) {
         delete collapseStore[key]
       }
     })
+    refreshContainerRowHeaderMatrix(container)
   } catch (err) {
     state.error = err?.message || 'Не удалось построить виджет.'
   } finally {
     state.loading = false
+    state.status = ''
+    state.statusText = ''
     if (state.inFlightSignature === signature) {
       state.inFlightSignature = ''
     }
@@ -3186,11 +4010,17 @@ function refreshContainers() {
   Object.keys(containerFilterRanges).forEach((id) => {
     if (!ids.has(id)) delete containerFilterRanges[id]
   })
+  Object.keys(containerFilterCleared).forEach((id) => {
+    if (!ids.has(id)) delete containerFilterCleared[id]
+  })
   Object.keys(containerTableSizing).forEach((id) => {
     if (!ids.has(id)) delete containerTableSizing[id]
   })
   Object.keys(containerRowCollapse).forEach((id) => {
     if (!ids.has(id)) delete containerRowCollapse[id]
+  })
+  Object.keys(containerColumnCollapse).forEach((id) => {
+    if (!ids.has(id)) delete containerColumnCollapse[id]
   })
   Object.keys(backendFiltersByContainer).forEach((id) => {
     if (!ids.has(id)) {
@@ -3263,6 +4093,7 @@ function collectContainerExportData() {
           columnFieldRows: state.meta.columnFieldRows || [],
           rowHeaderTitle: state.meta.rowHeaderTitle || 'Строки',
         },
+        displayColumns: state.meta.displayColumns || [],
         columns: view.columns || [],
         rows: flattenExportRows(view),
         showRowTotals: shouldShowRowTotals(container),
@@ -3270,7 +4101,6 @@ function collectContainerExportData() {
         rowTotals: containerRowTotalHeaders(container),
         rowTotalsSet: new Set(rowTotalsAllowed(container)),
         columnTotalsSet: new Set(columnTotalsAllowed(container)),
-        columnTotals: (view.columns || []).map((column) => column.totalDisplay),
         grandTotals: view.grandTotals || {},
       }
     })
@@ -3317,28 +4147,36 @@ function buildWorksheetXml(container, index) {
 function buildWorksheetRowsXml(container) {
   const {
     headerMeta,
+    displayColumns,
     columns,
     rows,
     showRowTotals,
     showColumnTotals,
-    rowTotals,
-    rowTotalsSet,
     columnTotalsSet,
-    columnTotals,
     grandTotals,
   } = container
   const metricGroups = headerMeta.metricGroups || []
   const columnRows = headerMeta.columnFieldRows || []
+  const exportColumns =
+    Array.isArray(displayColumns) && displayColumns.length
+      ? displayColumns
+      : (columns || []).map((column) => ({
+          kind: 'data',
+          key: column.key,
+          metricId: column.metricId,
+          column,
+        }))
   const parts = []
 
   if (metricGroups.length) {
     const metricCells = [headerMeta.rowHeaderTitle]
     metricGroups.forEach((group) => {
-      metricCells.push(group.label || '')
+      const label = group.label || ''
+      const span = Math.max(group.span || 1, 1)
+      for (let index = 0; index < span; index += 1) {
+        metricCells.push(label)
+      }
     })
-    if (showRowTotals) {
-      rowTotals.forEach((total) => metricCells.push(total.label || ''))
-    }
     parts.push(buildWorksheetRow(metricCells))
   }
 
@@ -3353,46 +4191,53 @@ function buildWorksheetRowsXml(container) {
       headerRow.segments.forEach((segment) => {
         segment.cells.forEach((cell) => cells.push(cell.label || ''))
       })
-      if (!metricGroups.length && rowIndex === 0 && showRowTotals) {
-        rowTotals.forEach((total) => cells.push(total.label || ''))
-      }
       parts.push(buildWorksheetRow(cells))
     })
   } else {
     const headerCells = []
     headerCells.push(metricGroups.length ? '' : headerMeta.rowHeaderTitle)
-    columns.forEach((column, index) =>
-      headerCells.push(displayColumnLabel(column, index)),
+    exportColumns.forEach((column, index) =>
+      headerCells.push(displayExportColumnLabel(column, index)),
     )
-    if (showRowTotals) {
-      rowTotals.forEach((total) => headerCells.push(total.label || ''))
-    }
     parts.push(buildWorksheetRow(headerCells))
   }
 
   rows.forEach((row) => {
     const cells = [resolveRowHeaderLabel(row) || row.label || '']
-    row.cells.forEach((cell) => cells.push(cell.display || ''))
-    if (showRowTotals) {
-      filterRowTotalsForExport(row.totals, rowTotalsSet).forEach((total) => {
-        cells.push(total.display || '')
-      })
-    }
+    exportColumns.forEach((column) => {
+      if (column.kind === 'total') {
+        const total = (row.totals || []).find(
+          (entry) => entry.metricId === column.metricId,
+        )
+        cells.push(total?.display || '')
+        return
+      }
+      const index = Number.isFinite(column.columnIndex)
+        ? column.columnIndex
+        : columns.findIndex((item) => item.key === column.key)
+      const cell = index >= 0 ? row.cells?.[index] : null
+      cells.push(cell?.display || '')
+    })
     parts.push(buildWorksheetRow(cells))
   })
 
-  if (showColumnTotals) {
+  if (showColumnTotals || showRowTotals) {
     const totalCells = ['Итого по столбцам']
-    columns.forEach((column, index) => {
+    exportColumns.forEach((column) => {
+      if (column.kind === 'total') {
+        totalCells.push(grandTotals?.[column.metricId]?.display || '')
+        return
+      }
+      if (!showColumnTotals) {
+        totalCells.push('')
+        return
+      }
       totalCells.push(
-        columnTotalsSet.has(column.metricId) ? columnTotals[index] || '' : '',
+        columnTotalsSet.has(column.metricId)
+          ? column.column?.totalDisplay || ''
+          : '',
       )
     })
-    if (showRowTotals) {
-      rowTotals.forEach((total) => {
-        totalCells.push(grandTotals?.[total.metricId]?.display || '')
-      })
-    }
     parts.push(buildWorksheetRow(totalCells))
   }
   return parts.join('')
@@ -3434,11 +4279,6 @@ function flattenExportRows(view) {
     cells: row.cells,
     totals: row.totals,
   }))
-}
-
-function filterRowTotalsForExport(totals = [], allowed = new Set()) {
-  if (!allowed || !allowed.size) return []
-  return (totals || []).filter((total) => allowed.has(total.metricId))
 }
 
 function downloadBlob(content, mime, filename) {
@@ -3485,16 +4325,20 @@ function buildFilterMetaFromRecords(tpl, records = []) {
   const previousMeta = new Map(
     (snapshot?.filtersMeta || []).map((meta) => [meta?.key, meta || {}]),
   )
-  return filters.map((key) => ({
-    key,
-    label: resolveFieldLabel(key, overrides, fieldMeta),
-    values: collectFilterValuesFromRecords(
-      records,
+  return filters.map((key) => {
+    const previous = previousMeta.get(key) || {}
+    return {
       key,
-      FILTER_META_VALUE_LIMIT,
-    ),
-    mode: normalizePreferredMode(previousMeta.get(key)?.mode),
-  }))
+      label: resolveFieldLabel(key, overrides, fieldMeta),
+      values: collectFilterValuesFromRecords(
+        records,
+        key,
+        FILTER_META_VALUE_LIMIT,
+      ),
+      mode: normalizePreferredMode(previous.mode),
+      hidden: Boolean(previous.hidden),
+    }
+  })
 }
 
 function resolveFieldLabel(key, overrides = {}, fieldMeta = {}) {
@@ -3823,7 +4667,7 @@ async function runBackendFilterRefresh() {
       const tpl = template(container.templateId)
       if (!tpl || !tpl.remoteSource) return null
       const silent = Boolean(containerState(id).rawRecords?.length)
-      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys())
+      const snapshot = buildBackendSnapshot(tpl, resolvePageFilterKeys(), id)
       const signature = buildContainerFilterSignature(id, pageSignature)
       if (
         scope === 'container' &&
@@ -3927,10 +4771,13 @@ async function runBackendFilterRefresh() {
         )
       })
       rebuildGlobalFilterOptions()
+      const allowGlobalPrune =
+        scope !== 'tab-change' || !hasConfiguredPageFilters.value
       successful.forEach((result) => {
         const pruned = applySelectedPrunedSelections(
           result.data?.selectedPruned,
           result.containerId,
+          { pruneGlobal: allowGlobalPrune },
         )
         if (pruned.pageChanged) {
           pagePruned = true
@@ -3940,7 +4787,7 @@ async function runBackendFilterRefresh() {
           prunedContainers.add(result.containerId)
         }
       })
-      if (prunePageFilterSelections()) {
+      if (allowGlobalPrune && prunePageFilterSelections()) {
         pagePruned = true
       }
       successful.forEach((result) => {
@@ -4163,13 +5010,12 @@ function pruneStoreBySelected(store, prunedMap, rangeStore = null) {
   return changed
 }
 
-function applySelectedPrunedSelections(selectedPruned, containerId) {
+function applySelectedPrunedSelections(selectedPruned, containerId, options = {}) {
+  const { pruneGlobal = true } = options
   const { global, container } = normalizeSelectedPrunedPayload(selectedPruned)
-  const pageChanged = pruneStoreBySelected(
-    pageFilterValues,
-    global,
-    pageFilterRanges,
-  )
+  const pageChanged = pruneGlobal
+    ? pruneStoreBySelected(pageFilterValues, global, pageFilterRanges)
+    : false
   let containerChanged = false
   if (containerId) {
     const store = containerFilterValues[containerId]
@@ -4299,13 +5145,6 @@ function recalcContainerFilterOptions(containerId, force = false) {
       availableContainerFilterValues[containerId] = {}
     }
     availableContainerFilterValues[containerId][key] = options
-  })
-}
-
-function recalcAllContainerFilterOptions() {
-  const containers = pageContainers.value || []
-  containers.forEach((container) => {
-    recalcContainerFilterOptions(container.id)
   })
 }
 
@@ -4483,7 +5322,429 @@ function syncContainerFilterSelections(containerId, filtersMeta = []) {
   })
 }
 
-function buildHeaderMeta(tpl, metrics = [], view = null) {
+function buildMetricGroups(columns = [], metrics = [], rowTotalsAllowed = new Set()) {
+  if (!columns.length || !metrics.length) return []
+  return metrics
+    .map((metric) => {
+      const entries = columns.filter((column) => column.metricId === metric.id)
+      const showTotals = rowTotalsAllowed.has(metric.id)
+      return {
+        metric,
+        entries,
+        showTotals,
+        span: entries.length + (showTotals ? 1 : 0) || 1,
+        label: metric.label || metricDisplayLabel(metric),
+        totalKey: buildRowTotalColumnKey(metric.id),
+      }
+    })
+    .filter((group) => group.entries.length || group.showTotals)
+}
+
+function buildDisplayColumns(columns = [], metricGroups = []) {
+  if (!columns.length || !metricGroups.length) return []
+  const indexByKey = new Map(
+    columns.map((column, index) => [column.key, index]),
+  )
+  const result = []
+  metricGroups.forEach((group) => {
+    group.entries.forEach((column) => {
+      const resolvedIndex = Number.isFinite(column.columnIndex)
+        ? column.columnIndex
+        : indexByKey.get(column.key)
+      result.push({
+        kind: 'data',
+        key: column.key,
+        styleKey: column.key,
+        metricId: column.metricId,
+        columnIndex: resolvedIndex,
+        column,
+        isAggregated: Boolean(column.isAggregated || column.leafIndices?.length > 1),
+      })
+    })
+    if (group.showTotals) {
+      result.push({
+        kind: 'total',
+        key: group.totalKey,
+        styleKey: group.totalKey,
+        metricId: group.metric.id,
+      })
+    }
+  })
+  return result
+}
+
+function splitColumnKeyPart(part = '') {
+  const value = String(part || '')
+  const index = value.indexOf(':')
+  if (index === -1) return { fieldKey: null, value }
+  return { fieldKey: value.slice(0, index), value: value.slice(index + 1) }
+}
+
+function buildColumnLevelMetaFromKey(rawKey) {
+  const base = String(rawKey || '').trim()
+  if (!base) return { levelKeys: [], levelValues: [] }
+  const parts = base.split('|')
+  const levelKeys = []
+  const levelValues = []
+  let prefix = ''
+  parts.forEach((part) => {
+    prefix = prefix ? `${prefix}|${part}` : part
+    levelKeys.push(prefix)
+    const { value } = splitColumnKeyPart(part)
+    levelValues.push(value)
+  })
+  return { levelKeys, levelValues }
+}
+
+function buildColumnLevelMeta(column) {
+  const baseKey = typeof column?.baseKey === 'string' ? column.baseKey : ''
+  if (baseKey && baseKey !== '__all__') {
+    return buildColumnLevelMetaFromKey(baseKey)
+  }
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values.map((value, index) => `level${index}:${value ?? ''}`)
+    return buildColumnLevelMetaFromKey(parts.join('|'))
+  }
+  const levels = Array.isArray(column?.levels) ? column.levels : []
+  if (levels.length) {
+    const parts = levels.map(
+      (level, index) =>
+        `${level?.fieldKey || `level${index}`}:${level?.value ?? ''}`,
+    )
+    return buildColumnLevelMetaFromKey(parts.join('|'))
+  }
+  return { levelKeys: [], levelValues: [] }
+}
+
+function resolveColumnDepth(column, totalLevels = 0) {
+  if (Number.isFinite(column?.depth)) return Number(column.depth)
+  const keys = Array.isArray(column?.levelKeys) ? column.levelKeys : []
+  if (keys.length) return keys.length - 1
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) return values.length - 1
+  const levels = Array.isArray(column?.levels) ? column.levels : []
+  if (levels.length) return levels.length - 1
+  return Math.max(Number(totalLevels) - 1, 0)
+}
+
+function buildColumnTree(columns = []) {
+  const roots = []
+  const nodeMap = new Map()
+  const pushChild = (parent, child) => {
+    if (!parent) return
+    if (!parent.children.some((entry) => entry.key === child.key)) {
+      parent.children.push(child)
+    }
+  }
+  columns.forEach((column) => {
+    const meta = column?.levelKeys?.length
+      ? { levelKeys: column.levelKeys, levelValues: column.levelValues || [] }
+      : buildColumnLevelMeta(column)
+    const levelKeys = meta.levelKeys || []
+    const levelValues = meta.levelValues || []
+    if (!levelKeys.length) return
+    levelKeys.forEach((levelKey, index) => {
+      if (!nodeMap.has(levelKey)) {
+        const node = {
+          key: levelKey,
+          value: levelValues[index] ?? '',
+          label: levelValues[index] ?? '',
+          depth: index,
+          children: [],
+          leafKeys: [],
+          levelKeys: levelKeys.slice(0, index + 1),
+          values: levelValues.slice(0, index + 1),
+          parentKey: index > 0 ? levelKeys[index - 1] : null,
+        }
+        nodeMap.set(levelKey, node)
+        if (index === 0) {
+          roots.push(node)
+        } else {
+          const parent = nodeMap.get(levelKeys[index - 1])
+          if (parent) pushChild(parent, node)
+        }
+      } else if (index > 0) {
+        const parent = nodeMap.get(levelKeys[index - 1])
+        const node = nodeMap.get(levelKey)
+        if (parent && node) pushChild(parent, node)
+      }
+    })
+    const leafKey = levelKeys[levelKeys.length - 1]
+    levelKeys.forEach((levelKey) => {
+      const node = nodeMap.get(levelKey)
+      if (!node) return
+      if (!node.leafKeys.includes(leafKey)) {
+        node.leafKeys.push(leafKey)
+      }
+    })
+  })
+  return { roots, nodeMap }
+}
+
+function collectVisibleColumnNodes(nodes = [], collapseState = {}) {
+  const result = []
+  const isCollapsed = (node) => {
+    if (!node?.children?.length) return false
+    const stored = collapseState?.[node.key]
+    if (typeof stored === 'undefined') return true
+    return Boolean(stored)
+  }
+  const walk = (node) => {
+    if (!node) return
+    if (node.children?.length) {
+      if (isCollapsed(node)) {
+        result.push(node)
+        return
+      }
+      node.children.forEach((child) => walk(child))
+      return
+    }
+    result.push(node)
+  }
+  nodes.forEach((node) => walk(node))
+  return result
+}
+
+function collectColumnTreeKeys(nodes = [], set = new Set()) {
+  nodes.forEach((node) => {
+    if (!node) return
+    if (typeof node.key !== 'undefined') {
+      set.add(node.key)
+    }
+    if (Array.isArray(node.children) && node.children.length) {
+      collectColumnTreeKeys(node.children, set)
+    }
+  })
+  return set
+}
+
+function buildColumnValuesFromNode(node, totalLevels = 0) {
+  const values = Array.from({ length: Math.max(totalLevels, 1) }, () => null)
+  if (!node || !Number.isFinite(node.depth)) return values
+  if (node.depth < values.length) {
+    values[node.depth] = node.value ?? node.label ?? ''
+  }
+  return values
+}
+
+function buildCollapsedColumns(
+  columns = [],
+  metrics = [],
+  columnFields = [],
+  collapseState = {},
+) {
+  const totalLevels = Array.isArray(columnFields) ? columnFields.length : 0
+  const safeColumns = Array.isArray(columns) ? columns : []
+  const normalized = safeColumns.map((column, index) => {
+    const safeColumn =
+      column && typeof column === 'object'
+        ? column
+        : {
+            key: `column-${index}`,
+            baseKey: '__all__',
+            metricId: '__unknown__',
+            values: [],
+            levels: [],
+          }
+    const meta = buildColumnLevelMeta(safeColumn)
+    return {
+      ...safeColumn,
+      columnIndex: index,
+      levelKeys: meta.levelKeys,
+      levelValues: meta.levelValues,
+      depth: resolveColumnDepth(safeColumn, totalLevels),
+      leafIndices: [index],
+    }
+  })
+  if (!normalized.length || totalLevels <= 1) {
+    return { columns: normalized, nodeMap: new Map(), roots: [] }
+  }
+  const { roots, nodeMap } = buildColumnTree(normalized)
+  const visibleNodes = collectVisibleColumnNodes(roots, collapseState)
+  const columnsByMetric = new Map()
+  normalized.forEach((column) => {
+    const metricId = column.metricId
+    if (!columnsByMetric.has(metricId)) {
+      columnsByMetric.set(metricId, new Map())
+    }
+    const baseKey = column.baseKey || column.key
+    columnsByMetric.get(metricId).set(baseKey, column)
+  })
+  const metricList = Array.isArray(metrics) ? metrics.filter(Boolean) : []
+  const metricMap = new Map(
+    metricList.filter((metric) => metric?.id).map((metric) => [metric.id, metric]),
+  )
+  const result = []
+  metricList.forEach((metric) => {
+    if (!metric?.id) return
+    const entries = columnsByMetric.get(metric.id) || new Map()
+    visibleNodes.forEach((node) => {
+      const leafKeys = node.leafKeys?.length ? node.leafKeys : [node.key]
+      if (leafKeys.length === 1) {
+        const baseKey = leafKeys[0]
+        const column = entries.get(baseKey)
+        if (!column) return
+        result.push({
+          ...column,
+          metric: column.metric || metricMap.get(column.metricId) || metric,
+          depth: resolveColumnDepth(column, totalLevels),
+        })
+        return
+      }
+      const leafColumns = leafKeys
+        .map((baseKey) => entries.get(baseKey))
+        .filter(Boolean)
+      if (!leafColumns.length) return
+      const leafIndices = leafColumns
+        .map((col) => col.columnIndex)
+        .filter((idx) => Number.isFinite(idx))
+      const displayMetric = metricMap.get(metric.id) || metric
+      const baseKey = node.key
+      const aggregated = {
+        key: `${baseKey}::${metric.id}`,
+        baseKey,
+        metricId: metric.id,
+        metric: displayMetric,
+        label: node.label || node.value || baseKey,
+        aggregator: displayMetric?.aggregator || 'sum',
+        format: displayMetric?.outputFormat || 'auto',
+        precision: Number.isFinite(displayMetric?.precision)
+          ? Number(displayMetric.precision)
+          : 2,
+        values: buildColumnValuesFromNode(node, totalLevels),
+        levelKeys: node.levelKeys,
+        levelValues: node.values,
+        depth: node.depth,
+        leafIndices,
+        isAggregated: true,
+      }
+      result.push(aggregated)
+    })
+  })
+  return { columns: result, nodeMap, roots }
+}
+
+function buildColumnHeaderCells(
+  entries = [],
+  levelIndex,
+  totalRows,
+  isValueRow,
+  columnNodeMap = new Map(),
+  collapseState = {},
+) {
+  const cells = []
+  let pointer = 0
+  while (pointer < entries.length) {
+    const entry = entries[pointer]
+    const depth = resolveColumnDepth(entry, totalRows)
+    if (depth < levelIndex) {
+      pointer += 1
+      continue
+    }
+    const levelKey = entry?.levelKeys?.[levelIndex]
+    const node = levelKey ? columnNodeMap.get(levelKey) : null
+    const canCollapse = Boolean(node?.children?.length)
+    const isCollapsed =
+      canCollapse && typeof collapseState?.[node.key] === 'undefined'
+        ? true
+        : Boolean(collapseState?.[node?.key])
+    if (depth === levelIndex && depth < totalRows - 1) {
+      cells.push({
+        label: getColumnLevelValue(entry, levelIndex),
+        colspan: 1,
+        styleKey: entry.key,
+        isValue: true,
+        rowspan: totalRows - levelIndex,
+        collapseKey: levelKey || entry.baseKey || entry.key,
+        canCollapse,
+        isCollapsed,
+      })
+      pointer += 1
+      continue
+    }
+    if (isValueRow) {
+      cells.push({
+        label: getColumnLevelValue(entry, levelIndex),
+        colspan: 1,
+        styleKey: entry.key,
+        isValue: true,
+        collapseKey: levelKey || entry.baseKey || entry.key,
+        canCollapse,
+        isCollapsed,
+      })
+      pointer += 1
+      continue
+    }
+    const value = getColumnLevelValue(entry, levelIndex)
+    let span = 1
+    while (pointer + span < entries.length) {
+      const next = entries[pointer + span]
+      const nextDepth = resolveColumnDepth(next, totalRows)
+      if (nextDepth < levelIndex) break
+      if (nextDepth === levelIndex && nextDepth < totalRows - 1) break
+      if (getColumnLevelValue(next, levelIndex) !== value) break
+      span += 1
+    }
+    cells.push({
+      label: value,
+      colspan: span,
+      isValue: false,
+      collapseKey: levelKey || entry.baseKey || entry.key,
+      canCollapse,
+      isCollapsed,
+    })
+    pointer += span
+  }
+  return cells
+}
+
+function buildColumnFieldRows(
+  columnFields = [],
+  metricGroups = [],
+  overrides = {},
+  fieldMeta = {},
+  columnNodeMap = new Map(),
+  collapseState = {},
+) {
+  if (!metricGroups.length || !columnFields.length) return []
+  const totalRows = columnFields.length
+  return columnFields.map((fieldKey, levelIndex) => {
+    const fieldLabel = resolveFieldLabel(fieldKey, overrides, fieldMeta)
+    const isValue = levelIndex === columnFields.length - 1
+    const segments = metricGroups.map((group) => {
+      const entries = group.entries
+      const cells = buildColumnHeaderCells(
+        entries,
+        levelIndex,
+        totalRows,
+        isValue,
+        columnNodeMap,
+        collapseState,
+      )
+      if (group.showTotals && levelIndex === 0) {
+        cells.push({
+          label: 'Итого',
+          colspan: 1,
+          styleKey: group.totalKey,
+          isValue: true,
+          rowspan: totalRows,
+          isTotal: true,
+        })
+      }
+      return { metricId: group.metric.id, cells }
+    })
+    return { fieldLabel, segments }
+  })
+}
+
+function buildHeaderMeta(
+  tpl,
+  metrics = [],
+  view = null,
+  rowTotalsAllowed = new Set(),
+  columnCollapseState = null,
+) {
   const snapshot = tpl?.snapshot || {}
   const overrides = snapshot?.options?.headerOverrides || {}
   const fieldMeta = snapshot?.fieldMeta || {}
@@ -4494,50 +5755,84 @@ function buildHeaderMeta(tpl, metrics = [], view = null) {
     : ['Строки']
   const rowHeaderTitle = rowHeaderFields.join(' › ')
   const columns = view?.columns || []
-  const metricGroups =
-    columns.length && metrics.length
-      ? metrics.map((metric) => {
-          const entries = columns.filter(
-            (column) => column.metricId === metric.id,
-          )
-          return {
-            metric,
-            entries,
-            span: entries.length || 1,
-            label: metric.label || metricDisplayLabel(metric),
-          }
-        })
-      : []
-  const columnFieldRows =
-    metricGroups.length && columnFields.length
-      ? columnFields.map((fieldKey, levelIndex) => {
-          const fieldLabel = resolveFieldLabel(fieldKey, overrides, fieldMeta)
-          const isValue = levelIndex === columnFields.length - 1
-          const segments = metricGroups.map((group) => {
-            const entries = group.entries
-            const cells = isValue
-              ? entries.map((column) => ({
-                  label: getColumnLevelValue(column, levelIndex),
-                  colspan: 1,
-                  styleKey: column.key,
-                  isValue: true,
-                }))
-              : groupColumnsByLevel(entries, levelIndex).map((cell) => ({
-                  label: cell.label,
-                  colspan: cell.colspan,
-                  isValue: false,
-                }))
-            return { metricId: group.metric.id, cells }
-          })
-          return { fieldLabel, segments }
-        })
-      : []
+  let columnMeta
+  try {
+    columnMeta = buildCollapsedColumns(
+      columns,
+      metrics,
+      columnFields,
+      columnCollapseState || {},
+    )
+  } catch (error) {
+    console.error('pivot column collapse failed', error)
+    columnMeta = {
+      columns,
+      nodeMap: new Map(),
+      roots: [],
+    }
+  }
+  if (columnCollapseState) {
+    const keys = collectColumnTreeKeys(columnMeta.roots || [])
+    Object.keys(columnCollapseState).forEach((key) => {
+      if (!keys.has(key)) {
+        delete columnCollapseState[key]
+      }
+    })
+  }
+  const metricGroups = buildMetricGroups(
+    columnMeta.columns,
+    metrics,
+    rowTotalsAllowed,
+  )
+  const displayColumns = buildDisplayColumns(columnMeta.columns, metricGroups)
+  const columnFieldRows = buildColumnFieldRows(
+    columnFields,
+    metricGroups,
+    overrides,
+    fieldMeta,
+    columnMeta.nodeMap,
+    columnCollapseState || {},
+  )
   return {
     rowHeaderTitle,
     rowHeaderFields,
     metricGroups,
     columnFieldRows,
+    displayColumns,
+    columnTree: columnMeta.roots || [],
   }
+}
+
+function refreshContainerColumnMeta(container) {
+  if (!container) return
+  const tpl = template(container.templateId)
+  if (!tpl) return
+  const state = containerState(container.id)
+  const view = state.view
+  if (!view) return
+  const metrics = (state.meta.metrics || []).filter(
+    (metric) => metric.enabled !== false,
+  )
+  const rowTotalsEnabled = shouldShowRowTotals(container)
+  const headerMeta = buildHeaderMeta(
+    tpl,
+    metrics,
+    view,
+    rowTotalsEnabled ? rowTotalsAllowed(container) : new Set(),
+    columnCollapseStore(container.id),
+  )
+  state.meta.metricGroups = headerMeta.metricGroups
+  state.meta.columnFieldRows = headerMeta.columnFieldRows
+  state.meta.displayColumns = headerMeta.displayColumns || []
+  state.meta.columnTree = headerMeta.columnTree || []
+  state.meta.rowHeaderTitle = headerMeta.rowHeaderTitle
+  state.meta.rowHeaderFields = headerMeta.rowHeaderFields || ['Строки']
+  syncTableSizing(
+    container.id,
+    view,
+    headerMeta.rowHeaderFields?.length || 1,
+    headerMeta.displayColumns || [],
+  )
 }
 
 function scheduleRefresh() {
@@ -4609,6 +5904,7 @@ function resetPageFilters() {
   activePageFilters.value.forEach((filter) => {
     pageFilterValues[filter.key] = []
     delete pageFilterRanges[filter.key]
+    setPageFilterCleared(filter.key, true)
   })
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4623,6 +5919,7 @@ function resetContainerFilter(containerId, key) {
   const store = containerFilterStore(containerId)
   store[key] = []
   delete containerRangeStore(containerId)[key]
+  setContainerFilterCleared(containerId, key, true)
   if (pivotBackendActive.value) {
     abortContainerViewRequests([containerId])
     queueBackendFilterRefresh('container', containerId)
@@ -4642,6 +5939,11 @@ function handlePageFilterValuesChange(key, values, forcedMode = '') {
   pageFilterValues[key] = next
   if (forcedMode !== 'range') {
     delete pageFilterRanges[key]
+  }
+  if (next.length) {
+    setPageFilterCleared(key, false)
+  } else if (!hasActiveRange(pageFilterRanges[key])) {
+    setPageFilterCleared(key, true)
   }
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4669,6 +5971,7 @@ function handlePageFilterRangeChange(key, range) {
     if (pageFilterValues[key]?.length) {
       pageFilterValues[key] = []
     }
+    setPageFilterCleared(key, false)
     if (pivotBackendActive.value) {
       abortContainerViewRequests(
         (visibleContainers.value || []).map((container) => container.id),
@@ -4683,6 +5986,9 @@ function handlePageFilterRangeChange(key, range) {
   }
   if (current) {
     delete pageFilterRanges[key]
+    if (!pageFilterValues[key]?.length) {
+      setPageFilterCleared(key, true)
+    }
   }
   if (pivotBackendActive.value) {
     abortContainerViewRequests(
@@ -4712,6 +6018,11 @@ function handleContainerFilterValuesChange(containerId, filter, values) {
   if (!isContainerRangeFilter(filter)) {
     delete containerRangeStore(containerId)[key]
   }
+  if (next.length) {
+    setContainerFilterCleared(containerId, key, false)
+  } else if (!hasActiveRange(containerRangeStore(containerId)[key])) {
+    setContainerFilterCleared(containerId, key, true)
+  }
   if (pivotBackendActive.value) {
     abortContainerViewRequests([containerId])
     queueBackendFilterRefresh('container', containerId)
@@ -4736,6 +6047,7 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
     if (filterStore[key]?.length) {
       filterStore[key] = []
     }
+    setContainerFilterCleared(containerId, key, false)
     if (changedRange || filterStore[key]?.length === 0) {
       if (pivotBackendActive.value) {
         abortContainerViewRequests([containerId])
@@ -4750,6 +6062,9 @@ function handleContainerFilterRangeChange(containerId, filter, range) {
   }
   if (currentRange) {
     delete rangeStore[key]
+    if (!filterStore[key]?.length) {
+      setContainerFilterCleared(containerId, key, true)
+    }
     if (pivotBackendActive.value) {
       abortContainerViewRequests([containerId])
       queueBackendFilterRefresh('container', containerId)
@@ -5177,6 +6492,19 @@ function editPage() {
   background: #fff;
   cursor: pointer;
   font-size: 12px;
+}
+.column-toggle {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  line-height: 16px;
+  text-align: center;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
 }
 .row-content {
   display: flex;

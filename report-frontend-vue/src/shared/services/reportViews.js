@@ -7,8 +7,15 @@ import { fetchFactorValues, loadPresentationLinks } from '@/shared/api/objects'
 import {
   parseJoinConfig,
   extractJoinsFromBody,
+  normalizeComputedFields,
 } from '@/shared/lib/sourceJoins.js'
 import { normalizeConditionalFormatting } from '@/shared/lib/conditionalFormatting'
+import {
+  DATE_PARTS,
+  buildDatePartKey,
+  formatDatePartFieldLabel,
+  humanizeKey,
+} from '@/shared/lib/pivotUtils'
 
 const FALLBACK_AGGREGATORS = {
   count: { label: 'Количество', fvFieldVal: 1350, pvFieldVal: 1570 },
@@ -68,6 +75,11 @@ export async function fetchReportViewTemplates() {
 }
 
 function buildTemplate(presentation, config, source, link) {
+  const snapshot = mergeComputedFieldsIntoSnapshot(
+    buildSnapshot(config),
+    source?.computedFields,
+    config?.headerOverrides,
+  )
   return {
     id: presentation.id,
     name: presentation.name,
@@ -76,7 +88,7 @@ function buildTemplate(presentation, config, source, link) {
     visualizationLabel: presentation.visualizationLabel,
     dataSource: source?.id || source?.remoteId || config?.parentId || '',
     remoteSource: source,
-    snapshot: buildSnapshot(config),
+    snapshot,
     remotePresentation: presentation.remoteMeta,
     remoteConfig: config?.remoteMeta,
     missingConfig: !config,
@@ -246,6 +258,102 @@ function normalizeFilterMode(mode) {
   return ''
 }
 
+function mergeComputedFieldsIntoSnapshot(
+  snapshot,
+  computedFields,
+  headerOverrides = {},
+) {
+  if (!snapshot || !Array.isArray(computedFields) || !computedFields.length) {
+    return snapshot
+  }
+  const fieldMeta = { ...(snapshot.fieldMeta || {}) }
+  const computedMeta = buildComputedFieldMeta(computedFields)
+  let updated = false
+  Object.entries(computedMeta).forEach(([key, meta]) => {
+    if (!fieldMeta[key]) {
+      fieldMeta[key] = meta
+      updated = true
+    }
+  })
+
+  const filtersMeta = Array.isArray(snapshot.filtersMeta)
+    ? [...snapshot.filtersMeta]
+    : []
+  const filterKeys = new Set(
+    filtersMeta
+      .map((meta) => String(meta?.key || meta?.fieldKey || '').trim())
+      .filter(Boolean),
+  )
+  const filterModes = snapshot.filterModes || {}
+  const filterCandidates = new Set()
+  const pivotFilters = Array.isArray(snapshot.pivot?.filters)
+    ? snapshot.pivot.filters
+    : []
+  pivotFilters.forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  Object.keys(snapshot.filterValues || {}).forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  Object.keys(snapshot.filterRanges || {}).forEach((key) => {
+    if (key) filterCandidates.add(String(key).trim())
+  })
+  filterCandidates.forEach((key) => {
+    if (!key || filterKeys.has(key)) return
+    const label =
+      (headerOverrides[key] && headerOverrides[key].trim()) ||
+      fieldMeta[key]?.label ||
+      humanizeKey(key)
+    const mode = normalizeFilterMode(filterModes[key] || '')
+    filtersMeta.push({ key, label, values: [], mode })
+    filterKeys.add(key)
+    updated = true
+  })
+
+  if (!updated) return snapshot
+  return {
+    ...snapshot,
+    fieldMeta,
+    filtersMeta,
+  }
+}
+
+function buildComputedFieldMeta(list = []) {
+  const meta = {}
+  list.forEach((field) => {
+    if (!field || typeof field !== 'object') return
+    const key = String(field.fieldKey || '').trim()
+    if (!key || meta[key]) return
+    const type =
+      field.resultType === 'date'
+        ? 'date'
+        : field.resultType === 'text'
+          ? 'string'
+          : 'number'
+    const label = humanizeKey(key)
+    meta[key] = {
+      label,
+      sample: '',
+      values: [],
+      type,
+    }
+    if (type === 'date') {
+      DATE_PARTS.forEach((part) => {
+        const partKey = buildDatePartKey(key, part.key)
+        if (!meta[partKey]) {
+          meta[partKey] = {
+            label: formatDatePartFieldLabel(label, part.key),
+            sample: '',
+            values: [],
+            type: 'string',
+          }
+        }
+      })
+    }
+  })
+  return meta
+}
+
 function normalizeSource(entry = {}, index = 0, localComputedFields = new Map()) {
   const remoteId = toStableId(entry?.id ?? entry?.Id ?? entry?.ID)
   const baseBody =
@@ -255,7 +363,11 @@ function normalizeSource(entry = {}, index = 0, localComputedFields = new Map())
     entry?.requestBody ||
     entry?.rawBody ||
     ''
-  const { cleanedBody, joins: embeddedJoins } = extractJoinsFromBody(baseBody)
+  const {
+    cleanedBody,
+    joins: embeddedJoins,
+    computedFields: bodyComputedFields,
+  } = extractJoinsFromBody(baseBody)
   const formattedBody = cleanedBody || baseBody
   const parsedBody = parseMaybeJson(formattedBody || baseBody)
   const joinConfig = parseJoinConfig(entry?.joinConfig || entry?.JoinConfig)
@@ -264,11 +376,14 @@ function normalizeSource(entry = {}, index = 0, localComputedFields = new Map())
     entry?.ComputedFields ||
     entry?.computed_fields ||
     null
-  const computedFields = Array.isArray(rawComputed)
-    ? rawComputed
-    : remoteId && localComputedFields.has(remoteId)
-      ? localComputedFields.get(remoteId)
-      : []
+  let computedFields = bodyComputedFields
+  if (computedFields === null) {
+    computedFields = Array.isArray(rawComputed)
+      ? normalizeComputedFields(rawComputed)
+      : remoteId && localComputedFields.has(remoteId)
+        ? normalizeComputedFields(localComputedFields.get(remoteId))
+        : []
+  }
   return {
     id: remoteId || createLocalId(`source-${index}`),
     remoteId,

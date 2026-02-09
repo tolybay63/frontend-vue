@@ -21,7 +21,8 @@ export async function loadPagedBatchResults(jobId, { pageSize } = {}) {
   const results = []
   let pagesFetched = 0
 
-  while (true) {
+  let shouldFetch = true
+  while (shouldFetch) {
     const page = await getBatchResults(jobId, { offset, limit })
     const pageResults = Array.isArray(page?.results) ? page.results : []
     if (total == null) {
@@ -32,9 +33,9 @@ export async function loadPagedBatchResults(jobId, { pageSize } = {}) {
     offset += pageResults.length
     pagesFetched += 1
 
-    if (total != null && results.length >= total) break
-    if (pageResults.length < limit) break
-    if (pagesFetched >= MAX_PAGES_GUARD) break
+    if (total != null && results.length >= total) shouldFetch = false
+    if (pageResults.length < limit) shouldFetch = false
+    if (pagesFetched >= MAX_PAGES_GUARD) shouldFetch = false
   }
 
   return { results, total: total ?? results.length, status: 'done' }

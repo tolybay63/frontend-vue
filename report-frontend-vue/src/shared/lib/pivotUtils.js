@@ -321,8 +321,8 @@ function finalizeBucket(bucket, aggregator) {
 
 function flattenColumns(columnIndex, metrics) {
   const entries = []
-  columnIndex.forEach((column) => {
-    metrics.forEach((metric) => {
+  metrics.forEach((metric) => {
+    columnIndex.forEach((column) => {
       entries.push({
         key: `${column.key}::${metric.id}`,
         baseKey: column.key,
@@ -860,15 +860,123 @@ function pickMetricValue(totals = [], metricId) {
   return typeof entry?.value === 'number' ? entry.value : (entry?.value ?? null)
 }
 
-const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_:-]+)\s*\}\}/g
+const ROW_TOTAL_TOKEN_PREFIX = 'row_total:'
+const COLUMN_TOTAL_TOKEN_PREFIX = 'column_total:'
+const GRAND_TOTAL_TOKEN_PREFIX = 'grand_total:'
+
+function normalizeFormulaTokenId(token = '') {
+  const trimmed = String(token || '').trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith(ROW_TOTAL_TOKEN_PREFIX)) {
+    return trimmed.slice(ROW_TOTAL_TOKEN_PREFIX.length)
+  }
+  if (trimmed.startsWith(COLUMN_TOTAL_TOKEN_PREFIX)) {
+    return trimmed.slice(COLUMN_TOTAL_TOKEN_PREFIX.length)
+  }
+  if (trimmed.startsWith(GRAND_TOTAL_TOKEN_PREFIX)) {
+    return trimmed.slice(GRAND_TOTAL_TOKEN_PREFIX.length)
+  }
+  return trimmed
+}
+
+export function resolveFormulaTokenValue(
+  token,
+  { values, rowTotals, columnTotals, grandTotals } = {},
+) {
+  if (!token) return null
+  if (token.startsWith(ROW_TOTAL_TOKEN_PREFIX)) {
+    const metricId = token.slice(ROW_TOTAL_TOKEN_PREFIX.length)
+    return pickFormulaValue(rowTotals, metricId, grandTotals)
+  }
+  if (token.startsWith(COLUMN_TOTAL_TOKEN_PREFIX)) {
+    const metricId = token.slice(COLUMN_TOTAL_TOKEN_PREFIX.length)
+    return pickFormulaValue(columnTotals, metricId, grandTotals)
+  }
+  if (token.startsWith(GRAND_TOTAL_TOKEN_PREFIX)) {
+    const metricId = token.slice(GRAND_TOTAL_TOKEN_PREFIX.length)
+    return getMetricValue(grandTotals, metricId)
+  }
+  return getMetricValue(values, token)
+}
+
+function pickFormulaValue(primary, metricId, fallback) {
+  const value = getMetricValue(primary, metricId)
+  if (value === null || typeof value === 'undefined') {
+    return getMetricValue(fallback, metricId)
+  }
+  return value
+}
+
+function getMetricValue(source, metricId) {
+  if (!source || !metricId) return null
+  if (source instanceof Map) {
+    return source.has(metricId) ? source.get(metricId) : null
+  }
+  if (typeof source === 'object') {
+    return Object.prototype.hasOwnProperty.call(source, metricId)
+      ? source[metricId]
+      : null
+  }
+  return null
+}
+
+function buildTotalsValueMap(entries = []) {
+  const map = new Map()
+  if (!entries) return map
+  if (entries instanceof Map) {
+    for (const [metricId, value] of entries.entries()) {
+      if (!metricId) continue
+      if (value && typeof value === 'object' && 'value' in value) {
+        map.set(metricId, value.value ?? null)
+      } else {
+        map.set(metricId, value ?? null)
+      }
+    }
+    return map
+  }
+  if (Array.isArray(entries)) {
+    for (const entry of entries) {
+      if (entry?.metricId) {
+        map.set(entry.metricId, entry?.value ?? null)
+      }
+    }
+    return map
+  }
+  if (typeof entries === 'object') {
+    for (const metricId in entries) {
+      if (!Object.prototype.hasOwnProperty.call(entries, metricId)) continue
+      if (!metricId) continue
+      const entry = entries[metricId]
+      if (entry && typeof entry === 'object' && 'value' in entry) {
+        map.set(metricId, entry.value ?? null)
+      } else {
+        map.set(metricId, entry ?? null)
+      }
+    }
+  }
+  return map
+}
+
+function buildTotalsValueMapFromObject(totals = {}) {
+  const map = new Map()
+  if (!totals || typeof totals !== 'object') return map
+  for (const metricId in totals) {
+    if (!Object.prototype.hasOwnProperty.call(totals, metricId)) continue
+    map.set(metricId, totals[metricId]?.value ?? null)
+  }
+  return map
+}
 
 export function extractFormulaMetricIds(expression = '') {
   if (!expression) return []
   const ids = new Set()
   const input = String(expression)
+  FORMULA_TOKEN_REGEX.lastIndex = 0
   let match
   while ((match = FORMULA_TOKEN_REGEX.exec(input))) {
-    if (match[1]) ids.add(match[1])
+    const normalized = normalizeFormulaTokenId(match[1])
+    if (normalized) ids.add(normalized)
   }
   return Array.from(ids)
 }
@@ -896,6 +1004,7 @@ export function augmentPivotViewWithFormulas(view, metrics = []) {
   const columnEntries = Array.isArray(view.columns) ? view.columns : []
   const baseKeyMeta = buildColumnBaseMeta(columnEntries)
   const baseKeyOrder = baseKeyMeta.order
+  const grandTotals = buildTotalsValueMapFromObject(view.grandTotals || {})
   const columnMap = columnEntries.reduce((acc, column) => {
     const key = buildColumnKey(column.baseKey, column.metricId)
     acc.set(key, column)
@@ -923,6 +1032,7 @@ export function augmentPivotViewWithFormulas(view, metrics = []) {
     columnMap,
     columnTotals,
     formulaEvaluators,
+    grandTotals,
   })
   const newRows = buildAugmentedRows({
     rows: view.rows || [],
@@ -930,6 +1040,8 @@ export function augmentPivotViewWithFormulas(view, metrics = []) {
     metricOrder,
     rowCellMaps,
     formulaEvaluators,
+    columnTotals,
+    grandTotals,
   })
   const newRowTree = Array.isArray(view.rowTree)
     ? buildAugmentedRowTree({
@@ -938,6 +1050,8 @@ export function augmentPivotViewWithFormulas(view, metrics = []) {
         metricOrder,
         treeCellMaps,
         formulaEvaluators,
+        columnTotals,
+        grandTotals,
       })
     : []
   const newRowTotalHeaders = metricOrder.map((metric) => ({
@@ -948,17 +1062,21 @@ export function augmentPivotViewWithFormulas(view, metrics = []) {
     newRows,
     metricOrder,
     formulaEvaluators,
+    false,
+    grandTotals,
   )
   const newTreeWithTotals = computeRowTotals(
     newRowTree,
     metricOrder,
     formulaEvaluators,
     true,
+    grandTotals,
   )
   const newGrandTotals = buildGrandTotals(
     view.grandTotals || {},
     metricOrder,
     formulaEvaluators,
+    grandTotals,
   )
 
   return {
@@ -976,6 +1094,7 @@ function computeRowTotals(
   metricOrder,
   formulaEvaluators,
   isTree = false,
+  grandTotals = null,
 ) {
   if (!Array.isArray(rows) || !rows.length) return rows
   return rows.map((row) => {
@@ -983,17 +1102,20 @@ function computeRowTotals(
       acc.set(total.metricId, total)
       return acc
     }, new Map())
+    const totalValues = buildTotalsValueMap(row.totals || [])
     const newTotals = metricOrder.map((metric) => {
       if (metric.type === 'formula') {
         const evaluator = formulaEvaluators.get(metric.id)
         if (!evaluator) {
           return { metricId: metric.id, display: '—', value: null }
         }
-        const values = {}
-        totalMap.forEach((entry, metricId) => {
-          values[metricId] = entry?.value
-        })
-        const value = evaluator((id) => values[id])
+        const value = evaluator((id) =>
+          resolveFormulaTokenValue(id, {
+            values: totalValues,
+            rowTotals: totalValues,
+            grandTotals,
+          }),
+        )
         return {
           metricId: metric.id,
           value,
@@ -1018,14 +1140,21 @@ function computeRowTotals(
         metricOrder,
         formulaEvaluators,
         true,
+        grandTotals,
       )
     }
     return base
   })
 }
 
-function buildGrandTotals(baseTotals, metricOrder, formulaEvaluators) {
+function buildGrandTotals(
+  baseTotals,
+  metricOrder,
+  formulaEvaluators,
+  grandTotals = null,
+) {
   const result = {}
+  const totalValues = grandTotals || buildTotalsValueMapFromObject(baseTotals || {})
   metricOrder.forEach((metric) => {
     if (metric.type === 'formula') {
       const evaluator = formulaEvaluators.get(metric.id)
@@ -1033,11 +1162,14 @@ function buildGrandTotals(baseTotals, metricOrder, formulaEvaluators) {
         result[metric.id] = { value: null, display: '—' }
         return
       }
-      const values = {}
-      Object.entries(baseTotals || {}).forEach(([metricId, entry]) => {
-        values[metricId] = entry?.value ?? null
-      })
-      const value = evaluator((id) => values[id])
+      const value = evaluator((id) =>
+        resolveFormulaTokenValue(id, {
+          values: totalValues,
+          rowTotals: totalValues,
+          columnTotals: totalValues,
+          grandTotals: totalValues,
+        }),
+      )
       result[metric.id] = {
         value,
         display: formatFormulaValue(
@@ -1060,16 +1192,25 @@ function buildAugmentedColumns({
   columnMap,
   columnTotals,
   formulaEvaluators,
+  grandTotals,
 }) {
   const columns = []
-  baseKeyOrder.forEach((baseKey) => {
-    const template = baseKeyMeta.meta.get(baseKey)
-    metricOrder.forEach((metric) => {
+  metricOrder.forEach((metric) => {
+    baseKeyOrder.forEach((baseKey) => {
+      const template = baseKeyMeta.meta.get(baseKey)
       if (metric.type === 'formula') {
         const evaluator = formulaEvaluators.get(metric.id)
         const values = columnTotals.get(baseKey) || new Map()
         const columnKey = buildColumnKey(baseKey, metric.id)
-        const value = evaluator ? evaluator((id) => values.get(id)) : null
+        const value = evaluator
+          ? evaluator((id) =>
+              resolveFormulaTokenValue(id, {
+                values,
+                columnTotals: values,
+                grandTotals,
+              }),
+            )
+          : null
         columns.push({
           key: columnKey,
           baseKey,
@@ -1077,6 +1218,7 @@ function buildAugmentedColumns({
           label: template?.label || metric.label || '',
           aggregator: 'formula',
           levels: template?.levels || [],
+          values: template?.values || [],
           totalDisplay: formatFormulaValue(
             value,
             metric.outputFormat,
@@ -1101,15 +1243,21 @@ function buildAugmentedRows({
   metricOrder,
   rowCellMaps,
   formulaEvaluators,
+  columnTotals,
+  grandTotals,
 }) {
   return rows.map((row) => {
     const map = rowCellMaps.get(row.key) || new Map()
+    const rowTotals = buildTotalsValueMap(row.totals || [])
     const newCells = buildCellSequence({
       baseKeyOrder,
       metricOrder,
       map,
       rowKey: row.key,
+      rowTotals,
+      columnTotals,
       formulaEvaluators,
+      grandTotals,
     })
     return {
       ...row,
@@ -1124,15 +1272,21 @@ function buildAugmentedRowTree({
   metricOrder,
   treeCellMaps,
   formulaEvaluators,
+  columnTotals,
+  grandTotals,
 }) {
   return nodes.map((node) => {
     const map = treeCellMaps.get(node.key) || new Map()
+    const rowTotals = buildTotalsValueMap(node.totals || [])
     const newCells = buildCellSequence({
       baseKeyOrder,
       metricOrder,
       map,
       rowKey: node.key,
+      rowTotals,
+      columnTotals,
       formulaEvaluators,
+      grandTotals,
     })
     return {
       ...node,
@@ -1144,6 +1298,8 @@ function buildAugmentedRowTree({
             metricOrder,
             treeCellMaps,
             formulaEvaluators,
+            columnTotals,
+            grandTotals,
           })
         : [],
     }
@@ -1155,19 +1311,34 @@ function buildCellSequence({
   metricOrder,
   map,
   rowKey,
+  rowTotals,
+  columnTotals,
   formulaEvaluators,
+  grandTotals,
 }) {
   const cells = []
-  baseKeyOrder.forEach((baseKey) => {
-    const metricsMap = map.get(baseKey) || new Map()
-    metricOrder.forEach((metric) => {
+  metricOrder.forEach((metric) => {
+    baseKeyOrder.forEach((baseKey) => {
+      const metricsMap = map.get(baseKey) || new Map()
+      const columnTotalValues = columnTotals
+        ? columnTotals.get(baseKey) || new Map()
+        : null
       if (metric.type === 'formula') {
         const evaluator = formulaEvaluators.get(metric.id)
-        const values = {}
+        const values = new Map()
         metricsMap.forEach((cell, metricId) => {
-          values[metricId] = cell?.value
+          values.set(metricId, cell?.value)
         })
-        const value = evaluator ? evaluator((id) => values[id]) : null
+        const value = evaluator
+          ? evaluator((id) =>
+              resolveFormulaTokenValue(id, {
+                values,
+                rowTotals,
+                columnTotals: columnTotalValues,
+                grandTotals,
+              }),
+            )
+          : null
         cells.push({
           key: `${rowKey}||${baseKey}||${metric.id}`,
           value,
@@ -1228,6 +1399,7 @@ function buildColumnBaseMeta(columns) {
         meta.set(column.baseKey, {
           label: column.label,
           levels: column.levels || [],
+          values: Array.isArray(column.values) ? column.values : [],
         })
         order.push(column.baseKey)
       }
@@ -1239,7 +1411,7 @@ function buildColumnBaseMeta(columns) {
   return { meta, order }
 }
 
-function compileFormulaExpression(expression = '') {
+export function compileFormulaExpression(expression = '') {
   const trimmed = String(expression || '').trim()
   if (!trimmed) return null
   const jsExpression = trimmed.replace(FORMULA_TOKEN_REGEX, (_, id) => {

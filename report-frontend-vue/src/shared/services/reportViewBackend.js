@@ -82,7 +82,8 @@ async function pollReportJob(jobId, { baseUrl, signal, silent, onStatus } = {}) 
     throw new Error('Не удалось получить идентификатор задания.')
   }
   let lastStatus = ''
-  while (true) {
+  let polling = true
+  while (polling) {
     if (signal?.aborted) {
       throw createAbortError()
     }
@@ -112,11 +113,14 @@ async function pollReportJob(jobId, { baseUrl, signal, silent, onStatus } = {}) 
       throw new Error(message)
     }
     if (status === 'done') {
+      polling = false
       return data?.result ?? data?.data ?? data
     }
     if (!status) {
+      polling = false
       return data?.result ?? data
     }
+    polling = false
     throw new Error(`Неизвестный статус задания: ${status}`)
   }
 }
@@ -335,6 +339,13 @@ export function normalizeBackendView(backendView, metrics = []) {
   const metricMap = new Map(metricList.map((metric) => [metric.id, metric]))
   const columns = normalizeBackendColumns(safeView.columns, metricList, metricMap)
   const rows = normalizeBackendRows(safeView.rows, columns, metricMap)
+  const rowTree = normalizeBackendRowTree(
+    safeView.rowTree,
+    columns,
+    metricList,
+    metricMap,
+    rows,
+  )
   const rowsWithTotals = rows.map((row) => ({
     ...row,
     totals: normalizeRowTotals(row.totals, row.cells, columns, metricList),
@@ -344,10 +355,18 @@ export function normalizeBackendView(backendView, metrics = []) {
     rowsWithTotals,
     metricMap,
   )
+  const reorderedView = applyMetricOrderToView(
+    {
+      columns: columnsWithTotals,
+      rows: rowsWithTotals,
+      rowTree,
+    },
+    metricList,
+  )
   const grandTotals = buildGrandTotals(
     safeView.totals,
-    rowsWithTotals,
-    columnsWithTotals,
+    reorderedView.rows,
+    reorderedView.columns,
     metricMap,
   )
   const rowTotalHeaders = metricList.map((metric) => ({
@@ -356,11 +375,11 @@ export function normalizeBackendView(backendView, metrics = []) {
   }))
 
   return {
-    rows: rowsWithTotals,
-    columns: columnsWithTotals,
+    rows: reorderedView.rows,
+    columns: reorderedView.columns,
     rowTotalHeaders,
     grandTotals,
-    rowTree: [],
+    rowTree: reorderedView.rowTree,
   }
 }
 
@@ -770,6 +789,408 @@ function normalizeBackendRows(rawRows, columns, metricMap) {
       values: Array.isArray(row?.values) ? row.values : [],
     }
   })
+}
+
+function normalizeBackendRowTree(
+  rawNodes,
+  columns,
+  metrics,
+  metricMap,
+  rows = [],
+  depth = 0,
+  parentKey = null,
+) {
+  const list = Array.isArray(rawNodes) ? rawNodes : []
+  if (!list.length) {
+    return buildRowTreeFromRows(rows, columns, metrics, metricMap)
+  }
+  const hasNestedChildren = list.some(
+    (node) => Array.isArray(node?.children) && node.children.length,
+  )
+  const hasParentKeys = list.some((node) => typeof node?.parentKey === 'string')
+  if (!hasNestedChildren && hasParentKeys) {
+    return buildRowTreeFromFlatList(list, columns, metrics, metricMap)
+  }
+  return list.map((node, nodeIndex) =>
+    normalizeBackendRowNode(
+      node,
+      columns,
+      metrics,
+      metricMap,
+      Number.isFinite(node?.depth) ? Number(node.depth) : depth,
+      typeof node?.parentKey === 'string' ? node.parentKey : parentKey,
+      nodeIndex,
+    ),
+  )
+}
+
+function buildRowTreeFromRows(rows = [], columns = [], metrics = [], metricMap) {
+  const list = Array.isArray(rows) ? rows : []
+  if (!list.length) return []
+  const columnCount = Array.isArray(columns) ? columns.length : 0
+  const nodeMap = new Map()
+  const bucketMap = new Map()
+  const childKeysMap = new Map()
+  const roots = []
+  let maxDepth = 0
+
+  list.forEach((row) => {
+    const levels = extractRowLevels(row)
+    if (!levels.length) return
+    maxDepth = Math.max(maxDepth, levels.length)
+    levels.forEach((level, index) => {
+      const node = ensureRowTreeNode(
+        nodeMap,
+        roots,
+        childKeysMap,
+        level,
+        levels,
+        index,
+      )
+      const bucket = ensureRowBucket(bucketMap, node.key, columnCount)
+      for (let colIndex = 0; colIndex < columnCount; colIndex += 1) {
+        const value = row?.cells?.[colIndex]?.value
+        if (typeof value !== 'undefined') {
+          bucket[colIndex].push(value)
+        }
+      }
+    })
+  })
+
+  if (maxDepth <= 1) return []
+
+  nodeMap.forEach((node) => {
+    const values = bucketMap.get(node.key) || []
+    const cells = (columns || []).map((column, colIndex) => {
+      const metric = metricMap?.get(column.metricId)
+      const value = computeMetricTotal(values[colIndex] || [], metric)
+      return {
+        key: `${node.key}||${column.baseKey || '__all__'}||${column.metricId}`,
+        value,
+        display: formatMetricValue(value, metric),
+      }
+    })
+    node.cells = cells
+    node.totals = normalizeRowTotals(node.totals, cells, columns, metrics)
+  })
+
+  return roots
+}
+
+function extractRowLevels(row) {
+  if (Array.isArray(row?.levels) && row.levels.length) {
+    return row.levels.map((level, index) => ({
+      fieldKey: level?.fieldKey || null,
+      value: level?.value ?? '',
+      depth: Number.isFinite(level?.depth) ? Number(level.depth) : index,
+      pathKey: level?.pathKey || level?.key || '',
+      parentKey: level?.parentKey || null,
+    }))
+  }
+  const rawKey = typeof row?.key === 'string' ? row.key : ''
+  const values = Array.isArray(row?.values) ? row.values : []
+  let parts = rawKey ? rawKey.split('|') : []
+  if (!parts.length && values.length) {
+    parts = values.map((value, index) => `level${index}:${value ?? ''}`)
+  }
+  const labelParts =
+    typeof row?.label === 'string' ? row.label.split(' / ') : []
+  let prefix = ''
+  return parts.map((part, index) => {
+    const { fieldKey, value: valueFromKey } = splitRowKeyPart(part)
+    const fallbackValue =
+      typeof values[index] !== 'undefined'
+        ? values[index]
+        : typeof labelParts[index] !== 'undefined'
+          ? labelParts[index]
+          : ''
+    const value =
+      typeof valueFromKey !== 'undefined' && valueFromKey !== ''
+        ? valueFromKey
+        : fallbackValue
+    prefix = prefix ? `${prefix}|${part}` : part
+    return {
+      fieldKey,
+      value,
+      depth: index,
+      pathKey: prefix,
+      parentKey: index ? parts.slice(0, index).join('|') : null,
+    }
+  })
+}
+
+function splitRowKeyPart(part = '') {
+  const text = String(part || '')
+  const index = text.indexOf(':')
+  if (index < 0) {
+    return { fieldKey: null, value: text }
+  }
+  return {
+    fieldKey: text.slice(0, index),
+    value: text.slice(index + 1),
+  }
+}
+
+function ensureRowTreeNode(nodeMap, roots, childKeysMap, level, levels, index) {
+  if (nodeMap.has(level.pathKey)) {
+    return nodeMap.get(level.pathKey)
+  }
+  const values = levels.slice(0, index + 1).map((entry) => entry.value)
+  const node = {
+    key: level.pathKey,
+    label: level.value || level.pathKey || '—',
+    fieldKey: level.fieldKey || null,
+    fieldLabel: '',
+    depth: Number.isFinite(level.depth) ? level.depth : index,
+    parentKey: level.parentKey || null,
+    cells: [],
+    totals: null,
+    levels: levels.slice(0, index + 1).map((entry) => ({
+      fieldKey: entry.fieldKey || null,
+      fieldLabel: '',
+      value: entry.value,
+      depth: entry.depth,
+      pathKey: entry.pathKey,
+      parentKey: entry.parentKey || null,
+    })),
+    values,
+    children: [],
+  }
+  nodeMap.set(level.pathKey, node)
+  if (level.parentKey) {
+    const parent = nodeMap.get(level.parentKey)
+    if (parent) {
+      if (!childKeysMap.has(parent.key)) {
+        childKeysMap.set(parent.key, new Set())
+      }
+      const childrenSet = childKeysMap.get(parent.key)
+      if (!childrenSet.has(node.key)) {
+        parent.children.push(node)
+        childrenSet.add(node.key)
+      }
+    } else {
+      roots.push(node)
+    }
+  } else {
+    roots.push(node)
+  }
+  return node
+}
+
+function ensureRowBucket(bucketMap, key, columnCount) {
+  if (!bucketMap.has(key)) {
+    const bucket = Array.from({ length: columnCount }, () => [])
+    bucketMap.set(key, bucket)
+  }
+  return bucketMap.get(key)
+}
+
+function normalizeBackendRowNode(
+  node,
+  columns,
+  metrics,
+  metricMap,
+  depth,
+  parentKey,
+  fallbackIndex = 0,
+) {
+  const nodeKey =
+    typeof node?.key === 'string' && node.key
+      ? node.key
+      : `${parentKey || 'row'}-${depth}-${fallbackIndex}`
+  const nodeLabel =
+    typeof node?.label === 'string' && node.label
+      ? node.label
+      : nodeKey
+  const cells = columns.map((column, colIndex) => {
+    const rawCell = resolveRowCell(node, column, colIndex)
+    const value = normalizeCellValue(rawCell, column, metricMap)
+    const display =
+      rawCell?.display ??
+      formatMetricValue(value, metricMap.get(column.metricId))
+    const key =
+      rawCell?.key ||
+      `${nodeKey}||${column.baseKey || '__all__'}||${column.metricId}`
+    const formatted = {
+      key,
+      value,
+      display,
+    }
+    if (rawCell?.formatting) {
+      formatted.formatting = rawCell.formatting
+    }
+    return formatted
+  })
+  const totals = normalizeRowTotals(node?.totals, cells, columns, metrics)
+  const normalizedDepth = Number.isFinite(depth) ? Number(depth) : 0
+  return {
+    key: nodeKey,
+    label: nodeLabel,
+    fieldKey: node?.fieldKey || null,
+    fieldLabel: node?.fieldLabel || '',
+    depth: normalizedDepth,
+    parentKey,
+    cells,
+    totals,
+    levels: Array.isArray(node?.levels) ? node.levels : [],
+    values: Array.isArray(node?.values) ? node.values : [],
+    children: Array.isArray(node?.children)
+      ? node.children.map((child, index) =>
+          normalizeBackendRowNode(
+            child,
+            columns,
+            metrics,
+            metricMap,
+            normalizedDepth + 1,
+            nodeKey,
+            index,
+          ),
+        )
+      : [],
+  }
+}
+
+function buildRowTreeFromFlatList(list, columns, metrics, metricMap) {
+  const normalized = list.map((node, index) =>
+    normalizeBackendRowNode(
+      node,
+      columns,
+      metrics,
+      metricMap,
+      Number.isFinite(node?.depth) ? Number(node.depth) : null,
+      typeof node?.parentKey === 'string' ? node.parentKey : null,
+      index,
+    ),
+  )
+  const nodeMap = new Map(normalized.map((node) => [node.key, node]))
+  const roots = []
+  normalized.forEach((node) => {
+    node.children = Array.isArray(node.children) ? node.children : []
+  })
+  normalized.forEach((node) => {
+    if (node.parentKey && nodeMap.has(node.parentKey) && node.parentKey !== node.key) {
+      nodeMap.get(node.parentKey).children.push(node)
+    } else {
+      roots.push(node)
+    }
+  })
+  const applyDepth = (nodes, parentDepth = 0) => {
+    nodes.forEach((node) => {
+      if (!Number.isFinite(node.depth)) {
+        node.depth = parentDepth
+      }
+      applyDepth(node.children || [], node.depth + 1)
+    })
+  }
+  applyDepth(roots, 0)
+  return roots
+}
+
+function applyMetricOrderToView(view, metrics = []) {
+  if (!view || !Array.isArray(view.columns)) {
+    return view || { columns: [], rows: [], rowTree: [] }
+  }
+  const orderedColumns = reorderColumnsByMetric(view.columns, metrics)
+  if (!orderedColumns.length) {
+    return view
+  }
+  const sameOrder =
+    orderedColumns.length === view.columns.length &&
+    orderedColumns.every((column, index) => column.key === view.columns[index]?.key)
+  if (sameOrder) return view
+  return {
+    ...view,
+    columns: orderedColumns,
+    rows: reorderRowsByColumns(view.rows || [], view.columns, orderedColumns),
+    rowTree: reorderTreeByColumns(
+      view.rowTree || [],
+      view.columns,
+      orderedColumns,
+    ),
+  }
+}
+
+function reorderColumnsByMetric(columns = [], metrics = []) {
+  const list = Array.isArray(columns) ? columns : []
+  const metricOrder = (metrics || [])
+    .map((metric) => metric?.id)
+    .filter(Boolean)
+  if (!metricOrder.length || !list.length) return list
+  const baseOrder = []
+  const baseKeys = new Set()
+  list.forEach((column) => {
+    const baseKey = column?.baseKey || '__all__'
+    if (!baseKeys.has(baseKey)) {
+      baseKeys.add(baseKey)
+      baseOrder.push(baseKey)
+    }
+  })
+  const columnsByMetric = new Map()
+  list.forEach((column) => {
+    if (!columnsByMetric.has(column.metricId)) {
+      columnsByMetric.set(column.metricId, new Map())
+    }
+    columnsByMetric.get(column.metricId).set(column.baseKey, column)
+  })
+  const result = []
+  const used = new Set()
+  metricOrder.forEach((metricId) => {
+    const map = columnsByMetric.get(metricId)
+    if (!map) return
+    baseOrder.forEach((baseKey) => {
+      const column = map.get(baseKey)
+      if (!column || used.has(column.key)) return
+      used.add(column.key)
+      result.push(column)
+    })
+  })
+  list.forEach((column) => {
+    if (!used.has(column.key)) {
+      result.push(column)
+    }
+  })
+  return result
+}
+
+function reorderRowsByColumns(rows = [], prevColumns = [], nextColumns = []) {
+  if (!Array.isArray(rows) || !rows.length) return rows
+  const indexByKey = new Map(
+    (prevColumns || []).map((column, index) => [column.key, index]),
+  )
+  return rows.map((row) => ({
+    ...row,
+    cells: (nextColumns || []).map((column) =>
+      resolveReorderedCell(row, column, indexByKey),
+    ),
+  }))
+}
+
+function reorderTreeByColumns(nodes = [], prevColumns = [], nextColumns = []) {
+  if (!Array.isArray(nodes) || !nodes.length) return nodes
+  const indexByKey = new Map(
+    (prevColumns || []).map((column, index) => [column.key, index]),
+  )
+  const normalizeNode = (node) => ({
+    ...node,
+    cells: (nextColumns || []).map((column) =>
+      resolveReorderedCell(node, column, indexByKey),
+    ),
+    children: Array.isArray(node.children)
+      ? node.children.map((child) => normalizeNode(child))
+      : [],
+  })
+  return nodes.map((node) => normalizeNode(node))
+}
+
+function resolveReorderedCell(row, column, indexByKey) {
+  const idx = indexByKey.get(column.key)
+  const cell = idx != null ? row?.cells?.[idx] : null
+  if (cell) return cell
+  return {
+    key: `${row?.key || 'row'}||${column.baseKey || '__all__'}||${column.metricId}`,
+    value: null,
+    display: '—',
+  }
 }
 
 function resolveRowCell(row, column, columnIndex) {

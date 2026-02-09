@@ -830,8 +830,8 @@
     </article>
 
     <article
-      ref="configStepRef"
       v-if="isPivotSource"
+      ref="configStepRef"
       class="step"
       :class="{ 'step--disabled': !hasPlanData }"
     >
@@ -1042,7 +1042,7 @@
             </div>
             <table>
               <thead>
-                <tr v-if="metricColumnGroups.length" class="metric-header">
+                <tr v-if="showMetricHeaderRow" class="metric-header">
                   <th
                     v-for="(label, index) in rowHeaderColumns"
                     :key="`row-header-${index}`"
@@ -1067,13 +1067,6 @@
                       {{ group.metric.label }}
                     </span>
                   </th>
-                  <th
-                    v-if="hasRowTotals"
-                    :rowspan="rowHeaderRowSpan"
-                    class="column-field-group row-total-header"
-                  >
-                    <span class="column-field-label">Итоги</span>
-                  </th>
                 </tr>
                 <template v-if="columnFieldRows.length">
                   <tr
@@ -1092,6 +1085,7 @@
                         <th
                           v-if="cell.isValue"
                           :style="columnStyle(cell.styleKey)"
+                          :rowspan="cell.rowspan || 1"
                           class="column-field-group"
                           :title="cell.label || ''"
                         >
@@ -1104,6 +1098,14 @@
                           >
                             {{ cell.label }}
                           </span>
+                          <button
+                            v-if="cell.canCollapse && !cell.isTotal"
+                            class="column-toggle"
+                            type="button"
+                            @click="toggleColumnCollapse(cell.collapseKey)"
+                          >
+                            {{ cell.isCollapsed ? '+' : '−' }}
+                          </button>
                           <span
                             class="resize-handle"
                             @mousedown.prevent="
@@ -1126,6 +1128,14 @@
                           >
                             {{ cell.label }}
                           </span>
+                          <button
+                            v-if="cell.canCollapse && !cell.isTotal"
+                            class="column-toggle"
+                            type="button"
+                            @click="toggleColumnCollapse(cell.collapseKey)"
+                          >
+                            {{ cell.isCollapsed ? '+' : '−' }}
+                          </button>
                         </th>
                       </template>
                     </template>
@@ -1140,24 +1150,15 @@
                     {{ label }}
                   </th>
                   <th
-                    v-for="column in pivotView.columns"
+                    v-for="column in displayColumns"
                     :key="column.key"
-                    :style="columnStyle(column.key)"
-                    :title="resolveColumnHeaderLabel(column)"
+                    :style="columnStyle(column.styleKey)"
+                    :title="columnHeaderLabel(column)"
                   >
-                    <span :title="resolveColumnHeaderLabel(column)">
-                      {{ resolveColumnHeaderLabel(column) }}
+                    <span :title="columnHeaderLabel(column)">
+                      {{ columnHeaderLabel(column) }}
                     </span>
                   </th>
-                  <template v-if="hasRowTotals">
-                    <th
-                      v-for="total in rowTotalHeaders"
-                      :key="`row-total-${total.metricId}`"
-                      class="row-total-header"
-                    >
-                      {{ total.label }}
-                    </th>
-                  </template>
                 </tr>
               </thead>
               <tbody>
@@ -1178,7 +1179,15 @@
                         class="row-label row-header-cell"
                       >
                         <div class="row-content">
-                          <span>{{ cell.value }}</span>
+                          <button
+                            v-if="row.hasChildren && levelIndex === row.depth"
+                            class="row-toggle"
+                            type="button"
+                            @click="toggleRowCollapse(row.key)"
+                          >
+                            {{ isRowCollapsed(row.key) ? '+' : '−' }}
+                          </button>
+                          <span>{{ cell.value === '—' ? '' : cell.value }}</span>
                         </div>
                         <span
                           v-if="levelIndex === rowHeaderCellCount - 1"
@@ -1210,57 +1219,47 @@
                       @mousedown.prevent="startRowResize(row.key, $event)"
                     ></span>
                   </td>
-                  <td v-for="cell in row.cells" :key="cell.key" class="cell">
+                  <td
+                    v-for="column in displayColumns"
+                    :key="`${row.key}-${column.key}`"
+                    class="cell"
+                    :class="{ total: column.kind === 'total' }"
+                  >
                     <ConditionalCellValue
-                      :display="cell.display"
-                      :formatting="cell.formatting"
+                      :display="rowCellDisplay(row, column)"
+                      :formatting="rowCellFormatting(row, column)"
                     />
                   </td>
-                  <template v-if="hasRowTotals">
-                    <td
-                      v-for="total in filteredRowTotals(row)"
-                      :key="`row-${row.key}-${total.metricId}`"
-                      class="total"
-                    >
-                      <ConditionalCellValue
-                        :display="total.display"
-                        :formatting="total.formatting"
-                      />
-                    </td>
-                  </template>
                 </tr>
               </tbody>
-              <tfoot v-if="hasColumnTotals || hasRowTotals">
+              <tfoot v-if="hasColumnTotals">
                 <tr>
-                  <td class="total-label">
+                  <td class="total-label" :colspan="rowHeaderCellCount">
                     {{ hasColumnTotals ? 'Итого по столбцам' : 'Итоги' }}
                   </td>
                   <td
-                    v-for="column in pivotView.columns"
+                    v-for="column in displayColumns"
                     :key="`total-${column.key}`"
                     class="total"
+                    :class="{ 'grand-total': column.kind === 'total' }"
                   >
-                    <template v-if="hasColumnTotals">
+                    <template v-if="column.kind === 'data'">
+                      <template v-if="hasColumnTotals">
+                        <ConditionalCellValue
+                          v-if="shouldShowColumnTotal(column.metricId)"
+                          :display="columnTotalDisplay(column)"
+                          :formatting="columnTotalFormatting(column)"
+                        />
+                        <span v-else>—</span>
+                      </template>
+                    </template>
+                    <template v-else>
                       <ConditionalCellValue
-                        v-if="shouldShowColumnTotal(column.metricId)"
-                        :display="column.totalDisplay"
-                        :formatting="column.totalFormatting"
+                        :display="grandTotalDisplay(column.metricId)"
+                        :formatting="grandTotalFormatting(column.metricId)"
                       />
-                      <span v-else>—</span>
                     </template>
                   </td>
-                  <template v-if="hasRowTotals">
-                    <td
-                      v-for="total in rowTotalHeaders"
-                      :key="`grand-${total.metricId}`"
-                      class="grand-total"
-                    >
-                      <ConditionalCellValue
-                        :display="grandTotalDisplay(total.metricId)"
-                        :formatting="grandTotalFormatting(total.metricId)"
-                      />
-                    </td>
-                  </template>
                 </tr>
               </tfoot>
             </table>
@@ -1605,8 +1604,11 @@ import {
   buildPivotView,
   humanizeKey,
   normalizeValue,
+  formatNumber,
   formatValue,
+  formatFormulaValue,
   augmentPivotViewWithFormulas,
+  compileFormulaExpression,
   extractFormulaMetricIds,
   filterPivotViewByVisibility,
   DATE_PARTS,
@@ -1615,6 +1617,7 @@ import {
   resolvePivotFieldValue,
   resolveDatePartValue,
   formatDatePartFieldLabel,
+  resolveFormulaTokenValue,
 } from '@/shared/lib/pivotUtils'
 import {
   applyConditionalFormattingToView,
@@ -1698,7 +1701,10 @@ const computedFieldResultOptions = [
 ]
 const FORMULA_ALLOWED_CHARS = /^[0-9+\-*/().<>=!&|?:,_\s]+$/
 const FORMULA_STRING_LITERAL_PATTERN = /(["'])(?:\\.|(?!\1).)*\1/g
-const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+const FORMULA_TOKEN_REGEX = /\{\{\s*([a-zA-Z0-9_:-]+)\s*\}\}/g
+const ROW_TOTAL_TOKEN_PREFIX = 'row_total:'
+const COLUMN_TOTAL_TOKEN_PREFIX = 'column_total:'
+const GRAND_TOTAL_TOKEN_PREFIX = 'grand_total:'
 const COMPUTED_FIELD_ALLOWED_CHARS = /^[0-9a-zA-Z+\-*/%().<>=!&|?:,_"'\s]+$/
 const COMPUTED_FIELD_TOKEN_REGEX = /\{\{\s*([^}]+?)\s*\}\}/g
 const COMPUTED_FIELD_ALLOWED_NAMES = new Set([
@@ -1955,6 +1961,26 @@ const isPivotSource = computed(() => {
 })
 const pivotBackendEnabled = isPivotBackendEnabled()
 const pivotBackendActive = computed(() => pivotBackendEnabled)
+
+function valueStoreHasSelections(store = {}) {
+  return Object.values(store).some(
+    (values) => Array.isArray(values) && values.length > 0,
+  )
+}
+
+const hasRowDimensionFilters = computed(
+  () =>
+    valueStoreHasSelections(dimensionValueFilters.rows) ||
+    rangeStoreHasValues(dimensionRangeFilters.rows),
+)
+const hasColumnDimensionFilters = computed(
+  () =>
+    valueStoreHasSelections(dimensionValueFilters.columns) ||
+    rangeStoreHasValues(dimensionRangeFilters.columns),
+)
+const hasDimensionFilters = computed(
+  () => hasRowDimensionFilters.value || hasColumnDimensionFilters.value,
+)
 const debugLogsEnabled =
   String(import.meta.env.VITE_DEBUG_LOGS || '').toLowerCase() === 'true'
 const hasResultData = computed(() => {
@@ -2185,6 +2211,7 @@ const defaultRowHeight = 48
 const resizingColumns = ref(false)
 const resizingRows = ref(false)
 const collapsedRowKeys = reactive({})
+const collapsedColumnKeys = reactive({})
 
 function resetRowCollapse() {
   Object.keys(collapsedRowKeys).forEach((key) => delete collapsedRowKeys[key])
@@ -2195,6 +2222,396 @@ function toggleRowCollapse(rowKey) {
 }
 function isRowCollapsed(rowKey) {
   return Boolean(collapsedRowKeys[rowKey])
+}
+function applyRowCollapseDefaults(nodes = [], store = {}) {
+  const walk = (list) => {
+    list.forEach((node) => {
+      if (node?.children?.length) {
+        if (typeof store[node.key] === 'undefined') {
+          store[node.key] = true
+        }
+        walk(node.children)
+      }
+    })
+  }
+  walk(nodes)
+}
+function collectTreeKeys(nodes = [], set = new Set()) {
+  nodes.forEach((node) => {
+    if (!node) return
+    if (typeof node.key !== 'undefined') {
+      set.add(node.key)
+    }
+    if (Array.isArray(node.children) && node.children.length) {
+      collectTreeKeys(node.children, set)
+    }
+  })
+  return set
+}
+
+function toggleColumnCollapse(columnKey) {
+  if (!columnKey) return
+  const current =
+    typeof collapsedColumnKeys[columnKey] === 'undefined'
+      ? true
+      : Boolean(collapsedColumnKeys[columnKey])
+  collapsedColumnKeys[columnKey] = !current
+}
+function splitColumnKeyPart(part = '') {
+  const value = String(part || '')
+  const index = value.indexOf(':')
+  if (index === -1) return { fieldKey: null, value }
+  return { fieldKey: value.slice(0, index), value: value.slice(index + 1) }
+}
+
+function buildColumnLevelMetaFromKey(rawKey) {
+  const base = String(rawKey || '').trim()
+  if (!base) return { levelKeys: [], levelValues: [] }
+  const parts = base.split('|')
+  const levelKeys = []
+  const levelValues = []
+  let prefix = ''
+  parts.forEach((part) => {
+    prefix = prefix ? `${prefix}|${part}` : part
+    levelKeys.push(prefix)
+    const { value } = splitColumnKeyPart(part)
+    levelValues.push(value)
+  })
+  return { levelKeys, levelValues }
+}
+
+function buildColumnLevelMeta(column) {
+  const baseKey = typeof column?.baseKey === 'string' ? column.baseKey : ''
+  if (baseKey && baseKey !== '__all__') {
+    return buildColumnLevelMetaFromKey(baseKey)
+  }
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) {
+    const parts = values.map((value, index) => `level${index}:${value ?? ''}`)
+    return buildColumnLevelMetaFromKey(parts.join('|'))
+  }
+  const levels = Array.isArray(column?.levels) ? column.levels : []
+  if (levels.length) {
+    const parts = levels.map(
+      (level, index) =>
+        `${level?.fieldKey || `level${index}`}:${level?.value ?? ''}`,
+    )
+    return buildColumnLevelMetaFromKey(parts.join('|'))
+  }
+  return { levelKeys: [], levelValues: [] }
+}
+
+function resolveColumnDepth(column, totalLevels = 0) {
+  if (Number.isFinite(column?.depth)) return Number(column.depth)
+  const keys = Array.isArray(column?.levelKeys) ? column.levelKeys : []
+  if (keys.length) return keys.length - 1
+  const values = Array.isArray(column?.values) ? column.values : []
+  if (values.length) return values.length - 1
+  const levels = Array.isArray(column?.levels) ? column.levels : []
+  if (levels.length) return levels.length - 1
+  return Math.max(Number(totalLevels) - 1, 0)
+}
+
+function buildColumnTree(columns = []) {
+  const roots = []
+  const nodeMap = new Map()
+  const pushChild = (parent, child) => {
+    if (!parent) return
+    if (!parent.children.some((entry) => entry.key === child.key)) {
+      parent.children.push(child)
+    }
+  }
+  columns.forEach((column) => {
+    const meta = column?.levelKeys?.length
+      ? { levelKeys: column.levelKeys, levelValues: column.levelValues || [] }
+      : buildColumnLevelMeta(column)
+    const levelKeys = meta.levelKeys || []
+    const levelValues = meta.levelValues || []
+    if (!levelKeys.length) return
+    levelKeys.forEach((levelKey, index) => {
+      if (!nodeMap.has(levelKey)) {
+        const node = {
+          key: levelKey,
+          value: levelValues[index] ?? '',
+          label: levelValues[index] ?? '',
+          depth: index,
+          children: [],
+          leafKeys: [],
+          levelKeys: levelKeys.slice(0, index + 1),
+          values: levelValues.slice(0, index + 1),
+          parentKey: index > 0 ? levelKeys[index - 1] : null,
+        }
+        nodeMap.set(levelKey, node)
+        if (index === 0) {
+          roots.push(node)
+        } else {
+          const parent = nodeMap.get(levelKeys[index - 1])
+          if (parent) pushChild(parent, node)
+        }
+      } else if (index > 0) {
+        const parent = nodeMap.get(levelKeys[index - 1])
+        const node = nodeMap.get(levelKey)
+        if (parent && node) pushChild(parent, node)
+      }
+    })
+    const leafKey = levelKeys[levelKeys.length - 1]
+    levelKeys.forEach((levelKey) => {
+      const node = nodeMap.get(levelKey)
+      if (!node) return
+      if (!node.leafKeys.includes(leafKey)) {
+        node.leafKeys.push(leafKey)
+      }
+    })
+  })
+  return { roots, nodeMap }
+}
+
+function collectVisibleColumnNodes(nodes = [], collapseState = {}) {
+  const result = []
+  const isCollapsed = (node) => {
+    if (!node?.children?.length) return false
+    const stored = collapseState?.[node.key]
+    if (typeof stored === 'undefined') return true
+    return Boolean(stored)
+  }
+  const walk = (node) => {
+    if (!node) return
+    if (node.children?.length) {
+      if (isCollapsed(node)) {
+        result.push(node)
+        return
+      }
+      node.children.forEach((child) => walk(child))
+      return
+    }
+    result.push(node)
+  }
+  nodes.forEach((node) => walk(node))
+  return result
+}
+
+function buildColumnValuesFromNode(node, totalLevels = 0) {
+  const values = Array.from({ length: Math.max(totalLevels, 1) }, () => null)
+  if (!node || !Number.isFinite(node.depth)) return values
+  if (node.depth < values.length) {
+    values[node.depth] = node.value ?? node.label ?? ''
+  }
+  return values
+}
+
+function buildCollapsedColumns(
+  columns = [],
+  metrics = [],
+  columnFields = [],
+  collapseState = {},
+) {
+  const totalLevels = Array.isArray(columnFields) ? columnFields.length : 0
+  const safeColumns = Array.isArray(columns) ? columns : []
+  const normalized = safeColumns.map((column, index) => {
+    const safeColumn =
+      column && typeof column === 'object'
+        ? column
+        : {
+            key: `column-${index}`,
+            baseKey: '__all__',
+            metricId: '__unknown__',
+            values: [],
+            levels: [],
+          }
+    const meta = buildColumnLevelMeta(safeColumn)
+    return {
+      ...safeColumn,
+      columnIndex: index,
+      levelKeys: meta.levelKeys,
+      levelValues: meta.levelValues,
+      depth: resolveColumnDepth(safeColumn, totalLevels),
+      leafIndices: [index],
+    }
+  })
+  if (!normalized.length || totalLevels <= 1) {
+    return { columns: normalized, nodeMap: new Map(), roots: [] }
+  }
+  const { roots, nodeMap } = buildColumnTree(normalized)
+  const visibleNodes = collectVisibleColumnNodes(roots, collapseState)
+  const columnsByMetric = new Map()
+  normalized.forEach((column) => {
+    const metricId = column.metricId
+    if (!columnsByMetric.has(metricId)) {
+      columnsByMetric.set(metricId, new Map())
+    }
+    const baseKey = column.baseKey || column.key
+    columnsByMetric.get(metricId).set(baseKey, column)
+  })
+  const metricList = Array.isArray(metrics) ? metrics.filter(Boolean) : []
+  const metricMap = new Map(
+    metricList.filter((metric) => metric?.id).map((metric) => [metric.id, metric]),
+  )
+  const result = []
+  metricList.forEach((metric) => {
+    if (!metric?.id) return
+    const entries = columnsByMetric.get(metric.id) || new Map()
+    visibleNodes.forEach((node) => {
+      const leafKeys = node.leafKeys?.length ? node.leafKeys : [node.key]
+      if (leafKeys.length === 1) {
+        const baseKey = leafKeys[0]
+        const column = entries.get(baseKey)
+        if (!column) return
+        result.push({
+          ...column,
+          metric: column.metric || metricMap.get(column.metricId) || metric,
+          depth: resolveColumnDepth(column, totalLevels),
+        })
+        return
+      }
+      const leafColumns = leafKeys
+        .map((baseKey) => entries.get(baseKey))
+        .filter(Boolean)
+      if (!leafColumns.length) return
+      const leafIndices = leafColumns
+        .map((col) => col.columnIndex)
+        .filter((idx) => Number.isFinite(idx))
+      const displayMetric = metricMap.get(metric.id) || metric
+      const baseKey = node.key
+      const aggregated = {
+        key: `${baseKey}::${metric.id}`,
+        baseKey,
+        metricId: metric.id,
+        metric: displayMetric,
+        label: node.label || node.value || baseKey,
+        aggregator: displayMetric?.aggregator || 'sum',
+        format: displayMetric?.outputFormat || 'auto',
+        precision: Number.isFinite(displayMetric?.precision)
+          ? Number(displayMetric.precision)
+          : 2,
+        values: buildColumnValuesFromNode(node, totalLevels),
+        levelKeys: node.levelKeys,
+        levelValues: node.values,
+        depth: node.depth,
+        leafIndices,
+        isAggregated: true,
+      }
+      result.push(aggregated)
+    })
+  })
+  return { columns: result, nodeMap, roots }
+}
+
+function buildColumnHeaderCells(
+  entries = [],
+  levelIndex,
+  totalRows,
+  isValueRow,
+  columnNodeMap = new Map(),
+  collapseState = {},
+) {
+  const cells = []
+  let pointer = 0
+  while (pointer < entries.length) {
+    const entry = entries[pointer]
+    const depth = resolveColumnDepth(entry, totalRows)
+    if (depth < levelIndex) {
+      pointer += 1
+      continue
+    }
+    const levelKey = entry?.levelKeys?.[levelIndex]
+    const node = levelKey ? columnNodeMap.get(levelKey) : null
+    const canCollapse = Boolean(node?.children?.length)
+    const isCollapsed =
+      canCollapse && typeof collapseState?.[node.key] === 'undefined'
+        ? true
+        : Boolean(collapseState?.[node?.key])
+    if (depth === levelIndex && depth < totalRows - 1) {
+      cells.push({
+        label: getColumnLevelValue(entry, levelIndex),
+        colspan: 1,
+        styleKey: entry.key,
+        isValue: true,
+        rowspan: totalRows - levelIndex,
+        collapseKey: levelKey || entry.baseKey || entry.key,
+        canCollapse,
+        isCollapsed,
+      })
+      pointer += 1
+      continue
+    }
+    if (isValueRow) {
+      cells.push({
+        label: getColumnLevelValue(entry, levelIndex),
+        colspan: 1,
+        styleKey: entry.key,
+        isValue: true,
+        collapseKey: levelKey || entry.baseKey || entry.key,
+        canCollapse,
+        isCollapsed,
+      })
+      pointer += 1
+      continue
+    }
+    const value = getColumnLevelValue(entry, levelIndex)
+    let span = 1
+    while (pointer + span < entries.length) {
+      const next = entries[pointer + span]
+      const nextDepth = resolveColumnDepth(next, totalRows)
+      if (nextDepth < levelIndex) break
+      if (nextDepth === levelIndex && nextDepth < totalRows - 1) break
+      if (getColumnLevelValue(next, levelIndex) !== value) break
+      span += 1
+    }
+    cells.push({
+      label: value,
+      colspan: span,
+      isValue: false,
+      collapseKey: levelKey || entry.baseKey || entry.key,
+      canCollapse,
+      isCollapsed,
+    })
+    pointer += span
+  }
+  return cells
+}
+
+function toNumericValue(value) {
+  if (value === null || typeof value === 'undefined') return null
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  const normalized = String(value).trim()
+  if (!normalized) return null
+  const compact = normalized.replace(/\s/g, '')
+  const numeric = Number(compact.replace(',', '.'))
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function computeAggregatedValue(values = [], metric) {
+  const list = Array.isArray(values) ? values : []
+  if (!metric) return list.length ? list[0] ?? null : null
+  if (metric.aggregator === 'value') {
+    const defined = list.filter((value) => value !== null && value !== undefined)
+    return defined.length === 1 ? defined[0] : null
+  }
+  const numeric = list
+    .map((value) => toNumericValue(value))
+    .filter((value) => Number.isFinite(value))
+  if (!numeric.length) return null
+  if (metric.aggregator === 'avg') {
+    return numeric.reduce((sum, value) => sum + value, 0) / numeric.length
+  }
+  return numeric.reduce((sum, value) => sum + value, 0)
+}
+
+function formatMetricDisplay(value, metric) {
+  if (!metric) return formatValue(value)
+  const format = metric.outputFormat || 'auto'
+  const precision = Number.isFinite(metric.precision)
+    ? Number(metric.precision)
+    : 2
+  if (format && format !== 'auto') {
+    return formatFormulaValue(value, format, precision)
+  }
+  if (metric.aggregator === 'value') {
+    return formatValue(value)
+  }
+  return formatNumber(value, precision)
 }
 
 const FALLBACK_AGGREGATORS = {
@@ -3115,12 +3532,32 @@ const computationFormulaMetrics = computed(() =>
 const visibleMetrics = computed(() =>
   preparedMetrics.value.filter((metric) => metric.enabled !== false),
 )
-const formulaMetricTokens = computed(() =>
-  computationBaseMetrics.value.map((metric) => ({
-    id: metric.id,
-    label: metric.label,
-  })),
-)
+const formulaMetricTokens = computed(() => {
+  const tokens = []
+  pivotMetrics.forEach((metric) => {
+    if (!metric || metric.type === 'formula') return
+    if (!metric.id || !metric.fieldKey) return
+    const field = fieldsMap.value.get(metric.fieldKey)
+    if (!field) return
+    const label = metric.title?.trim()
+      ? metric.title.trim()
+      : aggregatorLabel(metric.aggregator, field)
+    tokens.push({ id: metric.id, label })
+    tokens.push({
+      id: `${ROW_TOTAL_TOKEN_PREFIX}${metric.id}`,
+      label: `Итого по строке — ${label}`,
+    })
+    tokens.push({
+      id: `${COLUMN_TOTAL_TOKEN_PREFIX}${metric.id}`,
+      label: `Итого по столбцу — ${label}`,
+    })
+    tokens.push({
+      id: `${GRAND_TOTAL_TOKEN_PREFIX}${metric.id}`,
+      label: `Итого по всем данным — ${label}`,
+    })
+  })
+  return tokens
+})
 
 function matchesFieldFilters(record, fieldsList, valueStore, rangeStore = {}) {
   return fieldsList.every((fieldKey) => {
@@ -3227,14 +3664,14 @@ function validateFormulaDefinition(metric, baseIds = new Set()) {
   }
   const tokens = extractFormulaMetricIds(trimmed)
   if (!tokens.length) {
-    return `Формула «${label}» должна содержать ссылки на базовые метрики в виде {{ID}}.`
+    return `Формула «${label}» должна содержать ссылки на метрики в виде {{ID}}, {{row_total:ID}} или {{column_total:ID}}.`
   }
   const missing = tokens.filter((token) => !baseIds.has(token))
   if (missing.length) {
     return `Формула «${label}» содержит неизвестные метрики: ${missing.join(', ')}.`
   }
   const sanitized = sanitizeFormulaExpression(trimmed)
-  if (!FORMULA_ALLOWED_CHARS.test(sanitized)) {
+  if (sanitized.trim() && !FORMULA_ALLOWED_CHARS.test(sanitized)) {
     return `Формула «${label}» содержит недопустимые символы. Доступны цифры, пробелы, операции, сравнения и тернарный оператор.`
   }
   return ''
@@ -3327,18 +3764,21 @@ function buildBackendRemoteSource() {
 }
 
 function buildBackendSnapshot() {
+  const backendMetrics = pivotMetrics
+    .filter((metric) => metric?.type !== 'formula')
+    .map((metric) => ({
+      ...metric,
+      conditionalFormatting: normalizeConditionalFormatting(
+        metric.conditionalFormatting,
+      ),
+    }))
   return {
     pivot: {
       filters: [...pivotConfig.filters],
       rows: [...pivotConfig.rows],
       columns: [...pivotConfig.columns],
     },
-    metrics: pivotMetrics.map((metric) => ({
-      ...metric,
-      conditionalFormatting: normalizeConditionalFormatting(
-        metric.conditionalFormatting,
-      ),
-    })),
+    metrics: backendMetrics,
     filterValues: copyFilterStore(filterValues),
     filterRanges: copyRangeStore(filterRangeValues),
     dimensionValues: {
@@ -3481,6 +3921,7 @@ let localPivotTimer = null
 
 const shouldComputeLocalPivot = computed(() => {
   if (!pivotBackendActive.value) return true
+  if (hasDimensionFilters.value) return true
   const backendRows = backendPivotState.view?.rows || []
   if (backendRows.length) return false
   if (!backendPivotState.error) {
@@ -3541,10 +3982,14 @@ onBeforeUnmount(() => {
 const basePivotResult = computed(() => {
   if (pivotWarnings.value.length) return { view: null, errorMetricId: null }
   if (pivotBackendActive.value) {
+    if (hasDimensionFilters.value) {
+      return localPivotResult.value
+    }
     if (backendPivotState.view) {
       const backendRows = backendPivotState.view.rows || []
       if (!backendRows.length && filteredPlanRecords.value.length) {
         // fallback to local pivot if backend view is empty but we have data
+        return localPivotResult.value
       } else {
         return { view: backendPivotState.view, errorMetricId: null }
       }
@@ -3580,6 +4025,18 @@ watch(
       planError.value = ''
     }
   },
+)
+watch(
+  () => pivotView.value?.rowTree,
+  (tree) => {
+    if (!Array.isArray(tree) || !tree.length) return
+    applyRowCollapseDefaults(tree, collapsedRowKeys)
+    const keys = collectTreeKeys(tree)
+    Object.keys(collapsedRowKeys).forEach((key) => {
+      if (!keys.has(key)) delete collapsedRowKeys[key]
+    })
+  },
+  { immediate: true },
 )
 const pivotReady = computed(() =>
   Boolean(pivotView.value && pivotView.value.rows.length),
@@ -3639,59 +4096,147 @@ const rowHeaderFields = computed(() => {
   if (!pivotConfig.rows.length) return ['Строки']
   return pivotConfig.rows.map((key) => getFieldDisplayNameByKey(key))
 })
-const hasRowTree = computed(() => Boolean(pivotView.value?.rowTree?.length))
-const useRowHeaderColumns = computed(
-  () => !hasRowTree.value && rowHeaderFields.value.length > 1,
-)
+const useRowHeaderColumns = computed(() => rowHeaderFields.value.length > 1)
 const rowHeaderColumns = computed(() =>
   useRowHeaderColumns.value ? rowHeaderFields.value : [rowHeaderTitle.value],
 )
 const rowHeaderCellCount = computed(() => rowHeaderFields.value.length)
-const metricColumnGroups = computed(() => {
-  const view = pivotView.value
-  if (!view) return []
-  const columns = view.columns || []
+const collapsedColumnMeta = computed(() => {
+  try {
+    const view = pivotView.value
+    if (!view) return { columns: [], nodeMap: new Map(), roots: [] }
+    return buildCollapsedColumns(
+      view.columns || [],
+      visibleMetrics.value,
+      pivotConfig.columns,
+      collapsedColumnKeys,
+    )
+  } catch (error) {
+    console.error('pivot column collapse failed', error)
+    return { columns: [], nodeMap: new Map(), roots: [] }
+  }
+})
+const collapsedColumns = computed(() => collapsedColumnMeta.value.columns || [])
+watch(
+  () => collapsedColumnMeta.value.roots,
+  (roots) => {
+    if (!Array.isArray(roots) || !roots.length) return
+    const keys = collectTreeKeys(roots)
+    Object.keys(collapsedColumnKeys).forEach((key) => {
+      if (!keys.has(key)) delete collapsedColumnKeys[key]
+    })
+  },
+  { immediate: true },
+)
+const displayColumns = computed(() => {
+  const columns = collapsedColumns.value
   if (!columns.length) return []
-  return visibleMetrics.value.map((metric) => {
+  const indexByKey = new Map(
+    columns.map((column, index) => [column.key, index]),
+  )
+  const result = []
+  visibleMetrics.value.forEach((metric) => {
     const entries = columns.filter((column) => column.metricId === metric.id)
-    return {
-      metric,
-      entries,
-      span: entries.length || 1,
+    entries.forEach((column) => {
+      const resolvedIndex = Number.isFinite(column.columnIndex)
+        ? column.columnIndex
+        : indexByKey.get(column.key)
+      result.push({
+        kind: 'data',
+        key: column.key,
+        styleKey: column.key,
+        metricId: column.metricId,
+        columnIndex: resolvedIndex,
+        column,
+        isAggregated: Boolean(
+          column.isAggregated || column.leafIndices?.length > 1,
+        ),
+      })
+    })
+    if (metric.showRowTotals !== false) {
+      const totalKey = `__row_total__:${metric.id}`
+      result.push({
+        kind: 'total',
+        key: totalKey,
+        styleKey: totalKey,
+        metricId: metric.id,
+      })
     }
   })
+  return result
+})
+const metricColumnGroups = computed(() => {
+  const columns = collapsedColumns.value
+  if (!columns.length) return []
+  return visibleMetrics.value
+    .map((metric) => {
+      const entries = columns.filter((column) => column.metricId === metric.id)
+      const showTotals = metric.showRowTotals !== false
+      return {
+        metric,
+        entries,
+        showTotals,
+        span: entries.length + (showTotals ? 1 : 0) || 1,
+        totalKey: `__row_total__:${metric.id}`,
+      }
+    })
+    .filter((group) => group.entries.length || group.showTotals)
+})
+const metricLabelById = computed(() => {
+  const map = new Map()
+  visibleMetrics.value.forEach((metric) => {
+    if (!metric?.id) return
+    const label =
+      metric.label ||
+      (typeof metric.title === 'string' ? metric.title.trim() : '') ||
+      metric.fieldKey ||
+      metric.id
+    if (label) {
+      map.set(metric.id, label)
+    }
+  })
+  return map
 })
 const columnFieldRows = computed(() => {
   const groups = metricColumnGroups.value
   const columnFields = pivotConfig.columns
   if (!groups.length || !columnFields.length) return []
+  const totalRows = columnFields.length
   return columnFields.map((fieldKey, levelIndex) => {
     const fieldLabel = getFieldDisplayNameByKey(fieldKey)
     const isValue = levelIndex === columnFields.length - 1
     const segments = groups.map((group) => {
       const entries = group.entries
-      const cells = isValue
-        ? entries.map((column) => ({
-            label: getColumnLevelValue(column, levelIndex),
-            colspan: 1,
-            styleKey: column.key,
-            isValue: true,
-          }))
-        : groupColumnsByLevel(entries, levelIndex).map((cell) => ({
-            label: cell.label,
-            colspan: cell.colspan,
-            isValue: false,
-          }))
+      const cells = buildColumnHeaderCells(
+        entries,
+        levelIndex,
+        totalRows,
+        isValue,
+        collapsedColumnMeta.value.nodeMap,
+        collapsedColumnKeys,
+      )
+      if (group.showTotals && levelIndex === 0) {
+        cells.push({
+          label: 'Итого',
+          colspan: 1,
+          styleKey: group.totalKey,
+          isValue: true,
+          rowspan: totalRows,
+          isTotal: true,
+        })
+      }
       return { metricId: group.metric.id, cells }
     })
     return { fieldLabel, segments }
   })
 })
+const showMetricHeaderRow = computed(
+  () => metricColumnGroups.value.length > 0 && columnFieldRows.value.length > 0,
+)
 const rowHeaderRowSpan = computed(() => {
-  const metricRows = metricColumnGroups.value.length ? 1 : 0
+  const metricRows = showMetricHeaderRow.value ? 1 : 0
   const fieldRows = columnFieldRows.value.length
-  const total = metricRows + fieldRows
-  return total || 1
+  return metricRows + (fieldRows || 1)
 })
 const layoutDetailsIcon = computed(() =>
   layoutDetailsVisible.value ? 'icon-close' : 'icon-gear',
@@ -3725,6 +4270,7 @@ const tableRows = computed(() => {
     values: row.values || [],
   }))
 })
+const hasRowTree = computed(() => Boolean(pivotView.value?.rowTree?.length))
 const rowHeaderMatrix = computed(() => {
   if (!useRowHeaderColumns.value) return []
   const rows = tableRows.value
@@ -3739,6 +4285,9 @@ const rowHeaderMatrix = computed(() => {
       show: true,
     })),
   )
+  if (hasRowTree.value) {
+    return matrix
+  }
   const hasSamePrefix = (left, right, depth) => {
     for (let index = 0; index < depth; index += 1) {
       if (left[index] !== right[index]) return false
@@ -3771,6 +4320,284 @@ const rowHeaderMatrix = computed(() => {
   return matrix
 })
 
+const baseMetricMap = computed(() => {
+  const map = new Map()
+  visibleMetrics.value.forEach((metric) => {
+    if (metric?.type !== 'formula' && metric?.id) {
+      map.set(metric.id, metric)
+    }
+  })
+  return map
+})
+
+const formulaMetricMap = computed(() => {
+  const map = new Map()
+  visibleMetrics.value.forEach((metric) => {
+    if (metric?.type === 'formula' && metric?.id) {
+      map.set(metric.id, metric)
+    }
+  })
+  return map
+})
+
+const formulaDependenciesMap = computed(() => {
+  const map = new Map()
+  formulaMetricMap.value.forEach((metric, metricId) => {
+    map.set(metricId, extractFormulaMetricIds(metric.expression || ''))
+  })
+  return map
+})
+
+const formulaEvaluatorsMap = computed(() => {
+  const map = new Map()
+  formulaMetricMap.value.forEach((metric, metricId) => {
+    const compiled = compileFormulaExpression(metric.expression || '')
+    if (compiled) {
+      map.set(metricId, compiled)
+    }
+  })
+  return map
+})
+
+const columnIndexByMetricBaseKey = computed(() => {
+  const view = pivotView.value
+  const map = new Map()
+  if (!view || !Array.isArray(view.columns)) return map
+  view.columns.forEach((column, index) => {
+    if (!column?.metricId) return
+    if (!map.has(column.metricId)) {
+      map.set(column.metricId, new Map())
+    }
+    map.get(column.metricId).set(column.baseKey, index)
+  })
+  return map
+})
+
+const grandTotalsMap = computed(() =>
+  buildTotalsMapFromObject(pivotView.value?.grandTotals || {}),
+)
+
+let columnTotalsCache = new WeakMap()
+watch(
+  () => pivotView.value,
+  () => {
+    columnTotalsCache = new WeakMap()
+  },
+)
+
+function buildTotalsMapFromArray(totals = []) {
+  const map = new Map()
+  if (!Array.isArray(totals)) return map
+  totals.forEach((entry) => {
+    if (!entry?.metricId) return
+    map.set(entry.metricId, entry?.value ?? null)
+  })
+  return map
+}
+
+function buildTotalsMapFromObject(totals = {}) {
+  const map = new Map()
+  if (!totals || typeof totals !== 'object') return map
+  Object.keys(totals).forEach((metricId) => {
+    map.set(metricId, totals[metricId]?.value ?? null)
+  })
+  return map
+}
+
+function resolveLeafBaseKeys(entry) {
+  if (!entry) return []
+  const view = pivotView.value
+  if (!view || !Array.isArray(view.columns)) return []
+  if (Array.isArray(entry.leafIndices) && entry.leafIndices.length) {
+    const keys = entry.leafIndices
+      .map((index) => view.columns?.[index]?.baseKey)
+      .filter(Boolean)
+    return Array.from(new Set(keys))
+  }
+  return entry.baseKey ? [entry.baseKey] : []
+}
+
+function computeRowBaseMetricValues(row, leafBaseKeys = [], metricIds = []) {
+  const result = new Map()
+  if (!row || !leafBaseKeys.length || !metricIds.length) return result
+  const indexMap = columnIndexByMetricBaseKey.value
+  metricIds.forEach((metricId) => {
+    const metric = baseMetricMap.value.get(metricId)
+    if (!metric) return
+    const indices = leafBaseKeys
+      .map((baseKey) => indexMap.get(metricId)?.get(baseKey))
+      .filter((idx) => Number.isFinite(idx))
+    const values = indices.map((idx) => row.cells?.[idx]?.value)
+    const value = computeAggregatedValue(values, metric)
+    result.set(metricId, value)
+  })
+  return result
+}
+
+function computeColumnBaseTotals(entry) {
+  if (!entry) return new Map()
+  if (columnTotalsCache.has(entry)) {
+    return columnTotalsCache.get(entry)
+  }
+  const view = pivotView.value
+  if (!view) return new Map()
+  const leafBaseKeys = resolveLeafBaseKeys(entry)
+  const indexMap = columnIndexByMetricBaseKey.value
+  const totals = new Map()
+  baseMetricMap.value.forEach((metric, metricId) => {
+    const indices = leafBaseKeys
+      .map((baseKey) => indexMap.get(metricId)?.get(baseKey))
+      .filter((idx) => Number.isFinite(idx))
+    const values = []
+    ;(view.rows || []).forEach((row) => {
+      indices.forEach((idx) => {
+        values.push(row.cells?.[idx]?.value)
+      })
+    })
+    const value = computeAggregatedValue(values, metric)
+    totals.set(metricId, value)
+  })
+  columnTotalsCache.set(entry, totals)
+  return totals
+}
+
+function evaluateFormulaMetric(metric, context = {}) {
+  if (!metric?.id) return null
+  const evaluator = formulaEvaluatorsMap.value.get(metric.id)
+  if (!evaluator) return null
+  return evaluator((id) => resolveFormulaTokenValue(id, context))
+}
+
+function columnHeaderLabel(column) {
+  if (!column) return ''
+  if (column.kind === 'total') return 'Итого'
+  if (column.kind === 'data') {
+    if (!pivotConfig.columns.length) {
+      const metricId = column.metricId || column.column?.metricId
+      const metricLabel =
+        metricLabelById.value.get(metricId) ||
+        column.column?.metric?.label ||
+        column.column?.metric?.title ||
+        column.column?.metric?.fieldKey ||
+        metricId
+      if (metricLabel) return metricLabel
+    }
+    return resolveColumnHeaderLabel(column.column)
+  }
+  return ''
+}
+
+function rowCellDisplay(row, column) {
+  const cell = resolveRowCell(row, column)
+  return cell?.display ?? '—'
+}
+
+function rowCellFormatting(row, column) {
+  const cell = resolveRowCell(row, column)
+  return cell?.formatting || null
+}
+
+function resolveRowCell(row, column) {
+  if (!row || !column) return null
+  if (column.kind === 'total') {
+    return (row.totals || []).find((total) => total.metricId === column.metricId) || null
+  }
+  if (column.kind === 'data') {
+    const entry = column.column || {}
+    if (entry.isAggregated || entry.leafIndices?.length > 1) {
+      const metric =
+        entry.metric ||
+        visibleMetrics.value.find((item) => item.id === entry.metricId)
+      if (metric?.type === 'formula') {
+        const deps = formulaDependenciesMap.value.get(metric.id) || []
+        const leafBaseKeys = resolveLeafBaseKeys(entry)
+        const values = computeRowBaseMetricValues(row, leafBaseKeys, deps)
+        const rowTotals = buildTotalsMapFromArray(row.totals || [])
+        const columnTotals = computeColumnBaseTotals(entry)
+        const value = evaluateFormulaMetric(metric, {
+          values,
+          rowTotals,
+          columnTotals,
+          grandTotals: grandTotalsMap.value,
+        })
+        return {
+          value,
+          display: formatFormulaValue(
+            value,
+            metric.outputFormat,
+            metric.precision,
+          ),
+        }
+      }
+      const values = entry.leafIndices.map(
+        (index) => row.cells?.[index]?.value,
+      )
+      const value = computeAggregatedValue(values, metric)
+      return {
+        value,
+        display: formatMetricDisplay(value, metric),
+      }
+    }
+    const index = Number.isFinite(column.columnIndex) ? column.columnIndex : null
+    if (index === null) return null
+    return row.cells?.[index] || null
+  }
+  return null
+}
+
+function columnTotalDisplay(column) {
+  const entry = column?.column || column
+  if (!entry) return '—'
+  if (!entry.isAggregated && !(entry.leafIndices?.length > 1)) {
+    if (entry.totalDisplay && entry.totalDisplay !== '—') {
+      return entry.totalDisplay
+    }
+  }
+  const view = pivotView.value
+  if (!view) return '—'
+  const metric =
+    entry.metric ||
+    visibleMetrics.value.find((item) => item.id === entry.metricId)
+  if (metric?.type === 'formula') {
+    const columnTotals = computeColumnBaseTotals(entry)
+    const value = evaluateFormulaMetric(metric, {
+      values: columnTotals,
+      columnTotals,
+      grandTotals: grandTotalsMap.value,
+    })
+    return formatFormulaValue(value, metric.outputFormat, metric.precision)
+  }
+  let indices = []
+  if (entry.leafIndices?.length) {
+    indices = entry.leafIndices.filter((idx) => Number.isFinite(idx))
+  } else if (metric?.id && entry.baseKey) {
+    const index = columnIndexByMetricBaseKey.value
+      .get(metric.id)
+      ?.get(entry.baseKey)
+    if (Number.isFinite(index)) {
+      indices = [index]
+    }
+  }
+  if (!indices.length) return '—'
+  const values = []
+  ;(view.rows || []).forEach((row) => {
+    indices.forEach((index) => {
+      values.push(row.cells?.[index]?.value)
+    })
+  })
+  const value = computeAggregatedValue(values, metric)
+  return formatMetricDisplay(value, metric)
+}
+
+function columnTotalFormatting(column) {
+  const entry = column?.column || column
+  if (!entry) return null
+  if (!entry.isAggregated && !(entry.leafIndices?.length > 1)) {
+    return entry.totalFormatting || null
+  }
+  return null
+}
+
 const rowTotalMetricIds = computed(() =>
   visibleMetrics.value
     .filter((metric) => metric.showRowTotals)
@@ -3792,10 +4619,6 @@ const rowTotalHeaders = computed(() => {
   return view.rowTotalHeaders.filter((header) => allowed.has(header.metricId))
 })
 
-function filteredRowTotals(row) {
-  const allowed = rowTotalMetricSet.value
-  return row.totals.filter((total) => allowed.has(total.metricId))
-}
 function shouldShowColumnTotal(metricId) {
   return columnTotalMetricSet.value.has(metricId)
 }
@@ -4365,7 +5188,8 @@ async function runBatchJob(payload, { paramsList = [], trackUI = false } = {}) {
       progress: 0,
     })
   }
-  while (true) {
+  let polling = true
+  while (polling) {
     const status = await getBatchStatus(jobId)
     if (trackUI && batchPollToken === token) {
       updateBatchState(status)
@@ -4380,6 +5204,7 @@ async function runBatchJob(payload, { paramsList = [], trackUI = false } = {}) {
       }
       continue
     }
+    polling = false
     return status
   }
 }
@@ -4856,12 +5681,6 @@ function shouldSplitParamsIntoRequests(params) {
   return params.every((item) => isPlainObject(item))
 }
 
-function isMultiRequestBody(body) {
-  if (!isPlainObject(body)) return false
-  if (Array.isArray(body.requests) && body.requests.length) return true
-  return shouldSplitParamsIntoRequests(body.params)
-}
-
 function applyRequestFields(records, fields = {}) {
   if (!Array.isArray(records) || !records.length) return records || []
   const entries = Object.entries(fields || {})
@@ -5231,11 +6050,6 @@ function autoSelectVisualizationType() {
     selectedVisualizationId.value = ''
     vizType.value = 'table'
   }
-}
-
-function toNumericValue(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : null
 }
 
 function extractRouteParam(value) {
@@ -7557,48 +8371,67 @@ function buildCsvFromPivot(
   const includeRowTotals = options.showRowTotals && rowAllowed.size > 0
   const includeColumnTotals = options.showColumnTotals && columnAllowed.size > 0
 
-  const rowHeaders = includeRowTotals
-    ? view.rowTotalHeaders.filter((header) => rowAllowed.has(header.metricId))
-    : []
-
-  const header = [
-    'Строки',
-    ...view.columns.map((col) => formatColumnEntryLabel(col)),
-  ]
-  if (rowHeaders.length) {
-    header.push(...rowHeaders.map((total) => total.label))
-  }
-  const rows = view.rows.map((row) => {
-    const cells = [
-      resolveRowHeaderLabel(row),
-      ...row.cells.map((cell) => cell.display),
-    ]
-    if (rowHeaders.length) {
-      cells.push(
-        ...row.totals
-          .filter((total) => rowAllowed.has(total.metricId))
-          .map((total) => total.display),
-      )
+  const columns = view.columns || []
+  const metricOrder = []
+  const metricSeen = new Set()
+  columns.forEach((column) => {
+    if (metricSeen.has(column.metricId)) return
+    metricSeen.add(column.metricId)
+    metricOrder.push(column.metricId)
+  })
+  const displayColumns = []
+  metricOrder.forEach((metricId) => {
+    columns.forEach((column, index) => {
+      if (column.metricId !== metricId) return
+      displayColumns.push({
+        kind: 'data',
+        key: column.key,
+        metricId,
+        columnIndex: index,
+        column,
+      })
+    })
+    if (includeRowTotals && rowAllowed.has(metricId)) {
+      displayColumns.push({
+        kind: 'total',
+        key: `__row_total__:${metricId}`,
+        metricId,
+      })
     }
+  })
+
+  const header = ['Строки', ...displayColumns.map((column) => (
+    column.kind === 'total' ? 'Итого' : formatColumnEntryLabel(column.column)
+  ))]
+
+  const rows = view.rows.map((row) => {
+    const cells = [resolveRowHeaderLabel(row)]
+    displayColumns.forEach((column) => {
+      if (column.kind === 'total') {
+        const total = (row.totals || []).find(
+          (entry) => entry.metricId === column.metricId,
+        )
+        cells.push(total?.display || '')
+        return
+      }
+      const cell = row.cells?.[column.columnIndex]
+      cells.push(cell?.display || '')
+    })
     return cells
   })
+
   const totalsRow = ['Итого по столбцам']
-  if (includeColumnTotals) {
-    totalsRow.push(
-      ...view.columns.map((column) =>
-        columnAllowed.has(column.metricId) ? column.totalDisplay : '',
-      ),
-    )
-  } else {
-    totalsRow.push(...view.columns.map(() => ''))
-  }
-  if (rowHeaders.length) {
-    totalsRow.push(
-      ...rowHeaders.map(
-        (total) => view.grandTotals?.[total.metricId]?.display || '',
-      ),
-    )
-  }
+  displayColumns.forEach((column) => {
+    if (column.kind === 'total') {
+      totalsRow.push(view.grandTotals?.[column.metricId]?.display || '')
+      return
+    }
+    if (!includeColumnTotals || !columnAllowed.has(column.metricId)) {
+      totalsRow.push('')
+      return
+    }
+    totalsRow.push(column.column?.totalDisplay || '')
+  })
 
   return [header, ...rows, totalsRow]
     .map((line) =>
@@ -7705,6 +8538,8 @@ function flattenRowTree(nodes = [], collapsedState = {}) {
         hasChildren: Boolean(node.children?.length),
         cells: node.cells,
         totals: node.totals,
+        levels: node.levels || [],
+        values: node.values || [],
       }
       result.push(item)
       if (!collapsedState[node.key] && node.children?.length) {
@@ -7734,24 +8569,6 @@ function buildDictionaryItem(key) {
     currentLabel: dictionaryLabelValue(key),
     sourceLabel: getRawFieldLabel(key),
   }
-}
-
-function groupColumnsByLevel(columns, levelIndex) {
-  const cells = []
-  let pointer = 0
-  while (pointer < columns.length) {
-    const value = getColumnLevelValue(columns[pointer], levelIndex)
-    let span = 1
-    while (
-      pointer + span < columns.length &&
-      getColumnLevelValue(columns[pointer + span], levelIndex) === value
-    ) {
-      span += 1
-    }
-    cells.push({ label: value, colspan: span })
-    pointer += span
-  }
-  return cells
 }
 
 function getColumnLevelValue(column, levelIndex) {
@@ -7786,8 +8603,27 @@ function resolveRowLevelValues(row, levelCount = 0) {
     values = levels.map((level) => formatValue(level?.value))
   } else if (Array.isArray(row?.values) && row.values.length) {
     values = row.values.map((value) => formatValue(value))
-  } else if (row?.label) {
-    values = splitRowLabel(row.label).map((value) => formatValue(value))
+  } else {
+    const labelValues = row?.label
+      ? splitRowLabel(row.label).map((value) => formatValue(value))
+      : []
+    if (labelValues.length > 1) {
+      values = labelValues
+    } else {
+      const keyValues = typeof row?.key === 'string'
+        ? row.key.split('|').map((part) => {
+            const text = String(part || '')
+            const index = text.indexOf(':')
+            const raw = index === -1 ? text : text.slice(index + 1)
+            return formatValue(raw)
+          })
+        : []
+      if (keyValues.length > 1) {
+        values = keyValues
+      } else if (labelValues.length) {
+        values = labelValues
+      }
+    }
   }
   if (!levelCount) return values
   const normalized = values.slice(0, levelCount)
@@ -9075,6 +9911,19 @@ function resolveMetricLabelById(metricId) {
   background: #fff;
   cursor: pointer;
   font-size: 12px;
+}
+.column-toggle {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  line-height: 16px;
+  text-align: center;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
 }
 .row-content {
   display: flex;

@@ -60,17 +60,18 @@ export async function sendDataSourceRequest({
     }
   }
 
-  let attempt = 0
-  while (true) {
+  for (let attempt = 0; attempt <= retryOptions.retries; attempt += 1) {
     try {
       const response = await axios(config)
       return response.data
     } catch (err) {
-      if (attempt >= retryOptions.retries || !shouldRetryRequest(err, config, retryOptions)) {
+      const canRetry =
+        attempt < retryOptions.retries &&
+        shouldRetryRequest(err, config, retryOptions)
+      if (!canRetry) {
         throw handleApiError(err, { skipAuthRedirect })
       }
-      attempt += 1
-      await sleep(getRetryDelay(retryOptions, attempt))
+      await sleep(getRetryDelay(retryOptions, attempt + 1))
     }
   }
 }

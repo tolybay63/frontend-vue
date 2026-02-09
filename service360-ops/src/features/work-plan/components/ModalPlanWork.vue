@@ -81,6 +81,15 @@
             :is-date-disabled="isDateDisabled"
             :required="true"
           />
+
+          <AppInput
+            class="full-width"
+            :id="'description-' + object.id"
+            label="Описание"
+            placeholder="Введите описание..."
+            v-model="object.description"
+            type="textarea"
+          />
         </div>
       </div>
 
@@ -103,6 +112,7 @@ import { ref, onMounted, computed } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
+import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
@@ -126,6 +136,7 @@ const createNewObjectForm = () => ({
   objectType: null,
   object: null,
   section: null,
+  description: '',
   coordinates: {
     coordStartKm: 0,
     coordStartPk: 0,

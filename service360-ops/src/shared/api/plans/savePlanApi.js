@@ -56,6 +56,7 @@ const savePlan = async (workData, formData) => {
           StartLink: formData.coordStartZv || 0,
           FinishLink: formData.coordEndZv || 0,
           PlanDateEnd: formattedPlannedDate,
+          Description: formData.description || '',
           CreatedAt: today,
           UpdatedAt: today
         }

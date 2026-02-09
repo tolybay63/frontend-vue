@@ -13,6 +13,7 @@
           </keep-alive>
         </router-view>
         <AppNotification />
+        <UserNotifications />
       </div>
     </div>
 
@@ -29,6 +30,7 @@ import Sidebar from './app/layouts/Sidebar.vue'
 import Navbar from './app/layouts/Navbar.vue'
 import NaiveProvider from './naive.config.js'
 import AppNotification from './app/layouts/AppNotification.vue'
+import UserNotifications from './app/layouts/UserNotifications.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import { useSidebarStore } from './app/stores/sidebar'
 

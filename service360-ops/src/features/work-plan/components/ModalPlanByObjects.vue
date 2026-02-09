@@ -37,7 +37,7 @@
 
       <AppDropdown
         id="objectType"
-        label="Тип Объекта"
+        label="Тип объекта"
         placeholder="Выберите тип объекта"
         v-model="form.objectType"
         :options="objectTypeOptions"
@@ -88,7 +88,7 @@ const form = ref({
   objects: []
 })
 
-// Данные выбранного участка (для dbeg, dend)
+// Данные выбранного участка (для beg, end)
 const selectedSectionData = ref(null)
 
 // Options
@@ -163,7 +163,7 @@ const onSectionChange = (sectionId) => {
     return
   }
 
-  // Находим выбранный участок для получения objObjectTypeMulti и dbeg/dend
+  // Находим выбранный участок для получения objObjectTypeMulti и beg/end
   const section = sectionOptions.value.find(s => s.value === sectionId)
   if (section) {
     selectedSectionData.value = section
@@ -197,8 +197,8 @@ const onObjectTypeChange = async (objectTypeId) => {
     const objects = await loadObjectsByParams(
       placeId,
       objectTypeId,
-      selectedSectionData.value.dbeg,
-      selectedSectionData.value.dend
+      selectedSectionData.value.beg,
+      selectedSectionData.value.end
     )
     objectOptions.value = objects
   } catch (error) {

@@ -62,7 +62,10 @@
             <div v-if="isWorkCompleted" class="completed-work-notice">
               Работа завершена. Добавление новых неисправностей невозможно
             </div>
-            <div v-else-if="canInsertDefect" class="defects-content">
+            <div v-else-if="!canInsertDefect" class="completed-work-notice">
+              У вас нет доступа для добавления неисправностей
+            </div>
+            <div v-else class="defects-content">
               <div class="section-heading spaced-heading defect-heading">Местоположение неисправности</div>
               <div class="coordinates-input-group defect-coords">
                 <FullCoordinates
@@ -111,7 +114,10 @@
             <div v-if="isWorkCompleted" class="completed-work-notice">
               Работа завершена. Добавление новых параметров невозможно
             </div>
-            <div v-else-if="canInsertParameter" class="parameters-content">
+            <div v-else-if="!canInsertParameter" class="completed-work-notice">
+              У вас нет доступа для добавления параметров
+            </div>
+            <div v-else class="parameters-content">
               <div class="section-heading spaced-heading parameters-heading">Местоположение параметра</div>
               <div class="coordinates-input-group parameter-coords">
                 <FullCoordinates
@@ -268,9 +274,9 @@ const isDefectCoordinatesOutOfBounds = ref(false);
 const isParameterCoordinatesOutOfBounds = ref(false);
 
 const allTabs = computed(() => [
-  { name: 'defects', label: 'Неисправности', icon: 'AlertTriangle', show: canInsertDefect.value },
-  { name: 'parameters', label: 'Параметры', icon: 'SlidersHorizontal', show: canInsertParameter.value },
-].filter(tab => tab.show));
+  { name: 'defects', label: 'Неисправности', icon: 'AlertTriangle' },
+  { name: 'parameters', label: 'Параметры', icon: 'SlidersHorizontal' },
+]);
 
 const visibleTabs = computed(() => allTabs.value);
 

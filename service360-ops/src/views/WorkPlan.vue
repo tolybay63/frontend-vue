@@ -50,6 +50,12 @@
     @update-table="handleTableUpdate"
   />
 
+  <ModalPlanBySection
+    v-if="isPlanBySectionModalOpen"
+    @close="closePlanBySectionModal"
+    @update-table="handleTableUpdate"
+  />
+
   <ConfirmationModal
     v-if="isConfirmModalOpen"
     title="Завершение работы"
@@ -67,6 +73,7 @@ import ModalEditPlan from '@/features/work-plan/components/ModalEditPlan.vue';
 import ModalPlanWork from '@/features/work-plan/components/ModalPlanWork.vue';
 import ModalCopyPlan from '@/features/work-plan/components/ModalCopyPlan.vue';
 import ModalPlanByObjects from '@/features/work-plan/components/ModalPlanByObjects.vue';
+import ModalPlanBySection from '@/features/work-plan/components/ModalPlanBySection.vue';
 import { loadWorkPlan, completeThePlanWork } from '@/shared/api/plans/planApi';
 import { loadPeriodTypes } from '@/shared/api/periods/periodApi';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
@@ -81,6 +88,7 @@ const limit = 10;
 const isPlanWorkModalOpen = ref(false);
 const isCopyPlanModalOpen = ref(false);
 const isPlanByObjectsModalOpen = ref(false);
+const isPlanBySectionModalOpen = ref(false);
 const tableWrapperRef = ref(null);
 const isConfirmModalOpen = ref(false);
 const recordToComplete = ref(null);
@@ -137,6 +145,10 @@ const closeCopyPlanModal = () => {
 
 const closePlanByObjectsModal = () => {
   isPlanByObjectsModalOpen.value = false;
+};
+
+const closePlanBySectionModal = () => {
+  isPlanBySectionModalOpen.value = false;
 };
 
 const handleTableUpdate = () => {
@@ -302,39 +314,46 @@ const getRowClass = (row) => {
   return {}; // No custom class for now
 };
 
-const columns = [
-  { key: 'id', label: '№', hide: true },
-  { key: 'name', label: 'Участок' },
-  { key: 'work', label: 'Вид работы' },
-  { key: 'fullNameWork', label: 'Работы' },
-  { key: 'coordinates', label: 'Координаты' },
-  { key: 'object', label: 'Объект' },
-  { key: 'planDate', label: 'Плановая дата' },
-  { key: 'status', label: 'Статус работы', component: WorkStatus },
-  {
-    key: 'actions',
-    label: 'ДЕЙСТВИЯ',
-    component: {
-      setup(props, context) {
-        return () => {
-          // Получаем rowData на каждый рендер, чтобы данные были актуальными
-          const rowData = context.attrs.row;
+const columns = computed(() => {
+  const baseColumns = [
+    { key: 'id', label: '№', hide: true },
+    { key: 'name', label: 'Участок' },
+    { key: 'work', label: 'Вид работы' },
+    { key: 'fullNameWork', label: 'Работы' },
+    { key: 'coordinates', label: 'Координаты' },
+    { key: 'object', label: 'Объект' },
+    { key: 'planDate', label: 'Плановая дата' },
+    { key: 'status', label: 'Статус работы', component: WorkStatus },
+  ];
 
-          // Не показываем кнопку если работа уже завершена
-          if (rowData?.status?.showCheck) return null;
+  // Добавляем столбец действий только если есть привилегия plan:finish
+  if (hasPermission('plan:finish')) {
+    baseColumns.push({
+      key: 'actions',
+      label: 'ДЕЙСТВИЯ',
+      component: {
+        setup(props, context) {
+          return () => {
+            const rowData = context.attrs.row;
 
-          return h(UiButton, {
-            text: 'Завершить работу',
-            onClick: (event) => {
-              event.stopPropagation();
-              openConfirmationModal(rowData);
-            },
-          });
-        };
+            // Не показываем кнопку если работа уже завершена
+            if (rowData?.status?.showCheck) return null;
+
+            return h(UiButton, {
+              text: 'Завершить работу',
+              onClick: (event) => {
+                event.stopPropagation();
+                openConfirmationModal(rowData);
+              },
+            });
+          };
+        },
       },
-    },
-  },
-];
+    });
+  }
+
+  return baseColumns;
+});
 
 const handleCopyWorkPlan = () => {
   if (selectedRows.value.length === 0) {
@@ -370,6 +389,14 @@ const tableActions = computed(() => {
       },
       hidden: !hasPermission('plan:ins'),
     },
+    {
+      label: 'Запланировать по участку',
+      icon: 'MapPin', // MapPin icon for section planning
+      onClick: () => {
+        isPlanBySectionModalOpen.value = true;
+      },
+      hidden: !hasPermission('plan:ins'),
+    },
     // {
     //   label: 'Экспорт',
     //   icon: 'Printer', // Printer for print/export (like the screenshot)
@@ -381,9 +408,10 @@ const tableActions = computed(() => {
   const copyAction = baseActions.find(a => a.icon === 'Copy');
   const plusAction = baseActions.find(a => a.icon === 'Plus');
   const objectsAction = baseActions.find(a => a.icon === 'Layers');
+  const sectionAction = baseActions.find(a => a.icon === 'MapPin');
   const exportAction = baseActions.find(a => a.icon === 'Printer');
 
-  return [copyAction, plusAction, objectsAction, exportAction].filter(action => action && !action.hidden);
+  return [copyAction, plusAction, objectsAction, sectionAction, exportAction].filter(action => action && !action.hidden);
 });
 </script>
 

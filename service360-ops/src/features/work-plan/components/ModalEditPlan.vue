@@ -88,6 +88,15 @@
             v-model="form.plannedDate"
             :disabled="isCompleted"
             :required="true" />
+
+          <AppInput
+            class="full-width"
+            id="description"
+            label="Описание"
+            placeholder="Введите описание..."
+            v-model="form.description"
+            type="textarea"
+            :disabled="isCompleted" />
         </div>
       </div>
     </div>
@@ -107,6 +116,7 @@ import { ref, onMounted, computed } from 'vue'
 import ModalWrapper from '@/app/layouts/Modal/ModalWrapper.vue'
 import AppDatePicker from '@/shared/ui/FormControls/AppDatePicker.vue'
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue'
+import AppInput from '@/shared/ui/FormControls/AppInput.vue'
 import FullCoordinates from '@/shared/ui/FormControls/FullCoordinates.vue'
 import ConfirmationModal from '@/shared/ui/ConfirmationModal.vue'
 import { useNotificationStore } from '@/app/stores/notificationStore'
@@ -139,7 +149,8 @@ const form = ref({
   objectType: null,
   object: null,
   section: null,
-  plannedDate: null
+  plannedDate: null,
+  description: ''
 })
 
 const coordinates = ref({
@@ -256,6 +267,7 @@ const saveData = async () => {
     updatedPlan.FinishPicket = coordinates.value.coordEndPk
     updatedPlan.FinishLink = coordinates.value.coordEndZv
     updatedPlan.PlanDateEnd = formatDateForBackend(form.value.plannedDate)
+    updatedPlan.Description = form.value.description || ''
     updatedPlan.UpdatedAt = formatDateForBackend(new Date())
 
     await updatePlan(updatedPlan)
@@ -554,6 +566,7 @@ const populateFormFromRowData = () => {
   coordinates.value.coordEndKm = row.FinishKm || null
   coordinates.value.coordEndPk = row.FinishPicket || null
   coordinates.value.coordEndZv = row.FinishLink || null
+  form.value.description = row.rawData?.Description || ''
 }
 
 const findOptionInArray = (array, key, value) => {

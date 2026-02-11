@@ -15,6 +15,7 @@ const TasksPage = () => import('@pages/nsi/TasksPage.vue')
 const SourcesPage = () => import('@pages/nsi/SourcesPage.vue')
 const ComponentsPage = () => import('@pages/nsi/ComponentsPage.vue')
 const ResourcesPage = () => import('@pages/nsi/ResourcesPage.vue')
+const ResourceNormsPage = () => import('@pages/nsi/ResourceNormsPage.vue')
 const ReportsPage = () => import('@pages/nsi/ReportsPage.vue')
 const LoginPage = () => import('@pages/auth/LoginPage.vue')
 
@@ -77,6 +78,18 @@ const router = createRouter({
       path: '/nsi/resources',
       name: 'resources',
       component: ResourcesPage,
+      // meta: { requiresAuth: true },
+    },
+    {
+      path: '/nsi/resource-norms',
+      name: 'resource-norms',
+      component: ResourceNormsPage,
+      // meta: { requiresAuth: true },
+    },
+    {
+      path: '/nsi/resource-norms/:taskWorkId',
+      name: 'resource-norms-editor',
+      component: ResourceNormsPage,
       // meta: { requiresAuth: true },
     },
     {

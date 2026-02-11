@@ -164,6 +164,7 @@ import {
   ConstructOutline,
   ClipboardOutline,
   CheckmarkDoneOutline,
+  ListOutline,
   FolderOutline,
   BookOutline,
   EllipsisHorizontal,
@@ -220,6 +221,7 @@ const menuRouteByKey: Record<string, string> = {
   signs: '/nsi/signs',
   works: '/nsi/works',
   tasks: '/nsi/tasks',
+  'resource-norms': '/nsi/resource-norms',
   sources: '/nsi/sources',
   components: '/nsi/components',
   reports: '/nsi/reports',
@@ -297,6 +299,13 @@ const MENU_ITEMS = [
     menuLabel: 'Задачи',
     mobileLabel: 'Задачи',
     tooltip: 'Справочник задач',
+  },
+  {
+    key: 'resource-norms',
+    icon: ListOutline,
+    menuLabel: 'Нормы',
+    mobileLabel: 'Нормы',
+    tooltip: 'Нормы ресурсов',
   },
   {
     key: 'sources',
@@ -449,6 +458,10 @@ const syncMenuValue = () => {
       return
     }
     menuValue.value = 'resources'
+    return
+  }
+  if (currentPath.startsWith('/nsi/resource-norms')) {
+    menuValue.value = 'resource-norms'
     return
   }
   const match = Object.entries(menuRouteByKey).find(([, path]) => path === currentPath)

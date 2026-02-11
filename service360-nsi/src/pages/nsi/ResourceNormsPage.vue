@@ -891,7 +891,7 @@ async function ensureToolDirectory() {
   if (toolOptions.value.length || toolDirectoryLoading.value) return
   toolDirectoryLoading.value = true
   try {
-    const response = await nsiRpc<unknown>('data/loadFvForSelect', ['Factor_Tool'])
+    const response = await objectsRpc<unknown>('data/loadFactorValForSelect', ['Prop_TypTool'])
     const records = extractRecords<Record<string, unknown>>(response)
     toolOptions.value = records
       .map((record) => {
@@ -917,7 +917,7 @@ async function ensureEquipmentDirectory() {
   if (equipmentOptions.value.length || equipmentDirectoryLoading.value) return
   equipmentDirectoryLoading.value = true
   try {
-    const response = await nsiRpc<unknown>('data/loadFvForSelect', ['Factor_Equipment'])
+    const response = await objectsRpc<unknown>('data/loadFactorValForSelect', ['Prop_TypEquipment'])
     const records = extractRecords<Record<string, unknown>>(response)
     equipmentOptions.value = records
       .map((record) => {
@@ -943,7 +943,7 @@ async function ensurePersonnelDirectory() {
   if (personnelOptions.value.length || personnelDirectoryLoading.value) return
   personnelDirectoryLoading.value = true
   try {
-    const response = await nsiRpc<unknown>('data/loadFvForSelect', ['Factor_Position'])
+    const response = await objectsRpc<unknown>('data/loadFactorValForSelect', ['Prop_Position'])
     const records = extractRecords<Record<string, unknown>>(response)
     personnelOptions.value = records
       .map((record) => {

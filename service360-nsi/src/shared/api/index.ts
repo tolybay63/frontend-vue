@@ -1,6 +1,7 @@
 /** Баррель API (shared/api): http/rpc клиенты */
 export * from './httpClient'
 export * from './rpcClient'
+export * from './userinfoClient'
 export * from './auth'
 export * from './user'
 export * from './metaClient'

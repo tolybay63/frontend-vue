@@ -9,11 +9,13 @@ const NsiDashboardPage = () => import('@pages/nsi/NsiDashboardPage.vue')
 const ObjectTypesPage = () => import('@pages/nsi/ObjectTypesPage.vue')
 const ObjectDefectsPage = () => import('@pages/nsi/ObjectDefectsPage.vue')
 const ObjectParametersPage = () => import('@pages/nsi/ObjectParametersPage.vue')
+const SignsPage = () => import('@pages/nsi/SignsPage.vue')
 const WorksPage = () => import('@pages/nsi/WorksPage.vue')
 const TasksPage = () => import('@pages/nsi/TasksPage.vue')
 const SourcesPage = () => import('@pages/nsi/SourcesPage.vue')
 const ComponentsPage = () => import('@pages/nsi/ComponentsPage.vue')
 const ResourcesPage = () => import('@pages/nsi/ResourcesPage.vue')
+const ResourceNormsPage = () => import('@pages/nsi/ResourceNormsPage.vue')
 const ReportsPage = () => import('@pages/nsi/ReportsPage.vue')
 const LoginPage = () => import('@pages/auth/LoginPage.vue')
 
@@ -49,6 +51,12 @@ const router = createRouter({
       // meta: { requiresAuth: true },
     },
     {
+      path: '/nsi/signs',
+      name: 'signs',
+      component: SignsPage,
+      // meta: { requiresAuth: true },
+    },
+    {
       path: '/nsi/works',
       name: 'works',
       component: WorksPage,
@@ -70,6 +78,18 @@ const router = createRouter({
       path: '/nsi/resources',
       name: 'resources',
       component: ResourcesPage,
+      // meta: { requiresAuth: true },
+    },
+    {
+      path: '/nsi/resource-norms',
+      name: 'resource-norms',
+      component: ResourceNormsPage,
+      // meta: { requiresAuth: true },
+    },
+    {
+      path: '/nsi/resource-norms/:taskWorkId',
+      name: 'resource-norms-editor',
+      component: ResourceNormsPage,
       // meta: { requiresAuth: true },
     },
     {

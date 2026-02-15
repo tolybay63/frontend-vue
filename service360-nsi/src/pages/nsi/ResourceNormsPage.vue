@@ -1603,6 +1603,20 @@ function resolveDateStamp() {
   return `${year}-${month}-${day}`
 }
 
+function resolveDateTimeStamp() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}_${hours}:${minutes}`
+}
+
+function buildAutoName(prefix: string) {
+  return `${prefix}_${resolveDateTimeStamp()}`
+}
+
 function readStorageNumber(key: string): number | null {
   if (typeof window === 'undefined') return null
   const raw = window.localStorage.getItem(key)
@@ -1624,6 +1638,13 @@ function normalizeValue(value: number | string | null | undefined): string {
   if (!trimmed) return ''
   const num = Number(trimmed.replace(',', '.'))
   return Number.isNaN(num) ? trimmed : String(num)
+}
+
+function parseCompositeKey(key: string | null): { fv: number | null; pv: number | null } {
+  if (!key) return { fv: null, pv: null }
+  if (key.startsWith('missing:')) return { fv: null, pv: null }
+  const [fvRaw, pvRaw] = key.split(':')
+  return { fv: asNumber(fvRaw), pv: asNumber(pvRaw) }
 }
 
 function buildMaterialSignature(row: MaterialRow): string | null {
@@ -1770,7 +1791,7 @@ async function saveMaterialRow(row: MaterialRow) {
   const meta = resolveUserMeta()
   const mode = row.id != null ? 'upd' : 'ins'
   const payload: Record<string, unknown> = {
-    name: row.nameMaterial || row.name || 'Материал',
+    name: mode === 'ins' ? buildAutoName('Material') : row.name || buildAutoName('Material'),
     objMaterial: row.objMaterial,
     pvMaterial: row.pvMaterial,
     meaMeasure: row.meaMeasure,
@@ -1849,7 +1870,6 @@ function handleMaterialSelect(row: MaterialRow, value: string | number | null, o
   row.materialKey = String(value)
   row.objMaterial = opt.id
   row.pvMaterial = opt.pv
-  row.idMaterial = null
   row.nameMaterial = opt.label
 }
 
@@ -1866,7 +1886,6 @@ function handleMeasureSelect(row: MaterialRow, value: string | number | null, op
   row.measureKey = String(value)
   row.meaMeasure = opt.id
   row.pvMeasure = opt.pv
-  row.idMeasure = null
   row.nameMeasure = opt.label
 }
 
@@ -1876,6 +1895,10 @@ async function saveToolRow(row: ToolRow) {
     message.error('Не выбран связанный элемент работа-задача')
     return
   }
+
+  const toolKeyParsed = parseCompositeKey(row.toolKey)
+  if (toolKeyParsed.fv != null) row.fvTypTool = toolKeyParsed.fv
+  if (toolKeyParsed.pv != null) row.pvTypTool = toolKeyParsed.pv
 
   if (row.fvTypTool == null || row.pvTypTool == null || row.value == null) {
     message.error('Заполните инструмент и значение')
@@ -1891,7 +1914,7 @@ async function saveToolRow(row: ToolRow) {
   const meta = resolveUserMeta()
   const mode = row.id != null ? 'upd' : 'ins'
   const payload: Record<string, unknown> = {
-    name: row.nameTypTool || row.name || 'Инструмент',
+    name: mode === 'ins' ? buildAutoName('Tool') : row.name || buildAutoName('Tool'),
     fvTypTool: row.fvTypTool,
     pvTypTool: row.pvTypTool,
     Value: row.value,
@@ -1969,11 +1992,7 @@ function handleToolSelect(row: ToolRow, value: string | number | null, option?: 
     row.toolKey = null
     return
   }
-  const prevKey = row.toolKey
   row.toolKey = String(value)
-  if (prevKey && prevKey !== row.toolKey) {
-    row.idTypTool = null
-  }
   row.fvTypTool = opt.fv
   row.pvTypTool = opt.pv
   row.nameTypTool = opt.label
@@ -1985,6 +2004,10 @@ async function saveEquipmentRow(row: EquipmentRow) {
     message.error('Не выбран связанный элемент работа-задача')
     return
   }
+
+  const equipmentKeyParsed = parseCompositeKey(row.equipmentKey)
+  if (equipmentKeyParsed.fv != null) row.fvTypEquipment = equipmentKeyParsed.fv
+  if (equipmentKeyParsed.pv != null) row.pvTypEquipment = equipmentKeyParsed.pv
 
   if (row.fvTypEquipment == null || row.pvTypEquipment == null || row.value == null || row.quantity == null) {
     message.error('Заполните технику, количество и время')
@@ -2000,7 +2023,7 @@ async function saveEquipmentRow(row: EquipmentRow) {
   const meta = resolveUserMeta()
   const mode = row.id != null ? 'upd' : 'ins'
   const payload: Record<string, unknown> = {
-    name: row.nameTypEquipment || row.name || 'Техника',
+    name: mode === 'ins' ? buildAutoName('Equipment') : row.name || buildAutoName('Equipment'),
     fvTypEquipment: row.fvTypEquipment,
     pvTypEquipment: row.pvTypEquipment,
     Quantity: row.quantity,
@@ -2080,11 +2103,7 @@ function handleEquipmentSelect(row: EquipmentRow, value: string | number | null,
     row.equipmentKey = null
     return
   }
-  const prevKey = row.equipmentKey
   row.equipmentKey = String(value)
-  if (prevKey && prevKey !== row.equipmentKey) {
-    row.idTypEquipment = null
-  }
   row.fvTypEquipment = opt.fv
   row.pvTypEquipment = opt.pv
   row.nameTypEquipment = opt.label
@@ -2111,7 +2130,7 @@ async function savePersonnelRow(row: PersonnelRow) {
   const meta = resolveUserMeta()
   const mode = row.id != null ? 'upd' : 'ins'
   const payload: Record<string, unknown> = {
-    name: row.namePosition || row.name || 'Исполнитель',
+    name: mode === 'ins' ? buildAutoName('Personnel') : row.name || buildAutoName('Personnel'),
     fvPosition: row.fvPosition,
     pvPosition: row.pvPosition,
     Quantity: row.quantity,
@@ -2191,11 +2210,7 @@ function handlePersonnelSelect(row: PersonnelRow, value: string | number | null,
     row.positionKey = null
     return
   }
-  const prevKey = row.positionKey
   row.positionKey = String(value)
-  if (prevKey && prevKey !== row.positionKey) {
-    row.idPosition = null
-  }
   row.fvPosition = opt.fv
   row.pvPosition = opt.pv
   row.namePosition = opt.label
@@ -2222,7 +2237,7 @@ async function saveServiceRow(row: ServiceRow) {
   const meta = resolveUserMeta()
   const mode = row.id != null ? 'upd' : 'ins'
   const payload: Record<string, unknown> = {
-    name: row.nameTpService || row.name || 'Услуга',
+    name: mode === 'ins' ? buildAutoName('Service') : row.name || buildAutoName('Service'),
     objTpService: row.objTpService,
     pvTpService: row.pvTpService,
     Value: row.value,
@@ -2294,11 +2309,7 @@ function handleServiceSelect(row: ServiceRow, value: string | number | null, opt
     return
   }
   const opt = option as DirectoryOption
-  const prevKey = row.serviceKey
   row.serviceKey = String(value)
-  if (prevKey && prevKey !== row.serviceKey) {
-    row.idTpService = null
-  }
   row.objTpService = opt.id
   row.pvTpService = opt.pv
   row.nameTpService = opt.label

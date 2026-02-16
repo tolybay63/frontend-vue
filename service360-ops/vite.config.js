@@ -95,6 +95,20 @@ export default defineConfig(() => {
                   statuses: [0, 200]
                 }
               }
+            },
+            // Background Sync для API POST-запросов (страховка при закрытии вкладки офлайн)
+            {
+              urlPattern: /\/api\b/i,
+              handler: 'NetworkOnly',
+              method: 'POST',
+              options: {
+                backgroundSync: {
+                  name: 'service360-bg-sync',
+                  options: {
+                    maxRetentionTime: 24 * 60 // 24 часа в минутах
+                  }
+                }
+              }
             }
           ]
         },

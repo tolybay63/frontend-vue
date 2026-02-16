@@ -272,6 +272,52 @@ const saveParameterInfo = async (payload) => {
   }
 };
 
+const saveSeveralInspections = async (workPlanItems) => {
+  try {
+    const user = await getUserData();
+    const today = new Date().toISOString().split('T')[0];
+
+    const payload = {
+      FactDateEnd: today,
+      objUser: user.id,
+      pvUser: user.pv,
+      CreatedAt: today,
+      UpdatedAt: today,
+      objWorkPlan: workPlanItems.map(item => ({
+        id: item.id,
+        cls: item.cls,
+        pv: item.pv,
+        objObject: item.objObject,
+        objLocationClsSection: item.objLocationClsSection,
+        pvLocationClsSection: item.pvLocationClsSection,
+        PlanDateEnd: item.planDateEnd !== 'Не указано' ? item.planDateEnd : null,
+        StartKm: item.StartKm,
+        StartPicket: item.StartPicket,
+        StartLink: item.StartLink,
+        FinishKm: item.FinishKm,
+        FinishPicket: item.FinishPicket,
+        FinishLink: item.FinishLink
+      }))
+    };
+
+    const response = await axios.post(
+      API_BASE_URL,
+      {
+        method: "data/saveSeveralInspections",
+        params: [payload],
+      },
+      {
+        withCredentials: true,
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Ошибка при сохранении осмотров:", error);
+    throw error;
+  }
+};
+
 export {
   loadSections,
   loadWorkPlanInspectionUnfinished,
@@ -281,6 +327,7 @@ export {
   saveInspectionInfo,
   saveFaultInfo,
   saveParameterInfo,
+  saveSeveralInspections,
   getUserData,
   loadComponentsByTypObjectForSelect,
   loadDefectsByComponentForSelect,

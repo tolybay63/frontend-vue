@@ -584,3 +584,37 @@ export async function loadResourceEquipmentForTaskLog(taskLogId) {
     throw error;
   }
 }
+
+export async function saveTaskLogNormative(data) {
+  try {
+    const response = await axios.post(
+      API_REPAIR_URL,
+      {
+        method: "data/saveTaskLogNormative",
+        params: ["ins", data],
+      },
+      { withCredentials: true }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Ошибка при сохранении нормативов:", error);
+    throw error;
+  }
+}
+
+export async function loadResourceNormative(objWork, objTask, Value) {
+  try {
+    const response = await axios.post(
+      API_NSI_URL,
+      {
+        method: "data/loadRelObjResourceNormative",
+        params: [{ objWork, objTask, Value }],
+      },
+      { withCredentials: true }
+    );
+    return response.data.result || [];
+  } catch (error) {
+    console.error("Ошибка при загрузке нормативов:", error);
+    throw error;
+  }
+}

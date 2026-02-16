@@ -41,7 +41,15 @@
     </div>
     <div class="table-section">
       <div class="table-header">
-        <h2>План работ{{ formattedDate ? ' на ' + formattedDate : '' }}</h2>
+        <div class="table-header-top">
+          <h2>План работ{{ formattedDate ? ' на ' + formattedDate : '' }}</h2>
+          <UiButton
+            v-if="canInsert"
+            text="Добавить осмотр"
+            icon="Plus"
+            @click="goToInspectionRecord"
+          />
+        </div>
         <div class="table-subheader">
           <p class="subtitle">
             Отображаются только незавершенные работы. Для детального просмотра дважды кликните по строке.
@@ -59,6 +67,9 @@
         :active-filters="{}"
         @row-dblclick="onRowDoubleClick"
         :showFilters="false"
+        :showCheckbox="true"
+        :selectedRows="selectedRows"
+        @update:selectedRows="selectedRows = $event"
       />
     </div>
 
@@ -76,8 +87,18 @@
       v-if="isConfirmModalOpen"
       title="Завершение работы"
       message="Вы уверены, что хотите завершить эту работу?"
+      :loading="isCompletingWork"
       @confirm="handleConfirmComplete"
       @cancel="isConfirmModalOpen = false"
+    />
+
+    <ConfirmationModal
+      v-if="isInspectionConfirmModalOpen"
+      title="Добавление осмотров"
+      :message="`Вы уверены, что хотите добавить осмотры для ${selectedRows.length} выбранных записей?`"
+      :loading="isSavingInspections"
+      @confirm="handleConfirmInspections"
+      @cancel="isInspectionConfirmModalOpen = false"
     />
   </div>
 </template>
@@ -87,7 +108,7 @@ import { ref, computed, onMounted, h } from 'vue';
 import { useRouter } from 'vue-router';
 import { useNotificationStore } from '@/app/stores/notificationStore';
 import { usePermissions } from '@/shared/api/permissions/usePermissions';
-import { loadWorkPlanInspectionUnfinished } from '@/shared/api/inspections/inspectionsApi';
+import { loadWorkPlanInspectionUnfinished, saveSeveralInspections } from '@/shared/api/inspections/inspectionsApi';
 import { completeThePlanWork } from '@/shared/api/plans/planWorkApi';
 import AppDropdown from '@/shared/ui/FormControls/AppDropdown.vue';
 import BaseTable from '@/app/layouts/Table/BaseTable.vue';
@@ -110,11 +131,16 @@ const isWorkCardModalOpen = ref(false);
 const selectedRecord = ref(null);
 const isConfirmModalOpen = ref(false);
 const recordToComplete = ref(null);
+const selectedRows = ref([]);
+const isInspectionConfirmModalOpen = ref(false);
+const isSavingInspections = ref(false);
+const isCompletingWork = ref(false);
 const router = useRouter();
 const notificationStore = useNotificationStore();
 
 const { hasPermission } = usePermissions();
-const canFinish = computed(() => hasPermission('plan:finish')); 
+const canFinish = computed(() => hasPermission('plan:finish'));
+const canInsert = computed(() => hasPermission('ins:ins')); 
 
 const selectedDate = computed(() => {
   if (!selectedMonth.value || !selectedDay.value) return null;
@@ -203,9 +229,11 @@ const formatDateToISO = (date) => {
 const handleConfirmComplete = async () => {
   if (!recordToComplete.value || !recordToComplete.value.id) {
     notificationStore.showNotification('Ошибка: Нет записи для завершения.', 'error');
+    isConfirmModalOpen.value = false;
     return;
   }
 
+  isCompletingWork.value = true;
   try {
     const today = formatDateToISO(new Date());
 
@@ -213,7 +241,8 @@ const handleConfirmComplete = async () => {
 
     notificationStore.showNotification('Работа успешно завершена!', 'success');
 
-    await loadAllUnfinishedWork();
+    // Обновляем таблицу без сброса фильтров
+    await reloadTableDataOnly();
 
   } catch (error) {
     console.log('Error response:', error.response);
@@ -231,6 +260,7 @@ const handleConfirmComplete = async () => {
 
     notificationStore.showNotification(errorMessage, 'error');
   } finally {
+    isCompletingWork.value = false;
     isConfirmModalOpen.value = false;
     recordToComplete.value = null;
   }
@@ -270,6 +300,48 @@ const columns = [
 
 const goToInspections = () => {
   router.push({ name: 'Inspections' });
+};
+
+const goToInspectionRecord = () => {
+  if (selectedRows.value.length > 0) {
+    // Если выбраны записи - показываем модалку подтверждения
+    isInspectionConfirmModalOpen.value = true;
+  } else {
+    // Если записи не выбраны - переходим на страницу записи осмотра
+    localStorage.setItem('inspectionsNavigation', 'fromRelatedPage');
+    router.push({ name: 'InspectionRecord' });
+  }
+};
+
+const handleConfirmInspections = async () => {
+  if (selectedRows.value.length === 0) {
+    notificationStore.showNotification('Не выбраны записи для осмотра', 'error');
+    isInspectionConfirmModalOpen.value = false;
+    return;
+  }
+
+  isSavingInspections.value = true;
+  try {
+    // selectedRows содержит только ID, нужно получить полные данные строк
+    const selectedRowsData = tableData.value.filter(row => selectedRows.value.includes(row.id));
+
+    await saveSeveralInspections(selectedRowsData);
+
+    notificationStore.showNotification('Осмотры успешно сохранены!', 'success');
+
+    // Сбрасываем выбранные строки
+    selectedRows.value = [];
+
+    // Обновляем таблицу без сброса фильтров
+    await reloadTableDataOnly();
+  } catch (error) {
+    console.error('Ошибка при сохранении осмотров:', error);
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Ошибка при сохранении осмотров';
+    notificationStore.showNotification(errorMessage, 'error');
+  } finally {
+    isSavingInspections.value = false;
+    isInspectionConfirmModalOpen.value = false;
+  }
 };
 
 const filterTableData = () => {
@@ -329,6 +401,22 @@ const mapRecordToTableRow = (record) => ({
   FinishPicket: record.FinishPicket,
   FinishLink: record.FinishLink,
 });
+
+// Перезагрузка данных без сброса фильтров
+const reloadTableDataOnly = async () => {
+  isLoading.value = true;
+  try {
+    const records = await loadWorkPlanInspectionUnfinished();
+    allRecords.value = records;
+
+    // Просто обновляем таблицу с текущими фильтрами
+    filterTableData();
+  } catch (error) {
+    notificationStore.showNotification('Не удалось загрузить данные', 'error');
+  } finally {
+    isLoading.value = false;
+  }
+};
 
 const loadAllUnfinishedWork = async () => {
   isLoading.value = true;
@@ -597,6 +685,13 @@ onMounted(async () => {
   flex-shrink: 0; /* Prevents header from shrinking */
 }
 
+.table-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
 .table-header h2 {
   font-size: 18px;
   font-weight: 600;
@@ -655,6 +750,10 @@ onMounted(async () => {
     font-size: 16px;
   }
 
+  .table-header-top {
+    flex-wrap: wrap;
+  }
+
   .table-subheader {
     flex-direction: column;
     align-items: flex-start;
@@ -711,6 +810,12 @@ onMounted(async () => {
 
   .table-header h2 {
     font-size: 15px;
+  }
+
+  .table-header-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 
   .table-subheader {

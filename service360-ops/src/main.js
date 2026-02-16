@@ -8,6 +8,9 @@ import VCalendar from 'v-calendar'
 import 'v-calendar/style.css'
 
 import './assets/styles/global.css'
+import { setupOfflineInterceptor } from './shared/offline/offlineInterceptor'
+
+setupOfflineInterceptor()
 
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)

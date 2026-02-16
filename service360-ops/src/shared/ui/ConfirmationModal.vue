@@ -6,8 +6,12 @@
         <p class="message">{{ message }}</p>
       </div>
       <div class="modal-footer">
-        <button class="cancel-btn" @click="onCancel">Отмена</button>
-        <button class="confirm-btn" @click="onConfirm">Да</button>
+        <button class="cancel-btn" @click="onCancel" :disabled="loading">Отмена</button>
+        <button class="confirm-btn" @click="onConfirm" :disabled="loading">Да</button>
+      </div>
+      <div v-if="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <span class="loading-text">Сохранение...</span>
       </div>
     </div>
   </div>
@@ -24,6 +28,10 @@ defineProps({
   message: {
     type: String,
     required: true,
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
 });
 
@@ -58,6 +66,7 @@ const onCancel = () => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 400px;
   max-width: 90%;
+  position: relative;
 }
 
 .modal-body {
@@ -103,5 +112,47 @@ button {
 
 .confirm-btn:hover {
   background-color: #2c5282;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  border-radius: 12px;
+  gap: 12px;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spinModal 0.8s linear infinite;
+}
+
+@keyframes spinModal {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

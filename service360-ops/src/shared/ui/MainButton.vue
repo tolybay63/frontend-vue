@@ -28,7 +28,7 @@ export default {
   background-color: #2b6cb0;
   color: white;
   font-size: 16px;
-  border-radius: 16px;
+  border-radius: 8px;
   border: none;
   cursor: pointer;
   transition: background 0.3s;

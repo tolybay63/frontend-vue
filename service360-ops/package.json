@@ -12,6 +12,7 @@
     "@iconify/vue": "^5.0.0",
     "axios": "^1.11.0",
     "date-fns": "^4.1.0",
+    "dexie": "^4.3.0",
     "lets-icons": "^1.0.2",
     "lucide-vue-next": "^0.525.0",
     "naive-ui": "^2.42.0",

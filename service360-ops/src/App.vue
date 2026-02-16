@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './app/layouts/Sidebar.vue'
 import Navbar from './app/layouts/Navbar.vue'
@@ -33,10 +33,22 @@ import AppNotification from './app/layouts/AppNotification.vue'
 import UserNotifications from './app/layouts/UserNotifications.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import { useSidebarStore } from './app/stores/sidebar'
+import { prefetchAllReferenceData } from './shared/offline/prefetchReferenceData'
+import { useSyncManager } from './shared/offline/useSyncManager'
 
 const route = useRoute()
 const isLoginPage = computed(() => route.path === '/login')
 const sidebar = useSidebarStore()
+
+// Офлайн-синхронизация
+useSyncManager()
+
+// Предзагрузка справочников для офлайн-работы
+onMounted(() => {
+  if (localStorage.getItem('personnalInfo')) {
+    prefetchAllReferenceData();
+  }
+})
 
 // Динамическое кэширование WorkLog
 const keepAliveInclude = ref([])

@@ -15,6 +15,8 @@
     />
 
     <div class="navbar-right">
+      <OfflineBadge />
+      <SyncQueueIndicator />
       <NotificationPanel />
       <UserAvatar :initials="'ОГ'" />
     </div>
@@ -28,6 +30,8 @@ import SearchBox from '@/shared/ui/SearchBox.vue'
 import UserAvatar from '@/shared/ui/UserAvatar.vue'
 import WeatherAndDate from '@/shared/ui/WeatherAndDate.vue'
 import NotificationPanel from '@/app/layouts/NotificationPanel.vue'
+import OfflineBadge from '@/shared/ui/OfflineBadge.vue'
+import SyncQueueIndicator from '@/shared/ui/SyncQueueIndicator.vue'
 import { useSidebarStore } from '@/app/stores/sidebar'
 
 

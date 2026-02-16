@@ -27,6 +27,11 @@ export interface ParameterComponentOption {
   name: string
 }
 
+export interface ParameterSignOption {
+  id: number
+  name: string
+}
+
 export interface ParameterLimitValues {
   min: number | null
   max: number | null
@@ -102,6 +107,8 @@ export interface LoadedObjectParameter extends ObjectParameter {
   sourceName: string | null
   componentName: string | null
   details: ParameterDetails
+  signMultiIds?: number[]
+  signMultiNames?: string | null
 }
 
 export interface ObjectParametersSnapshot {

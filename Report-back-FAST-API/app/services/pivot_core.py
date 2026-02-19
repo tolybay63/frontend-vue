@@ -17,6 +17,27 @@ def _normalize_value_for_key(value: Any) -> str:
     return str(value)
 
 
+def _normalize_value_for_distinct(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (dict, list)):
+        try:
+            normalized = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            return None
+        return normalized or None
+    normalized = str(value)
+    return normalized if normalized != "" else None
+
+
+def _normalize_aggregator(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).lower()
+    if text == "distinct":
+        return "count_distinct"
+    return text
+
 def _format_label_value(value: Any) -> str:
     if value is None or value == "":
         return "—"
@@ -50,25 +71,47 @@ def _build_dimension_key(values: Tuple[Any, ...], field_keys: List[str]) -> str:
 def _resolve_record_value(record: Dict[str, Any], key: str | None) -> Any:
     if not record or not key:
         return None
+    if key in record:
+        return record.get(key)
     meta = parse_date_part_key(key)
     if meta:
         base_value = _resolve_record_value_base(record, meta["field_key"])
         return resolve_date_part_value(base_value, meta["part"])
+    if "." in key:
+        current: Any = record
+        for part in key.split("."):
+            if not isinstance(current, dict) or part not in current:
+                current = None
+                break
+            current = current.get(part)
+        if current is not None:
+            return current
+        last_part = key.split(".")[-1]
+        if last_part in record:
+            return record.get(last_part)
     return _resolve_record_value_base(record, key)
 
 
-def _create_bucket() -> Dict[str, Any]:
-    return {
+def _create_bucket(aggregator: str | None = None) -> Dict[str, Any]:
+    bucket = {
         "count": 0,
         "numeric_count": 0,
         "sum": 0.0,
         "last": None,
     }
+    if _normalize_aggregator(aggregator) == "count_distinct":
+        bucket["distinct_values"] = set()
+    return bucket
 
 
 def _update_bucket(bucket: Dict[str, Any], value: Any) -> None:
     bucket["count"] += 1
     bucket["last"] = value
+    distinct_values = bucket.get("distinct_values")
+    if distinct_values is not None:
+        normalized = _normalize_value_for_distinct(value)
+        if normalized is not None:
+            distinct_values.add(normalized)
     try:
         num = float(value)
     except (TypeError, ValueError):
@@ -82,11 +125,14 @@ def _update_bucket(bucket: Dict[str, Any], value: Any) -> None:
 def _finalize_bucket(bucket: Dict[str, Any] | None, aggregator: str | None) -> Any:
     if not bucket or not aggregator:
         return None
-    agg = aggregator.lower()
+    agg = _normalize_aggregator(aggregator)
     if agg == "value":
         return bucket["last"]
     if agg == "count":
         return bucket["count"]
+    if agg == "count_distinct":
+        distinct_values = bucket.get("distinct_values")
+        return len(distinct_values or set())
     if agg == "sum":
         return bucket["sum"] if bucket["numeric_count"] else None
     if agg == "avg":
@@ -425,6 +471,7 @@ def _extract_metric(metric: Dict[str, Any]) -> Dict[str, Any]:
         or metric.get("source_key")
     )
     op = (metric.get("op") or metric.get("aggregator") or metric.get("agg") or "sum")
+    op = _normalize_aggregator(op)
     if metric_type == "formula":
         op = None
     if not metric_key:
@@ -547,7 +594,7 @@ def build_pivot_view(records: list[dict], snapshot: dict) -> dict:
                 for metric in base_metrics:
                     bucket = row_prefix_buckets[prefix].get(metric["key"])
                     if bucket is None:
-                        bucket = _create_bucket()
+                        bucket = _create_bucket(metric["op"])
                         row_prefix_buckets[prefix][metric["key"]] = bucket
                     _update_bucket(bucket, _resolve_record_value(record, metric["source_key"]))
 
@@ -559,7 +606,7 @@ def build_pivot_view(records: list[dict], snapshot: dict) -> dict:
                 for metric in base_metrics:
                     bucket = column_prefix_buckets[prefix].get(metric["key"])
                     if bucket is None:
-                        bucket = _create_bucket()
+                        bucket = _create_bucket(metric["op"])
                         column_prefix_buckets[prefix][metric["key"]] = bucket
                     _update_bucket(bucket, _resolve_record_value(record, metric["source_key"]))
 
@@ -567,13 +614,13 @@ def build_pivot_view(records: list[dict], snapshot: dict) -> dict:
             metric_key = metric["key"]
             bucket = cell_buckets[row_key][column_key].get(metric_key)
             if bucket is None:
-                bucket = _create_bucket()
+                bucket = _create_bucket(metric["op"])
                 cell_buckets[row_key][column_key][metric_key] = bucket
             _update_bucket(bucket, _resolve_record_value(record, metric["source_key"]))
 
             total_bucket = total_buckets.get(metric_key)
             if total_bucket is None:
-                total_bucket = _create_bucket()
+                total_bucket = _create_bucket(metric["op"])
                 total_buckets[metric_key] = total_bucket
             _update_bucket(total_bucket, _resolve_record_value(record, metric["source_key"]))
 

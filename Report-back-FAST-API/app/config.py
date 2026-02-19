@@ -35,6 +35,7 @@ class Settings:
     report_pushdown_max_in_values: int
     report_pushdown_safe_only: bool
     report_pushdown_override: bool
+    pivot_parity_joins: bool
     upstream_base_url: str
     upstream_url: str
     upstream_timeout: float
@@ -122,6 +123,7 @@ def get_settings() -> Settings:
         report_pushdown_max_in_values=_get_int("REPORT_PUSHDOWN_MAX_IN_VALUES", 200),
         report_pushdown_safe_only=_get_bool("REPORT_PUSHDOWN_SAFE_ONLY", True),
         report_pushdown_override=_get_bool("REPORT_PUSHDOWN_OVERRIDE", False),
+        pivot_parity_joins=_get_bool("PIVOT_PARITY_JOINS", False),
         upstream_base_url=os.getenv("UPSTREAM_BASE_URL", ""),
         upstream_url=os.getenv("UPSTREAM_URL", ""),
         upstream_timeout=_get_float("UPSTREAM_TIMEOUT", 30.0),

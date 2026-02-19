@@ -18,12 +18,13 @@ from app.models.report_job import ReportJobQueuedResponse
 from app.observability.metrics import record_http_request, set_report_jobs_queue_size
 from app.observability.otel import configure_otel
 from app.observability.request_context import set_request_id
-from app.services.computed_fields import build_computed_fields_engine
+from app.services.computed_fields import build_computed_fields_engine, extract_computed_fields
 from app.services.data_source_client import async_load_records, get_records_limit
 from app.services.detail_service import build_details
 from app.services.filter_service import apply_filters, collect_filter_options
 from app.services.join_service import apply_joins, resolve_joins
 from app.services.record_cache import build_records_cache_key, get_cached_records, set_cached_records
+from app.services.records_pipeline import build_records_pipeline
 from app.services.report_job_service import (
     QueueFullError,
     create_report_job,
@@ -67,6 +68,10 @@ def _enforce_records_limit(count: int, limit: int | None, stage: str) -> None:
         )
 
 
+def _should_use_parity_pipeline(joins: list[dict], remote_source: Any) -> bool:
+    return bool(joins) or bool(extract_computed_fields(remote_source))
+
+
 def _extract_request_id_from_body(body: bytes, content_type: str) -> str | None:
     if not body or "application/json" not in (content_type or ""):
         return None
@@ -82,11 +87,27 @@ def _extract_request_id_from_body(body: bytes, content_type: str) -> str | None:
     return meta.get("requestId") or meta.get("request_id")
 
 
+def _should_attempt_body_request_id(request: Request) -> bool:
+    if request.method not in {"POST", "PUT", "PATCH"}:
+        return False
+    content_type = request.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        return False
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > 262_144:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 @app.middleware("http")
 async def request_context_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
     started = time.monotonic()
     request_id = request.headers.get("X-Request-ID")
-    if request_id is None:
+    if request_id is None and _should_attempt_body_request_id(request):
         body_bytes = await request.body()
         if body_bytes:
             request._body = body_bytes
@@ -198,57 +219,95 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
     """
     request_id = getattr(request.state, "request_id", None)
     max_records = get_records_limit()
+    settings = get_settings()
     computed_engine = build_computed_fields_engine(payload.remoteSource)
 
     try:
         joins = await resolve_joins(payload.remoteSource)
-        cache_key = build_records_cache_key(payload.templateId, payload.remoteSource, joins)
+        use_parity = bool(settings.pivot_parity_joins and _should_use_parity_pipeline(joins, payload.remoteSource))
+        cache_key = build_records_cache_key(
+            payload.templateId,
+            payload.remoteSource,
+            joins,
+            pipeline_mode="parity" if use_parity else "legacy",
+        )
         joined_records = await get_cached_records(cache_key)
         join_debug: Dict[str, Any] = {}
         cache_hit = joined_records is not None
+        computed_warnings = list(getattr(computed_engine, "warnings", []) or [])
         if joined_records is None:
-            load_started = time.monotonic()
-            records = await async_load_records(
-                payload.remoteSource,
-                payload_filters=None,
-                pushdown_enabled=False,
-            )
-            _enforce_records_limit(len(records), max_records, "load_records")
-            logger.info(
-                "report.filters.load_records",
-                extra={
-                    "templateId": payload.templateId,
-                    "requestId": request_id,
-                    "records": len(records),
-                    "duration_ms": int((time.monotonic() - load_started) * 1000),
-                },
-            )
-            joins_started = time.monotonic()
-            joined_records, join_debug = await apply_joins(
-                records,
-                payload.remoteSource,
-                joins_override=joins,
-                max_records=max_records,
-            )
-            _enforce_records_limit(len(joined_records), max_records, "apply_joins")
-            if computed_engine:
-                computed_engine.apply(joined_records)
-            logger.info(
-                "report.filters.apply_joins",
-                extra={
-                    "templateId": payload.templateId,
-                    "requestId": request_id,
-                    "recordsBefore": len(records),
-                    "recordsAfter": len(joined_records),
-                    "duration_ms": int((time.monotonic() - joins_started) * 1000),
-                },
-            )
+            if use_parity:
+                try:
+                    pipeline = await build_records_pipeline(
+                        payload.remoteSource,
+                        payload_filters=None,
+                        pushdown_enabled=False,
+                        max_records=max_records,
+                        joins_override=joins,
+                    )
+                    joined_records = pipeline.records
+                    join_debug = pipeline.join_debug
+                    if pipeline.warnings:
+                        computed_warnings = pipeline.warnings
+                except Exception:
+                    logger.exception(
+                        "report.filters.parity_failed_fallback",
+                        extra={"templateId": payload.templateId, "requestId": request_id},
+                    )
+                    use_parity = False
+                    cache_key = build_records_cache_key(
+                        payload.templateId,
+                        payload.remoteSource,
+                        joins,
+                        pipeline_mode="legacy",
+                    )
+                    joined_records = await get_cached_records(cache_key)
+                    cache_hit = joined_records is not None
+            if joined_records is None:
+                load_started = time.monotonic()
+                records = await async_load_records(
+                    payload.remoteSource,
+                    payload_filters=None,
+                    pushdown_enabled=False,
+                )
+                _enforce_records_limit(len(records), max_records, "load_records")
+                logger.info(
+                    "report.filters.load_records",
+                    extra={
+                        "templateId": payload.templateId,
+                        "requestId": request_id,
+                        "records": len(records),
+                        "duration_ms": int((time.monotonic() - load_started) * 1000),
+                    },
+                )
+                joins_started = time.monotonic()
+                joined_records, join_debug = await apply_joins(
+                    records,
+                    payload.remoteSource,
+                    joins_override=joins,
+                    max_records=max_records,
+                )
+                _enforce_records_limit(len(joined_records), max_records, "apply_joins")
+                if computed_engine:
+                    computed_engine.apply(joined_records)
+                    computed_warnings = list(computed_engine.warnings)
+                logger.info(
+                    "report.filters.apply_joins",
+                    extra={
+                        "templateId": payload.templateId,
+                        "requestId": request_id,
+                        "recordsBefore": len(records),
+                        "recordsAfter": len(joined_records),
+                        "duration_ms": int((time.monotonic() - joins_started) * 1000),
+                    },
+                )
             if joined_records:
                 await set_cached_records(cache_key, joined_records)
         else:
             _enforce_records_limit(len(joined_records), max_records, "cache_records")
-            if computed_engine:
+            if computed_engine and not use_parity:
                 computed_engine.apply(joined_records)
+                computed_warnings = list(computed_engine.warnings)
     except HTTPException:
         raise
     except ValueError as exc:
@@ -293,8 +352,8 @@ async def build_report_filters(payload: ViewRequest, request: Request, limit: in
     }
     if selected_pruned:
         response["selectedPruned"] = selected_pruned
-    if computed_engine and computed_engine.warnings:
-        response["computedWarnings"] = computed_engine.warnings
+    if computed_warnings:
+        response["computedWarnings"] = computed_warnings
     if os.getenv("REPORT_DEBUG_FILTERS"):
         filtered_records, _ = apply_filters(
             joined_records,
@@ -345,58 +404,92 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
 
     request_id = getattr(request.state, "request_id", None)
     max_records = get_records_limit()
+    settings = get_settings()
     computed_engine = build_computed_fields_engine(view_payload.remoteSource)
 
     try:
         joins = await resolve_joins(view_payload.remoteSource)
+        use_parity = bool(settings.pivot_parity_joins and _should_use_parity_pipeline(joins, view_payload.remoteSource))
         cache_key = build_records_cache_key(
             view_payload.templateId,
             view_payload.remoteSource,
             joins,
             view_payload.filters,
+            pipeline_mode="parity" if use_parity else "legacy",
         )
         joined_records = await get_cached_records(cache_key)
         join_debug: Dict[str, Any] = {}
         cache_hit = joined_records is not None
+        computed_warnings = list(getattr(computed_engine, "warnings", []) or [])
         if joined_records is None:
-            load_started = time.monotonic()
-            records = await async_load_records(view_payload.remoteSource, payload_filters=view_payload.filters)
-            _enforce_records_limit(len(records), max_records, "load_records")
-            logger.info(
-                "report.details.load_records",
-                extra={
-                    "templateId": view_payload.templateId,
-                    "requestId": request_id,
-                    "records": len(records),
-                    "duration_ms": int((time.monotonic() - load_started) * 1000),
-                },
-            )
-            joins_started = time.monotonic()
-            joined_records, join_debug = await apply_joins(
-                records,
-                view_payload.remoteSource,
-                joins_override=joins,
-                max_records=max_records,
-            )
-            _enforce_records_limit(len(joined_records), max_records, "apply_joins")
-            if computed_engine:
-                computed_engine.apply(joined_records)
-            logger.info(
-                "report.details.apply_joins",
-                extra={
-                    "templateId": view_payload.templateId,
-                    "requestId": request_id,
-                    "recordsBefore": len(records),
-                    "recordsAfter": len(joined_records),
-                    "duration_ms": int((time.monotonic() - joins_started) * 1000),
-                },
-            )
+            if use_parity:
+                try:
+                    pipeline = await build_records_pipeline(
+                        view_payload.remoteSource,
+                        payload_filters=view_payload.filters,
+                        max_records=max_records,
+                        joins_override=joins,
+                    )
+                    joined_records = pipeline.records
+                    join_debug = pipeline.join_debug
+                    if pipeline.warnings:
+                        computed_warnings = pipeline.warnings
+                except Exception:
+                    logger.exception(
+                        "report.details.parity_failed_fallback",
+                        extra={"templateId": view_payload.templateId, "requestId": request_id},
+                    )
+                    use_parity = False
+                    cache_key = build_records_cache_key(
+                        view_payload.templateId,
+                        view_payload.remoteSource,
+                        joins,
+                        view_payload.filters,
+                        pipeline_mode="legacy",
+                    )
+                    joined_records = await get_cached_records(cache_key)
+                    cache_hit = joined_records is not None
+            if joined_records is None:
+                load_started = time.monotonic()
+                records = await async_load_records(view_payload.remoteSource, payload_filters=view_payload.filters)
+                _enforce_records_limit(len(records), max_records, "load_records")
+                logger.info(
+                    "report.details.load_records",
+                    extra={
+                        "templateId": view_payload.templateId,
+                        "requestId": request_id,
+                        "records": len(records),
+                        "duration_ms": int((time.monotonic() - load_started) * 1000),
+                    },
+                )
+                joins_started = time.monotonic()
+                joined_records, join_debug = await apply_joins(
+                    records,
+                    view_payload.remoteSource,
+                    joins_override=joins,
+                    max_records=max_records,
+                )
+                _enforce_records_limit(len(joined_records), max_records, "apply_joins")
+                if computed_engine:
+                    computed_engine.apply(joined_records)
+                    computed_warnings = list(computed_engine.warnings)
+                logger.info(
+                    "report.details.apply_joins",
+                    extra={
+                        "templateId": view_payload.templateId,
+                        "requestId": request_id,
+                        "recordsBefore": len(records),
+                        "recordsAfter": len(joined_records),
+                        "duration_ms": int((time.monotonic() - joins_started) * 1000),
+                    },
+                )
             if joined_records:
                 await set_cached_records(cache_key, joined_records)
         else:
             _enforce_records_limit(len(joined_records), max_records, "cache_records")
-            if computed_engine:
+            if computed_engine and not use_parity:
                 computed_engine.apply(joined_records)
+                computed_warnings = list(computed_engine.warnings)
 
         details_started = time.monotonic()
         response, debug_payload = build_details(
@@ -435,8 +528,8 @@ async def build_report_details(payload: Dict[str, Any], request: Request) -> Dic
         if join_debug:
             debug_payload["joins"] = join_debug
         response["debug"] = debug_payload
-    if computed_engine and computed_engine.warnings:
-        response["computedWarnings"] = computed_engine.warnings
+    if computed_warnings:
+        response["computedWarnings"] = computed_warnings
 
     return response
 

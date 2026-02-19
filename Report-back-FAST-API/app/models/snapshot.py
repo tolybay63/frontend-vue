@@ -13,7 +13,7 @@ class PivotSection(BaseModel):
 class Metric(BaseModel):
     key: Optional[str] = None
     sourceKey: Optional[str] = None
-    op: Optional[Literal["sum", "avg", "count", "value"]] = None
+    op: Optional[Literal["sum", "avg", "count", "value", "count_distinct", "distinct"]] = None
     type: Literal["base", "formula"] = "base"
     expression: Optional[str] = None
     field: Optional[str] = None

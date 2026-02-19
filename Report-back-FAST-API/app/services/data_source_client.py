@@ -62,6 +62,14 @@ def get_records_limit() -> int | None:
 def normalize_remote_body(remote_source: RemoteSource) -> Any:
     body: Any = remote_source.body or {}
 
+    if isinstance(body, str):
+        try:
+            parsed = json.loads(body)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, (dict, list)):
+            body = parsed
+
     if (not body) and remote_source.rawBody:
         try:
             body = json.loads(remote_source.rawBody)
@@ -70,6 +78,8 @@ def normalize_remote_body(remote_source: RemoteSource) -> Any:
     if isinstance(body, dict):
         body = {**body}
         body.pop("__joins", None)
+        body.pop("__computedFields", None)
+        body.pop("computedFields", None)
     return body
 
 
@@ -77,7 +87,9 @@ def build_request_payloads(body: Any) -> List[RequestPayload]:
     if not isinstance(body, dict):
         return [RequestPayload(body=body, params=None)]
 
-    split_params = bool(body.get("splitParams"))
+    split_params_raw = body.get("splitParams")
+    split_params = bool(split_params_raw)
+    split_params_explicit = "splitParams" in body
     cleaned_body = {**body}
     cleaned_body.pop("splitParams", None)
 
@@ -89,7 +101,10 @@ def build_request_payloads(body: Any) -> List[RequestPayload]:
     if isinstance(params_list, list):
         if any(not isinstance(entry, dict) for entry in params_list):
             return [RequestPayload(body=cleaned_body, params=None)]
-        if split_params:
+        # Backward-compat: if splitParams is omitted and params has multiple objects,
+        # execute one upstream call per params entry (same behavior as local builder).
+        should_split = split_params or (not split_params_explicit and len(params_list) > 1)
+        if should_split:
             return _build_request_payloads_from_params(cleaned_body, params_list)
         return [RequestPayload(body=cleaned_body, params=None)]
 
@@ -139,6 +154,8 @@ def _build_request_payloads_from_requests(
         if isinstance(entry_body, dict):
             cleaned_body = {**entry_body}
             cleaned_body.pop("__joins", None)
+            cleaned_body.pop("__computedFields", None)
+            cleaned_body.pop("computedFields", None)
             cleaned_body.pop("splitParams", None)
             request_body.update(cleaned_body)
             params_from_body = cleaned_body.get("params")
@@ -403,21 +420,21 @@ def _extract_records(data: Any, full_url: str) -> List[Dict[str, Any]]:
         if isinstance(result, dict):
             records = result.get("records")
             if isinstance(records, list):
-                print(f"[load_records] URL={full_url}, records={len(records)}")
+                logger.debug("load_records.result", extra={"url": full_url, "records": len(records)})
                 return records
         if isinstance(result, list):
-            print(f"[load_records] URL={full_url}, records={len(result)}")
+            logger.debug("load_records.result", extra={"url": full_url, "records": len(result)})
             return result
         records = data.get("records")
         if isinstance(records, list):
-            print(f"[load_records] URL={full_url}, records={len(records)}")
+            logger.debug("load_records.result", extra={"url": full_url, "records": len(records)})
             return records
 
     if isinstance(data, list):
-        print(f"[load_records] URL={full_url}, records={len(data)}")
+        logger.debug("load_records.result", extra={"url": full_url, "records": len(data)})
         return data
 
-    print(f"[load_records] URL={full_url}, records=0")
+    logger.debug("load_records.result", extra={"url": full_url, "records": 0})
     return []
 
 
@@ -722,7 +739,7 @@ def load_records(remote_source: RemoteSource) -> List[Dict[str, Any]]:
         records_all.extend(records)
 
     if is_mock:
-        print(f"[load_records] URL={full_url}, records={len(records_all)}")
+        logger.debug("load_records.result", extra={"url": full_url, "records": len(records_all)})
     _enforce_records_limit(records_all, get_records_limit())
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.info(
@@ -832,7 +849,7 @@ async def _async_load_records_with_client(
         records_all.extend(records)
 
     if is_mock:
-        print(f"[load_records] URL={full_url}, records={len(records_all)}")
+        logger.debug("load_records.result", extra={"url": full_url, "records": len(records_all)})
     _enforce_records_limit(records_all, get_records_limit())
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.info(
@@ -1041,7 +1058,7 @@ async def _async_iter_records_with_client(
             yield chunk
 
     if is_mock:
-        print(f"[load_records] URL={full_url}, records={total_records}")
+        logger.debug("load_records.result", extra={"url": full_url, "records": total_records})
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.info(
         "async_iter_records",

@@ -1,14 +1,26 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
 DATE_PART_MARKER = "__date_part__"
-ALLOWED_FUNCTIONS = {"date", "number", "text", "len", "empty"}
+ALLOWED_FUNCTIONS = {
+    "date",
+    "number",
+    "text",
+    "len",
+    "empty",
+    "ts",
+    "datediff",
+    "hours_between",
+    "days_between",
+}
 ALLOWED_RESULT_TYPES = {"number", "text", "date"}
+FIELD_TOKEN_REGEX = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 
 
 class FormulaParseError(ValueError):
@@ -42,12 +54,86 @@ def normalize_computed_fields(value: Any) -> List[Dict[str, Any]]:
     return normalized
 
 
+def _extract_computed_fields_from_payload(payload: Any) -> List[Dict[str, Any]]:
+    fields, _ = _extract_computed_fields_from_payload_with_presence(payload)
+    return fields
+
+
+def _extract_computed_fields_from_payload_with_presence(payload: Any) -> tuple[List[Dict[str, Any]], bool]:
+    if not isinstance(payload, dict):
+        return [], False
+    explicit = False
+    fields: List[Dict[str, Any]] = []
+    if "computedFields" in payload:
+        explicit = True
+        fields.extend(normalize_computed_fields(payload.get("computedFields") or []))
+    if "__computedFields" in payload:
+        explicit = True
+        fields.extend(normalize_computed_fields(payload.get("__computedFields") or []))
+    return fields, explicit
+
+
+def _computed_field_identity(entry: Dict[str, Any]) -> str:
+    field_key = entry.get("fieldKey") or entry.get("field_key")
+    if field_key:
+        return f"field:{field_key}"
+    field_id = entry.get("id")
+    if field_id:
+        return f"id:{field_id}"
+    expression = entry.get("expression")
+    result_type = entry.get("resultType") or entry.get("result_type")
+    return f"anon:{expression}|{result_type}"
+
+
+def _dedupe_computed_fields(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not entries:
+        return []
+    deduped: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        identity = _computed_field_identity(entry)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        deduped.append(entry)
+    return deduped
+
+
 def extract_computed_fields(remote_source: Any) -> List[Dict[str, Any]]:
     if not remote_source:
         return []
+    fields: List[Dict[str, Any]] = []
     if isinstance(remote_source, dict):
-        return normalize_computed_fields(remote_source.get("computedFields") or [])
-    return normalize_computed_fields(getattr(remote_source, "computedFields", None) or [])
+        top_fields, top_explicit = _extract_computed_fields_from_payload_with_presence(remote_source)
+        body_fields, body_explicit = _extract_computed_fields_from_payload_with_presence(remote_source.get("body"))
+        fields.extend(top_fields)
+        fields.extend(body_fields)
+        explicit_present = top_explicit or body_explicit
+        raw_body = remote_source.get("rawBody") or remote_source.get("raw_body")
+        if isinstance(raw_body, str) and not explicit_present:
+            try:
+                parsed = json.loads(raw_body)
+            except (TypeError, ValueError):
+                parsed = None
+            fields.extend(_extract_computed_fields_from_payload(parsed))
+        return _dedupe_computed_fields(fields)
+
+    explicit_present = False
+    top_entries = getattr(remote_source, "computedFields", None)
+    if top_entries is not None:
+        explicit_present = True
+    fields.extend(normalize_computed_fields(top_entries or []))
+    body_fields, body_explicit = _extract_computed_fields_from_payload_with_presence(getattr(remote_source, "body", None))
+    fields.extend(body_fields)
+    explicit_present = explicit_present or body_explicit
+    raw_body = getattr(remote_source, "rawBody", None) or getattr(remote_source, "raw_body", None)
+    if isinstance(raw_body, str) and not explicit_present:
+        try:
+            parsed = json.loads(raw_body)
+        except (TypeError, ValueError):
+            parsed = None
+        fields.extend(_extract_computed_fields_from_payload(parsed))
+    return _dedupe_computed_fields(fields)
 
 
 def build_computed_fields_engine(remote_source: Any) -> "ComputedFieldsEngine | None":
@@ -55,6 +141,56 @@ def build_computed_fields_engine(remote_source: Any) -> "ComputedFieldsEngine | 
     if not computed_fields:
         return None
     return ComputedFieldsEngine(computed_fields)
+
+
+def extract_expression_field_refs(expression: Any) -> List[str]:
+    if not isinstance(expression, str) or not expression:
+        return []
+    refs: List[str] = []
+    for match in FIELD_TOKEN_REGEX.findall(expression):
+        key = str(match or "").strip()
+        if key:
+            refs.append(key)
+    return refs
+
+
+def split_computed_fields_by_join_dependency(
+    remote_source: Any,
+    join_prefixes: List[str] | None = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    computed_fields = extract_computed_fields(remote_source)
+    if not computed_fields:
+        return [], []
+    prefixes = {str(prefix).strip() for prefix in (join_prefixes or []) if str(prefix).strip()}
+    if not prefixes:
+        return computed_fields, []
+
+    pre_join: List[Dict[str, Any]] = []
+    post_join: List[Dict[str, Any]] = []
+    for entry in computed_fields:
+        refs = extract_expression_field_refs(entry.get("expression"))
+        depends_on_join = False
+        for ref in refs:
+            if "." not in ref:
+                continue
+            prefix = ref.split(".", 1)[0]
+            if prefix in prefixes:
+                depends_on_join = True
+                break
+        if depends_on_join:
+            post_join.append(entry)
+        else:
+            pre_join.append(entry)
+    return pre_join, post_join
+
+
+def build_computed_fields_engine_from_entries(
+    entries: List[Dict[str, Any]],
+) -> "ComputedFieldsEngine | None":
+    normalized = normalize_computed_fields(entries)
+    if not normalized:
+        return None
+    return ComputedFieldsEngine(normalized)
 
 
 def _tokenize(expression: str) -> List[Token]:
@@ -259,19 +395,41 @@ class FunctionNode:
     args: List[Any]
 
     def eval(self, record: Dict[str, Any]) -> Any:
-        if len(self.args) != 1:
-            raise ValueError("Function expects one argument")
-        value = self.args[0].eval(record)
-        if self.name == "date":
-            return _func_date(value)
-        if self.name == "number":
-            return _func_number(value)
-        if self.name == "text":
-            return _func_text(value)
-        if self.name == "len":
-            return _func_len(value)
-        if self.name == "empty":
-            return _func_empty(value)
+        if self.name in {"date", "number", "text", "len", "empty", "ts"}:
+            if len(self.args) != 1:
+                raise ValueError("Function expects one argument")
+            value = self.args[0].eval(record)
+            if self.name == "date":
+                return _func_date(value)
+            if self.name == "number":
+                return _func_number(value)
+            if self.name == "text":
+                return _func_text(value)
+            if self.name == "len":
+                return _func_len(value)
+            if self.name == "empty":
+                return _func_empty(value)
+            if self.name == "ts":
+                return _func_ts(value)
+        if self.name == "datediff":
+            if len(self.args) not in {2, 3}:
+                raise ValueError("Function expects two or three arguments")
+            left = self.args[0].eval(record)
+            right = self.args[1].eval(record)
+            unit = self.args[2].eval(record) if len(self.args) == 3 else "ms"
+            return _func_datediff(left, right, unit)
+        if self.name == "hours_between":
+            if len(self.args) != 2:
+                raise ValueError("Function expects two arguments")
+            left = self.args[0].eval(record)
+            right = self.args[1].eval(record)
+            return _func_hours_between(left, right)
+        if self.name == "days_between":
+            if len(self.args) != 2:
+                raise ValueError("Function expects two arguments")
+            left = self.args[0].eval(record)
+            right = self.args[1].eval(record)
+            return _func_days_between(left, right)
         raise ValueError("Unsupported function")
 
 
@@ -702,6 +860,53 @@ def _func_date(value: Any) -> str | None:
     return parsed.date().isoformat()
 
 
+def _func_ts(value: Any) -> float | None:
+    parsed = _parse_date_input(value)
+    if not parsed:
+        return None
+    return parsed.timestamp() * 1000.0
+
+
+def _normalize_time_unit(unit: Any) -> float | None:
+    if unit is None:
+        return 1.0
+    if not isinstance(unit, str):
+        return None
+    text = unit.strip().lower()
+    if not text:
+        return 1.0
+    if text == "ms":
+        return 1.0
+    if text in {"s", "sec", "seconds"}:
+        return 1000.0
+    if text in {"m", "min", "minutes"}:
+        return 60000.0
+    if text in {"h", "hour", "hours"}:
+        return 3600000.0
+    if text in {"d", "day", "days"}:
+        return 86400000.0
+    return None
+
+
+def _func_datediff(left: Any, right: Any, unit: Any) -> float | None:
+    left_ts = _func_ts(left)
+    right_ts = _func_ts(right)
+    if left_ts is None or right_ts is None:
+        return None
+    divisor = _normalize_time_unit(unit)
+    if divisor is None:
+        return None
+    return (right_ts - left_ts) / divisor
+
+
+def _func_hours_between(left: Any, right: Any) -> float | None:
+    return _func_datediff(left, right, "hours")
+
+
+def _func_days_between(left: Any, right: Any) -> float | None:
+    return _func_datediff(left, right, "days")
+
+
 def _coerce_result(value: Any, result_type: str) -> Any:
     if result_type == "number":
         return _to_number_lenient(value)
@@ -785,9 +990,16 @@ def _resolve_record_value(record: Dict[str, Any], key: str | None) -> Any:
         for part in key.split("."):
             if isinstance(current, dict):
                 if part not in current:
-                    return None
+                    current = None
+                    break
                 current = current.get(part)
                 continue
-            return None
-        return current
+            current = None
+            break
+        if current is not None:
+            return current
+        last_part = key.split(".")[-1]
+        if last_part in record:
+            return record.get(last_part)
+        return None
     return None

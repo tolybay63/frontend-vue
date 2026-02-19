@@ -83,6 +83,21 @@ class DataSourceClientTests(unittest.TestCase):
         self.assertIsNone(payloads[0].params)
         self.assertNotIn("splitParams", payloads[0].body)
 
+    def test_build_request_payloads_params_list_auto_split_when_flag_missing(self) -> None:
+        body = {
+            "method": "data/loadPlan",
+            "params": [
+                {"date": "2025-01-01", "periodType": 11},
+                {"date": "2026-01-01", "periodType": 12},
+            ],
+        }
+        payloads = build_request_payloads(body)
+        self.assertEqual(len(payloads), 2)
+        self.assertEqual(payloads[0].body["params"], [{"date": "2025-01-01", "periodType": 11}])
+        self.assertEqual(payloads[1].body["params"], [{"date": "2026-01-01", "periodType": 12}])
+        self.assertEqual(payloads[0].params, {"date": "2025-01-01", "periodType": 11})
+        self.assertEqual(payloads[1].params, {"date": "2026-01-01", "periodType": 12})
+
     def test_async_load_records_from_batch_results(self) -> None:
         remote_source = RemoteSource(
             url="mock://batch",

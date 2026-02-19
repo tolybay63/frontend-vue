@@ -9,15 +9,17 @@ from app.observability.otel import get_tracer
 from app.config import get_settings
 from app.models.view import ChartConfig, ViewResponse
 from app.models.view_request import ViewRequest
-from app.services.computed_fields import build_computed_fields_engine
+from app.services.computed_fields import build_computed_fields_engine, extract_computed_fields
 from app.services.data_source_client import async_iter_records, async_load_records, get_records_limit
 from app.services.filter_service import apply_filters
 from app.services.join_service import (
     apply_joins,
     apply_prepared_join_lookups,
     prepare_joins_streaming,
+    resolve_joins,
 )
 from app.services.pivot_streaming import StreamingPivotAggregator
+from app.services.records_pipeline import build_records_pipeline
 from app.services.view_service import build_view
 
 
@@ -44,11 +46,140 @@ def _get_streaming_records_limit(settings: Any) -> Optional[int]:
     return None if limit <= 0 else limit
 
 
+async def _build_report_view_parity(
+    payload: ViewRequest,
+    *,
+    request_id: str | None,
+    joins_override: list[dict] | None,
+) -> ViewResponse:
+    tracer = get_tracer()
+    max_records = get_records_limit()
+
+    load_started = time.monotonic()
+    with tracer.start_as_current_span("load_records") as span:
+        pipeline = await build_records_pipeline(
+            payload.remoteSource,
+            payload_filters=payload.filters,
+            max_records=max_records,
+            joins_override=joins_override,
+        )
+        span.set_attribute("streaming_enabled", False)
+        span.set_attribute("records_count", pipeline.loaded_count)
+        span.set_attribute("pages_count", 1 if pipeline.loaded_count else 0)
+        span.set_attribute("pushdown_enabled", False)
+        span.set_attribute("pushdown_filters_applied", 0)
+        span.set_attribute("pushdown_paging_applied", False)
+    logger.info(
+        "report.view.load_records",
+        extra={
+            "templateId": payload.templateId,
+            "requestId": request_id,
+            "records": pipeline.loaded_count,
+            "duration_ms": int((time.monotonic() - load_started) * 1000),
+            "parityPipeline": True,
+        },
+    )
+
+    rows = pipeline.records
+    join_debug = pipeline.join_debug
+
+    filters_started = time.monotonic()
+    with tracer.start_as_current_span("apply_filters") as span:
+        filtered_records, filter_debug = apply_filters(
+            rows,
+            payload.snapshot,
+            payload.filters,
+        )
+        span.set_attribute("streaming_enabled", False)
+        span.set_attribute("records_count", len(filtered_records))
+    logger.info(
+        "report.view.apply_filters",
+        extra={
+            "templateId": payload.templateId,
+            "requestId": request_id,
+            "recordsBefore": len(rows),
+            "recordsAfter": len(filtered_records),
+            "duration_ms": int((time.monotonic() - filters_started) * 1000),
+            "parityPipeline": True,
+        },
+    )
+
+    pivot_started = time.monotonic()
+    with tracer.start_as_current_span("build_pivot") as span:
+        pivot_view = await asyncio.to_thread(build_view, filtered_records, payload.snapshot)
+        span.set_attribute("streaming_enabled", False)
+    if pipeline.warnings:
+        pivot_view.setdefault("meta", {})["computedWarnings"] = pipeline.warnings
+    logger.info(
+        "report.view.build_pivot",
+        extra={
+            "templateId": payload.templateId,
+            "requestId": request_id,
+            "rows": len(pivot_view.get("rows", [])),
+            "columns": len(pivot_view.get("columns", [])),
+            "duration_ms": int((time.monotonic() - pivot_started) * 1000),
+            "parityPipeline": True,
+        },
+    )
+
+    chart_config = ChartConfig(
+        type="table",
+        data={
+            "rowCount": len(pivot_view.get("rows", [])),
+            "columnCount": len(pivot_view.get("columns", [])),
+        },
+        options={},
+    )
+    record_report_view_metrics(pipeline.loaded_count, 1 if pipeline.loaded_count else 0, pivot_view)
+
+    debug_payload = None
+    if os.getenv("REPORT_DEBUG_FILTERS"):
+        filter_debug.setdefault("counts", {})
+        filter_debug["counts"]["beforeJoin"] = pipeline.loaded_count
+        filter_debug["counts"]["afterJoin"] = pipeline.joined_count
+        filter_debug.setdefault("sampleRecordKeys", {})
+        filter_debug["sampleRecordKeys"]["beforeJoin"] = join_debug.get("sampleKeys", {}).get("beforeJoin", [])
+        filter_debug["sampleRecordKeys"]["afterJoin"] = join_debug.get("sampleKeys", {}).get("afterJoin", [])
+        filter_debug["parityPipeline"] = True
+        debug_payload = filter_debug
+    if os.getenv("REPORT_DEBUG_JOINS"):
+        if debug_payload is None:
+            debug_payload = join_debug
+        else:
+            debug_payload["joins"] = join_debug
+        debug_payload["parityPipeline"] = True
+
+    return ViewResponse(
+        view=pivot_view,
+        snapshot=payload.snapshot,
+        chart=chart_config,
+        debug=debug_payload,
+    )
+
+
 async def build_report_view_response(
     payload: ViewRequest,
     request_id: str | None = None,
 ) -> ViewResponse:
     settings = get_settings()
+    if settings.pivot_parity_joins:
+        joins = await resolve_joins(payload.remoteSource)
+        has_computed = bool(extract_computed_fields(payload.remoteSource))
+        if joins or has_computed:
+            try:
+                return await _build_report_view_parity(
+                    payload,
+                    request_id=request_id,
+                    joins_override=joins,
+                )
+            except Exception:
+                logger.exception(
+                    "report.view.parity_failed_fallback",
+                    extra={
+                        "templateId": payload.templateId,
+                        "requestId": request_id,
+                    },
+                )
     tracer = get_tracer()
     computed_engine = build_computed_fields_engine(payload.remoteSource)
     if settings.report_streaming:
@@ -82,6 +213,9 @@ async def build_report_view_response(
             },
         )
 
+        if computed_engine:
+            computed_engine.apply(records)
+
         joins_started = time.monotonic()
         with tracer.start_as_current_span("apply_joins") as span:
             joined_records, join_debug = await apply_joins(
@@ -92,8 +226,6 @@ async def build_report_view_response(
             span.set_attribute("streaming_enabled", False)
             span.set_attribute("records_count", len(joined_records))
         _enforce_records_limit(len(joined_records), max_records, "apply_joins")
-        if computed_engine:
-            computed_engine.apply(joined_records)
         logger.info(
             "report.view.apply_joins",
             extra={
@@ -306,6 +438,9 @@ async def _build_report_view_streaming(
             total_records += len(records_chunk)
             _enforce_records_limit(total_records, max_records, "load_records")
 
+            if computed_engine:
+                computed_engine.apply(records_chunk)
+
             joins_started = time.monotonic()
             with tracer.start_as_current_span("apply_joins") as span:
                 if prepared_joins:
@@ -327,8 +462,6 @@ async def _build_report_view_streaming(
 
             total_joined += len(joined_chunk)
             _enforce_records_limit(total_joined, join_max_records, "apply_joins")
-            if computed_engine:
-                computed_engine.apply(joined_chunk)
 
             filters_started = time.monotonic()
             with tracer.start_as_current_span("apply_filters") as span:

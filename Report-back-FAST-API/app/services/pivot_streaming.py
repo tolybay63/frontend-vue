@@ -140,7 +140,7 @@ class StreamingPivotAggregator:
                     for metric in self._base_metrics:
                         bucket = self._row_prefix_buckets[prefix].get(metric["key"])
                         if bucket is None:
-                            bucket = pivot_core._create_bucket()
+                            bucket = pivot_core._create_bucket(metric["op"])
                             self._row_prefix_buckets[prefix][metric["key"]] = bucket
                         pivot_core._update_bucket(
                             bucket, pivot_core._resolve_record_value(record, metric["source_key"])
@@ -154,7 +154,7 @@ class StreamingPivotAggregator:
                     for metric in self._base_metrics:
                         bucket = self._column_prefix_buckets[prefix].get(metric["key"])
                         if bucket is None:
-                            bucket = pivot_core._create_bucket()
+                            bucket = pivot_core._create_bucket(metric["op"])
                             self._column_prefix_buckets[prefix][metric["key"]] = bucket
                         pivot_core._update_bucket(
                             bucket, pivot_core._resolve_record_value(record, metric["source_key"])
@@ -164,7 +164,7 @@ class StreamingPivotAggregator:
                 metric_key = metric["key"]
                 bucket = self._cell_buckets[row_key][column_key].get(metric_key)
                 if bucket is None:
-                    bucket = pivot_core._create_bucket()
+                    bucket = pivot_core._create_bucket(metric["op"])
                     self._cell_buckets[row_key][column_key][metric_key] = bucket
                 pivot_core._update_bucket(
                     bucket, pivot_core._resolve_record_value(record, metric["source_key"])
@@ -172,7 +172,7 @@ class StreamingPivotAggregator:
 
                 total_bucket = self._total_buckets.get(metric_key)
                 if total_bucket is None:
-                    total_bucket = pivot_core._create_bucket()
+                    total_bucket = pivot_core._create_bucket(metric["op"])
                     self._total_buckets[metric_key] = total_bucket
                 pivot_core._update_bucket(
                     total_bucket, pivot_core._resolve_record_value(record, metric["source_key"])

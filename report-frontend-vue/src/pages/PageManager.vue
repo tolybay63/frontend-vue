@@ -107,6 +107,16 @@
               <span class="icon icon-edit" />
             </button>
             <button
+              class="icon-btn"
+              type="button"
+              aria-label="Дублировать страницу"
+              title="Дублировать"
+              :disabled="!canInteractWithPage(page)"
+              @click="duplicatePage(page.id)"
+            >
+              <span class="icon icon-duplicate" />
+            </button>
+            <button
               class="icon-btn icon-btn--danger"
               type="button"
               aria-label="Удалить страницу"
@@ -183,6 +193,16 @@
                   @click="editPage(page.id)"
                 >
                   <span class="icon icon-edit" />
+                </button>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  aria-label="Дублировать страницу"
+                  title="Дублировать"
+                  :disabled="!canInteractWithPage(page)"
+                  @click="duplicatePage(page.id)"
+                >
+                  <span class="icon icon-duplicate" />
                 </button>
                 <button
                   class="icon-btn icon-btn--danger"
@@ -272,6 +292,16 @@
                   @click="editPage(page.id)"
                 >
                   <span class="icon icon-edit" />
+                </button>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  aria-label="Дублировать страницу"
+                  title="Дублировать"
+                  :disabled="!canInteractWithPage(page)"
+                  @click="duplicatePage(page.id)"
+                >
+                  <span class="icon icon-duplicate" />
                 </button>
                 <button
                   class="icon-btn icon-btn--danger"
@@ -419,6 +449,10 @@ function ensurePageAccess(pageId) {
 function editPage(pageId) {
   if (!ensurePageAccess(pageId)) return
   router.push(`/pages/${pageId}/edit`)
+}
+function duplicatePage(pageId) {
+  if (!ensurePageAccess(pageId)) return
+  router.push({ path: '/pages/new', query: { copyFrom: String(pageId) } })
 }
 function previewPage(pageId) {
   if (!ensurePageAccess(pageId)) return

@@ -10,6 +10,7 @@ import {
   normalizeComputedFields,
 } from '@/shared/lib/sourceJoins.js'
 import { normalizeConditionalFormatting } from '@/shared/lib/conditionalFormatting'
+import { getScopedStorageKey } from '@/shared/lib/storageScope'
 import {
   DATE_PARTS,
   buildDatePartKey,
@@ -22,8 +23,9 @@ const FALLBACK_AGGREGATORS = {
   sum: { label: 'Сумма', fvFieldVal: 1349, pvFieldVal: 1569 },
   avg: { label: 'Среднее', fvFieldVal: 1351, pvFieldVal: 1571 },
   value: { label: 'Значение', fvFieldVal: 0, pvFieldVal: 0 },
+  count_distinct: { label: 'Уникальные', fvFieldVal: 0, pvFieldVal: 0 },
 }
-const LOCAL_SOURCES_STORAGE_KEY = 'report-data-sources'
+const LOCAL_SOURCES_STORAGE_KEY = getScopedStorageKey('report-data-sources')
 
 export async function fetchReportViewTemplates() {
   const localComputedFields = loadLocalComputedFieldMap()
@@ -449,12 +451,18 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
   const remoteList = Array.isArray(list) ? list : []
   const settings = Array.isArray(metricSettings) ? metricSettings : []
   const result = []
-  const remoteById = new Map(
-    remoteList.map((entry) => [toNumericId(entry?.idMetricsComplex), entry]),
-  )
-  const remoteByField = new Map(
-    remoteList.map((entry) => [entry?.FieldName || entry?.Field, entry]),
-  )
+  const remoteById = new Map()
+  const remoteByField = new Map()
+  remoteList.forEach((entry) => {
+    const remoteId = resolveMetricRemoteId(entry)
+    if (Number.isFinite(remoteId) && !remoteById.has(remoteId)) {
+      remoteById.set(remoteId, entry)
+    }
+    const fieldKey = extractMetricFieldKey(entry)
+    if (fieldKey && !remoteByField.has(fieldKey)) {
+      remoteByField.set(fieldKey, entry)
+    }
+  })
   const usedRemote = new Set()
   if (settings.length) {
     settings.forEach((saved, index) => {
@@ -481,12 +489,18 @@ function normalizeMetrics(list = [], metricSettings = [], aggregatorMap) {
         })
         return
       }
+      const savedFieldKey = normalizeMetricFieldKey(saved?.fieldKey)
       const entry =
         (saved?.remoteId && remoteById.get(toNumericId(saved.remoteId))) ||
-        (saved?.fieldKey && remoteByField.get(saved.fieldKey))
+        (savedFieldKey && remoteByField.get(savedFieldKey))
       if (entry) {
         usedRemote.add(entry)
         result.push(buildNormalizedMetric(entry, saved, aggregatorMap, index))
+        return
+      }
+      const fallback = buildSavedMetric(saved, index)
+      if (fallback) {
+        result.push(fallback)
       }
     })
   }
@@ -503,17 +517,16 @@ function buildNormalizedMetric(
   aggregatorMap,
   index = 0,
 ) {
+  const remoteId = resolveMetricRemoteId(entry)
   const fieldKey =
-    entry?.FieldName ||
-    entry?.Field ||
-    entry?.FieldLabel ||
-    saved?.fieldKey ||
+    extractMetricFieldKey(entry) ||
+    normalizeMetricFieldKey(saved?.fieldKey) ||
     ''
   const aggregator =
     saved?.aggregator ||
     resolveAggregatorKeyFromRemote(
-      entry?.fvFieldVal,
-      entry?.pvFieldVal,
+      entry?.fvFieldVal || entry?.fv || entry?.FieldVal,
+      entry?.pvFieldVal || entry?.pv,
       aggregatorMap,
     ) ||
     'sum'
@@ -523,14 +536,18 @@ function buildNormalizedMetric(
   return {
     id:
       saved?.id ||
-      (entry?.idMetricsComplex
-        ? String(entry.idMetricsComplex)
-        : createLocalId(`metric-${index}`)),
+      (remoteId ? String(remoteId) : createLocalId(`metric-${index}`)),
     type: 'base',
     fieldKey,
     aggregator,
     enabled: resolveMetricEnabled(saved),
-    fieldLabel: saved?.title || entry?.FieldLabel || fieldKey,
+    fieldLabel:
+      saved?.title ||
+      entry?.FieldLabel ||
+      entry?.fieldLabel ||
+      entry?.FieldCaption ||
+      entry?.Caption ||
+      fieldKey,
     outputFormat:
       saved?.outputFormat ||
       (saved?.type === 'formula' ? 'number' : 'auto') ||
@@ -547,6 +564,64 @@ function buildNormalizedMetric(
     detailFilter: saved?.detailFilter || null,
     remoteMeta: entry || {},
   }
+}
+
+function buildSavedMetric(saved = {}, index = 0) {
+  const fieldKey = normalizeMetricFieldKey(saved?.fieldKey)
+  if (!fieldKey) return null
+  return {
+    id: saved?.id || createLocalId(`metric-${index}`),
+    type: 'base',
+    fieldKey,
+    aggregator: saved?.aggregator || 'sum',
+    enabled: resolveMetricEnabled(saved),
+    fieldLabel: saved?.title || fieldKey,
+    outputFormat: saved?.outputFormat || 'auto',
+    precision: Number.isFinite(saved?.precision) ? Number(saved.precision) : 2,
+    showRowTotals: saved?.showRowTotals !== false,
+    showColumnTotals: saved?.showColumnTotals !== false,
+    conditionalFormatting: normalizeConditionalFormatting(
+      saved?.conditionalFormatting,
+    ),
+    detailFields: Array.isArray(saved?.detailFields)
+      ? saved.detailFields
+      : [],
+    detailFilter: saved?.detailFilter || null,
+    remoteMeta: saved?.remoteId ? { idMetricsComplex: saved.remoteId } : {},
+  }
+}
+
+function normalizeMetricFieldKey(value) {
+  if (value === null || typeof value === 'undefined') return ''
+  const normalized = String(value).trim()
+  return normalized || ''
+}
+
+function extractMetricFieldKey(entry = {}) {
+  return normalizeMetricFieldKey(
+    entry?.FieldName ||
+      entry?.fieldName ||
+      entry?.Field ||
+      entry?.field ||
+      entry?.FieldKey ||
+      entry?.fieldKey ||
+      entry?.nameFieldName ||
+      entry?.nameField,
+  )
+}
+
+function resolveMetricRemoteId(entry = {}) {
+  const candidates = [
+    entry?.idMetricsComplex,
+    entry?.id,
+    entry?.Id,
+    entry?.ID,
+  ]
+  for (const candidate of candidates) {
+    const numeric = toNumericId(candidate)
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return null
 }
 
 function resolveVisualizationType(entry, lookup) {
@@ -633,6 +708,8 @@ function detectAggregatorKey(record = {}) {
     .trim()
     .toLowerCase()
   if (!rawName) return null
+  if (rawName.includes('уник') || rawName.includes('distinct'))
+    return 'count_distinct'
   if (rawName.includes('колич') || rawName.includes('count')) return 'count'
   if (rawName.includes('сред') || rawName.includes('avg')) return 'avg'
   if (rawName.includes('сум') || rawName.includes('sum')) return 'sum'
@@ -653,6 +730,7 @@ function formatVisualizationChartLabel(record = {}) {
 function resolveVisualizationChartType(record) {
   const name = String(formatVisualizationChartLabel(record)).toLowerCase()
   const has = (...tokens) => tokens.some((token) => name.includes(token))
+  if (has('kpi', 'карточ', 'показател')) return 'kpi'
   if (has('круг', 'pie')) return 'pie'
   if (has('линей', 'line')) return 'line'
   if (has('столб', 'column', 'bar', 'гист', 'граф')) return 'bar'

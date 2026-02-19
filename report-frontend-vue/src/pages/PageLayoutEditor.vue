@@ -236,6 +236,11 @@ const authStore = useAuthStore()
 
 const pageId = computed(() => route.params.pageId)
 const isNew = computed(() => pageId.value === 'new' || !pageId.value)
+const copyFromPageId = computed(() => {
+  const raw = route.query.copyFrom
+  if (Array.isArray(raw)) return String(raw[0] || '')
+  return raw ? String(raw) : ''
+})
 const loading = ref(true)
 const loadError = ref('')
 const saving = ref(false)
@@ -567,6 +572,8 @@ onMounted(async () => {
     ])
     if (!isNew.value) {
       await loadExistingPage()
+    } else if (copyFromPageId.value) {
+      await loadPageAsCopy(copyFromPageId.value)
     } else if (!draft.layout.preset && layoutOptions.value.length) {
       draft.layout.preset = layoutOptions.value[0].value
     }
@@ -636,6 +643,30 @@ async function loadExistingPage(targetId = pageId.value, { force = false } = {})
   ensureContainerDefaults()
 }
 
+async function loadPageAsCopy(sourcePageId) {
+  await loadExistingPage(sourcePageId, { force: false })
+  if (loadError.value) return
+  draft.id = null
+  draft.remoteId = null
+  draft.remoteMeta = {}
+  draft.idPrivate = null
+  draft.menuTitle = buildCopyName(draft.menuTitle || 'Страница')
+  draft.pageTitle = buildCopyName(draft.pageTitle || 'Страница')
+  draft.layout.containerTabs = {}
+  draft.layout.containers = draft.layout.containers.map((container) => ({
+    ...container,
+    id: createContainerId(),
+    remoteId: null,
+    remoteMeta: {},
+  }))
+  deletedContainerIds.value = []
+  originalDescription.value = draft.description
+  descriptionMetaFlags.value = {
+    hasSettingsMarker: false,
+    hasContainerMarker: false,
+  }
+}
+
 function ensureContainerDefaults() {
   const widthFallback = widthOptions.value[0]?.value || ''
   const heightFallback = heightOptions.value[0]?.value || ''
@@ -686,6 +717,12 @@ function resolveFieldLabel(key) {
 
 function createContainerId() {
   return `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function buildCopyName(rawName = '', fallbackLabel = 'Страница') {
+  const base = String(rawName || '').trim() || fallbackLabel
+  const suffix = ' (копия)'
+  return base.endsWith(suffix) ? base : `${base}${suffix}`
 }
 
 function addContainer() {

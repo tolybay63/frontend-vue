@@ -566,6 +566,14 @@
                 </tfoot>
               </table>
             </div>
+            <div v-else-if="isKpiVisualization(container)" class="kpi-container">
+              <KpiCard
+                :metrics="containerState(container.id).meta.metrics"
+                :grand-totals="containerState(container.id).view?.grandTotals"
+                :drilldown-metric-ids="containerDrilldownMetricIds(container)"
+                @drilldown="handleKpiMetricDetails(container, $event)"
+              />
+            </div>
             <div
               v-else-if="containerState(container.id).chart"
               class="chart-container"
@@ -728,6 +736,7 @@ import {
   normalizeBackendView,
 } from '@/shared/services/reportViewBackend'
 import ReportChart from '@/components/ReportChart.vue'
+import KpiCard from '@/components/KpiCard.vue'
 import ConditionalCellValue from '@/components/ConditionalCellValue.vue'
 import {
   buildPivotView,
@@ -886,6 +895,26 @@ watch(
     if (pivotBackendActive.value) {
       queueBackendFilterRefresh('tab-change')
       return
+    }
+    recalcPageFilterOptions()
+    recalcVisibleContainerFilterOptions()
+    refreshVisibleContainers()
+  },
+)
+watch(
+  pivotBackendActive,
+  (enabled) => {
+    if (enabled) {
+      queueBackendFilterRefresh('tab-change')
+      return
+    }
+    if (backendFiltersTimer) {
+      clearTimeout(backendFiltersTimer)
+      backendFiltersTimer = null
+    }
+    if (backendFiltersAbortController) {
+      backendFiltersAbortController.abort()
+      backendFiltersAbortController = null
     }
     recalcPageFilterOptions()
     recalcVisibleContainerFilterOptions()
@@ -1074,6 +1103,7 @@ const exportingExcel = ref(false)
 function template(templateId) {
   return store.getTemplateById(templateId)
 }
+
 function dataSourceLabel(tpl) {
   if (!tpl) return 'Не задан'
   if (tpl.remoteSource?.name) return tpl.remoteSource.name
@@ -1732,15 +1762,33 @@ function containerColumnTotalEntry(container, displayColumn) {
       (item) => item.id === entry.metricId,
     )
   if (metric?.type === 'formula') {
+    const hasPreparedTotal =
+      !entry.isAggregated &&
+      !(entry.leafIndices?.length > 1) &&
+      typeof entry.totalDisplay === 'string' &&
+      entry.totalDisplay &&
+      entry.totalDisplay !== '—'
+    if (hasPreparedTotal) {
+      return {
+        value: entry.value ?? null,
+        display: entry.totalDisplay,
+        formatting: entry.totalFormatting || null,
+      }
+    }
     const columnTotals = computeContainerColumnBaseTotals(container, entry)
     const value = evaluateContainerFormula(container, metric, {
       values: columnTotals,
       columnTotals,
       grandTotals: buildTotalsMapFromObject(view?.grandTotals || {}),
     })
+    const display = formatFormulaValue(
+      value,
+      metric.outputFormat,
+      metric.precision,
+    )
     return {
       value,
-      display: formatFormulaValue(value, metric.outputFormat, metric.precision),
+      display,
       formatting: null,
     }
   }
@@ -1867,6 +1915,17 @@ function toNumericValue(value) {
 function computeAggregatedValue(values = [], metric) {
   const list = Array.isArray(values) ? values : []
   if (!metric) return list.length ? list[0] ?? null : null
+  if (metric.aggregator === 'count') {
+    return list.length
+  }
+  if (metric.aggregator === 'count_distinct') {
+    const unique = new Set(
+      list
+        .filter((value) => value !== null && typeof value !== 'undefined')
+        .map((value) => normalizeDistinctKey(value)),
+    )
+    return unique.size
+  }
   if (metric.aggregator === 'value') {
     const defined = list.filter((value) => value !== null && value !== undefined)
     return defined.length === 1 ? defined[0] : null
@@ -1879,6 +1938,19 @@ function computeAggregatedValue(values = [], metric) {
     return numeric.reduce((sum, value) => sum + value, 0) / numeric.length
   }
   return numeric.reduce((sum, value) => sum + value, 0)
+}
+
+function normalizeDistinctKey(value) {
+  if (value === null) return 'null:'
+  if (typeof value === 'undefined') return 'undefined:'
+  if (typeof value === 'object') {
+    try {
+      return `object:${JSON.stringify(value)}`
+    } catch {
+      return `object:${String(value)}`
+    }
+  }
+  return `${typeof value}:${String(value)}`
 }
 
 function formatMetricDisplay(value, metric) {
@@ -1959,6 +2031,11 @@ function templateFieldMetaMap(template) {
 function isTableVisualization(container) {
   const tpl = template(container.templateId)
   return !tpl || !tpl.visualization || tpl.visualization === 'table'
+}
+
+function isKpiVisualization(container) {
+  const tpl = template(container.templateId)
+  return Boolean(tpl && tpl.visualization === 'kpi')
 }
 
 function shouldShowRowTotals(container) {
@@ -2392,38 +2469,45 @@ function canShowCellDetails(container, columnEntry) {
   }
   const metrics = containerState(container.id).meta?.metrics || []
   const metric = metrics.find((item) => item.id === columnEntry.metricId)
+  return canDrillMetric(metric)
+}
+
+function canDrillMetric(metric) {
   return Boolean(metric && metric.type !== 'formula' && metric.fieldKey)
 }
 
-function closeDetailDialog() {
-  if (detailDialogAbortController) {
-    detailDialogAbortController.abort()
-    detailDialogAbortController = null
+function resolveDrillMetric(container, metric) {
+  if (!container || !metric) return null
+  if (canDrillMetric(metric)) return metric
+  if (metric.type !== 'formula') return null
+  const state = containerState(container.id)
+  const metrics = state.meta?.metrics || []
+  const byId = new Map(metrics.map((item) => [String(item.id), item]))
+  const deps =
+    containerFormulaMeta(container).formulaDependencies.get(metric.id) || []
+  for (const depId of deps) {
+    const candidate = byId.get(String(depId))
+    if (canDrillMetric(candidate)) return candidate
   }
-  detailDialog.visible = false
-  detailDialog.containerId = ''
-  detailDialog.loading = false
-  detailDialog.loadingMore = false
-  detailDialog.error = ''
-  detailDialog.entries = []
-  detailDialog.fields = []
-  detailDialog.total = 0
-  detailDialog.limit = 200
-  detailDialog.offset = 0
-  detailDialog.hasMore = false
-  detailDialog.request = null
-  detailDialog.localMatched = []
-  detailDialog.filtersSummary = ''
+  return null
 }
 
-async function handleCellDetails(container, row, columnEntry) {
-  if (!columnEntry || !canShowCellDetails(container, columnEntry)) return
+function containerDrilldownMetricIds(container) {
+  const metrics = containerState(container.id).meta?.metrics || []
+  return metrics
+    .filter((metric) => Boolean(resolveDrillMetric(container, metric)))
+    .map((metric) => metric.id)
+}
+
+async function openMetricDetails(container, metric, options = {}) {
+  if (!container || !canDrillMetric(metric)) return
   const tpl = template(container.templateId)
   if (!tpl) return
   const state = containerState(container.id)
-  const metrics = state.meta.metrics || []
-  const metric = metrics.find((item) => item.id === columnEntry.metricId)
-  if (!metric) return
+  const rowKey = options.rowKey || '__all__'
+  const columnKey = options.columnKey || '__all__'
+  const emptyMessage = options.emptyMessage || 'Нет подробностей для этой ячейки.'
+
   detailDialog.visible = true
   detailDialog.containerId = container.id
   detailDialog.loading = true
@@ -2432,19 +2516,18 @@ async function handleCellDetails(container, row, columnEntry) {
   detailDialog.total = 0
   detailDialog.containerLabel =
     container.title || tpl.name || 'Контейнер'
-  detailDialog.rowLabel = resolveRowHeaderLabel(row) || 'Все записи'
-  detailDialog.columnLabel =
-    resolveColumnHeaderLabel(columnEntry) ||
-    tpl.snapshot?.pivot?.columns?.join(' • ') ||
-    ''
+  detailDialog.rowLabel = options.rowLabel || 'Все записи'
+  detailDialog.columnLabel = options.columnLabel || ''
   detailDialog.metricLabel =
-    metric.label || metric.title || metric.fieldKey || 'Метрика'
+    options.metricLabel ||
+    metric.label ||
+    metric.title ||
+    metric.fieldKey ||
+    'Метрика'
   detailDialog.filtersSummary = buildDetailFilterSummary(tpl, container.id)
   detailDialog.fields = resolveDetailFieldDescriptors(tpl, metric)
   const rowsPivot = tpl.snapshot?.pivot?.rows || []
   const columnsPivot = tpl.snapshot?.pivot?.columns || []
-  const rowKey = row.key || '__all__'
-  const columnKey = columnEntry.baseKey || '__all__'
   const detailMetricFilter = resolveDetailMetricFilter(metric)
   const detailRequestFields = buildDetailRequestFields(
     detailDialog.fields,
@@ -2497,13 +2580,78 @@ async function handleCellDetails(container, row, columnEntry) {
       detailDialog.hasMore = detailDialog.offset < detailDialog.total
       detailDialog.loading = false
       if (!filteredMatched.length) {
-        detailDialog.error = 'Нет подробностей для этой ячейки.'
+        detailDialog.error = emptyMessage
       }
     } catch (err) {
       detailDialog.error =
-        err?.message || 'Не удалось собрать детализацию ячейки.'
+        err?.message || 'Не удалось собрать детализацию.'
       detailDialog.loading = false
     }
+  })
+}
+
+function closeDetailDialog() {
+  if (detailDialogAbortController) {
+    detailDialogAbortController.abort()
+    detailDialogAbortController = null
+  }
+  detailDialog.visible = false
+  detailDialog.containerId = ''
+  detailDialog.loading = false
+  detailDialog.loadingMore = false
+  detailDialog.error = ''
+  detailDialog.entries = []
+  detailDialog.fields = []
+  detailDialog.total = 0
+  detailDialog.limit = 200
+  detailDialog.offset = 0
+  detailDialog.hasMore = false
+  detailDialog.request = null
+  detailDialog.localMatched = []
+  detailDialog.filtersSummary = ''
+}
+
+async function handleCellDetails(container, row, columnEntry) {
+  if (!columnEntry || !canShowCellDetails(container, columnEntry)) return
+  const state = containerState(container.id)
+  const metrics = state.meta.metrics || []
+  const metric = metrics.find((item) => item.id === columnEntry.metricId)
+  if (!metric) return
+  const tpl = template(container.templateId)
+  const rowLabel = resolveRowHeaderLabel(row) || 'Все записи'
+  const columnLabel =
+    resolveColumnHeaderLabel(columnEntry) ||
+    tpl?.snapshot?.pivot?.columns?.join(' • ') ||
+    ''
+  await openMetricDetails(container, metric, {
+    rowKey: row.key || '__all__',
+    columnKey: columnEntry.baseKey || '__all__',
+    rowLabel,
+    columnLabel,
+    emptyMessage: 'Нет подробностей для этой ячейки.',
+  })
+}
+
+async function handleKpiMetricDetails(container, metricPayload) {
+  const metricId = metricPayload?.id
+  if (!metricId) return
+  const state = containerState(container.id)
+  const metrics = state.meta.metrics || []
+  const selectedMetric = metrics.find((item) => String(item.id) === String(metricId))
+  if (!selectedMetric) return
+  const drillMetric = resolveDrillMetric(container, selectedMetric)
+  if (!drillMetric) return
+  await openMetricDetails(container, drillMetric, {
+    rowKey: '__all__',
+    columnKey: '__all__',
+    rowLabel: 'ИТОГО',
+    columnLabel: 'Все значения',
+    emptyMessage: 'Нет подробностей для выбранного KPI.',
+    metricLabel:
+      selectedMetric.label ||
+      selectedMetric.title ||
+      selectedMetric.fieldKey ||
+      'Метрика',
   })
 }
 
@@ -6632,6 +6780,9 @@ function editPage() {
 }
 .chart-container {
   min-height: 220px;
+}
+.kpi-container {
+  width: 100%;
 }
 .cell--clickable {
   cursor: pointer;

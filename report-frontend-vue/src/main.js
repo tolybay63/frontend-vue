@@ -29,11 +29,38 @@ async function resolveDefaultDashboard() {
   return null
 }
 
-router.beforeEach(async (to) => {
-  await authStore.checkSession()
-  pageStore.syncDashboardOrderUser(authStore.user?.id)
+let sessionProbePromise = null
 
+function ensureSessionProbe() {
+  if (authStore.initialized) return Promise.resolve()
+  if (!sessionProbePromise) {
+    sessionProbePromise = authStore
+      .checkSession()
+      .catch(() => {})
+      .finally(() => {
+        sessionProbePromise = null
+      })
+  }
+  return sessionProbePromise
+}
+
+router.beforeEach(async (to) => {
   if (to.meta?.public) {
+    if (!authStore.initialized) {
+      const probe = ensureSessionProbe()
+      if (to.path === '/login') {
+        probe.then(() => {
+          if (router.currentRoute.value.path !== '/login') return
+          if (!authStore.isAuthenticated) return
+          const redirectTarget =
+            typeof router.currentRoute.value.query.redirect === 'string' &&
+            router.currentRoute.value.query.redirect
+              ? router.currentRoute.value.query.redirect
+              : '/'
+          router.replace(redirectTarget)
+        })
+      }
+    }
     if (to.path === '/login' && authStore.isAuthenticated) {
       const redirectTarget =
         typeof to.query.redirect === 'string' && to.query.redirect ? to.query.redirect : '/'
@@ -41,6 +68,9 @@ router.beforeEach(async (to) => {
     }
     return true
   }
+
+  await ensureSessionProbe()
+  pageStore.syncDashboardOrderUser(authStore.user?.id)
 
   if (!authStore.isAuthenticated) {
     const redirectFullPath =

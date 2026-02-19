@@ -13,8 +13,9 @@ import {
   extractJoinsFromBody,
   stripJoinPresentationFields,
 } from '@/shared/lib/sourceJoins'
+import { getScopedStorageKey } from '@/shared/lib/storageScope'
 
-const STORAGE_KEY = 'report-data-sources'
+const STORAGE_KEY = getScopedStorageKey('report-data-sources')
 const USER_CONTEXT_KEY = 'report-user-context'
 
 const defaultSources = [
@@ -224,9 +225,16 @@ export const useDataSourcesStore = defineStore('dataSources', {
       base.headers = base.headers || { 'Content-Type': 'application/json' }
       const index = this.sources.findIndex((item) => item.id === base.id)
       const existing = index >= 0 ? this.sources[index] : null
-      base.computedFields = Array.isArray(base.computedFields)
-        ? base.computedFields
-        : existing?.computedFields || []
+      const hasComputedInPayload = Object.prototype.hasOwnProperty.call(
+        payload || {},
+        'computedFields',
+      )
+      base.computedFields = hasComputedInPayload
+        ? normalizeComputedFields(base.computedFields || [])
+        : mergeComputedFieldLists(
+            normalizeComputedFields(base.computedFields || []),
+            normalizeComputedFields(existing?.computedFields || []),
+          )
       base.supportsPivot = payload.supportsPivot !== false
       base.updatedAt = new Date().toISOString()
       base.joins = normalizeJoinList(base.joins || existing?.joins || [])
@@ -289,9 +297,13 @@ export const useDataSourcesStore = defineStore('dataSources', {
           if (match?.pushdown) {
             remote.pushdown = match.pushdown
           }
-          if (!Array.isArray(remote.computedFields) && Array.isArray(match?.computedFields)) {
-            remote.computedFields = match.computedFields
-          }
+          const hasLocalComputed = Boolean(
+            match &&
+              Object.prototype.hasOwnProperty.call(match, 'computedFields'),
+          )
+          remote.computedFields = hasLocalComputed
+            ? normalizeComputedFields(match?.computedFields || [])
+            : normalizeComputedFields(remote.computedFields || [])
           return applyJoinDefaults(remote)
         })
         const normalized = mapped
@@ -707,10 +719,28 @@ function applyJoinDefaults(source = {}) {
     normalized = bodyJoins
   }
   next.joins = normalized
-  next.computedFields =
-    bodyComputedFields ??
-    (Array.isArray(source.computedFields)
-      ? source.computedFields
-      : [])
+  const hasExplicitComputed = Object.prototype.hasOwnProperty.call(
+    source || {},
+    'computedFields',
+  )
+  next.computedFields = hasExplicitComputed
+    ? normalizeComputedFields(source.computedFields || [])
+    : normalizeComputedFields(bodyComputedFields || [])
   return next
+}
+
+function mergeComputedFieldLists(primary = [], secondary = []) {
+  const result = []
+  const used = new Set()
+  const append = (list) => {
+    normalizeComputedFields(list).forEach((field) => {
+      const key = String(field?.fieldKey || '').trim()
+      if (!key || used.has(key)) return
+      used.add(key)
+      result.push(field)
+    })
+  }
+  append(primary)
+  append(secondary)
+  return result
 }

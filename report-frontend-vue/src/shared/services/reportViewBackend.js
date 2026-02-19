@@ -1362,6 +1362,17 @@ function collectMetricValuesFromRows(rows = [], columns = [], metricId) {
 function computeMetricTotal(values = [], metric) {
   const list = Array.isArray(values) ? values : []
   if (!metric) return null
+  if (metric.aggregator === 'count') {
+    return list.length
+  }
+  if (metric.aggregator === 'count_distinct') {
+    const unique = new Set(
+      list
+        .filter((value) => value !== null && typeof value !== 'undefined')
+        .map((value) => normalizeDistinctKey(value)),
+    )
+    return unique.size
+  }
   if (metric.aggregator === 'value') {
     const defined = list.filter((value) => value !== null && value !== undefined)
     return defined.length === 1 ? defined[0] : null
@@ -1374,6 +1385,19 @@ function computeMetricTotal(values = [], metric) {
     return numeric.reduce((sum, value) => sum + value, 0) / numeric.length
   }
   return numeric.reduce((sum, value) => sum + value, 0)
+}
+
+function normalizeDistinctKey(value) {
+  if (value === null) return 'null:'
+  if (typeof value === 'undefined') return 'undefined:'
+  if (typeof value === 'object') {
+    try {
+      return `object:${JSON.stringify(value)}`
+    } catch {
+      return `object:${String(value)}`
+    }
+  }
+  return `${typeof value}:${String(value)}`
 }
 
 function formatMetricValue(value, metric) {

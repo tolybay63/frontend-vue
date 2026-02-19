@@ -278,7 +278,7 @@ function buildDimensionKey(
 }
 
 function createBucket() {
-  return { count: 0, numericCount: 0, sum: 0, last: null }
+  return { count: 0, numericCount: 0, sum: 0, last: null, distinct: new Set() }
 }
 
 function getBucket(store, key) {
@@ -297,6 +297,9 @@ function pushValue(bucket, value) {
   if (!bucket) return
   bucket.count += 1
   bucket.last = value
+  if (value !== null && typeof value !== 'undefined') {
+    bucket.distinct.add(normalizeDistinctValue(value))
+  }
   const num = Number(value)
   if (!Number.isNaN(num)) {
     bucket.numericCount += 1
@@ -313,10 +316,24 @@ function finalizeBucket(bucket, aggregator) {
   if (!bucket) return null
   if (aggregator === 'value') return bucket.last
   if (aggregator === 'count') return bucket.count
+  if (aggregator === 'count_distinct') return bucket.distinct.size
   if (!bucket.numericCount) return null
   if (aggregator === 'sum') return bucket.sum
   if (aggregator === 'avg') return bucket.sum / bucket.numericCount
   return null
+}
+
+function normalizeDistinctValue(value) {
+  if (value === null) return 'null:'
+  if (typeof value === 'undefined') return 'undefined:'
+  if (typeof value === 'object') {
+    try {
+      return `object:${JSON.stringify(value)}`
+    } catch {
+      return `object:${String(value)}`
+    }
+  }
+  return `${typeof value}:${String(value)}`
 }
 
 function flattenColumns(columnIndex, metrics) {

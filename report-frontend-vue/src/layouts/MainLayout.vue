@@ -30,6 +30,11 @@
           </button>
         </div>
       </div>
+      <div v-else class="topbar__right">
+        <button class="pill" type="button" :disabled="loading" @click="goToLogin">
+          {{ loading ? 'Проверка...' : 'Войти' }}
+        </button>
+      </div>
     </header>
 
     <div class="body">
@@ -157,7 +162,7 @@ import { hasConstructorAccess } from '@/shared/lib/constructorAccess'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-const { user } = storeToRefs(authStore)
+const { user, loading } = storeToRefs(authStore)
 const pageStore = usePageBuilderStore()
 const navigationStore = useNavigationStore()
 const navPages = computed(() => pageStore.orderedPages || pageStore.pages)
@@ -300,6 +305,10 @@ onBeforeUnmount(() => {
 
 async function handleLogout() {
   await authStore.logout()
+  router.replace('/login')
+}
+
+function goToLogin() {
   router.replace('/login')
 }
 </script>

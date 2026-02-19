@@ -423,12 +423,17 @@
                 <p class="muted">
                   Функции: <code>date(x)</code>, <code>number(x)</code>,
                   <code>text(x)</code>, <code>len(x)</code>,
-                  <code>empty(x)</code>.
+                  <code>empty(x)</code>, <code>ts(x)</code>,
+                  <code>datediff(a,b,unit)</code>,
+                  <code>hours_between(a,b)</code>, <code>days_between(a,b)</code
+                  >.
                 </p>
                 <p class="muted">
                   Пример:
                   <code v-pre
-                    >(date({{FactDateEnd}}) == date({{UpdatedAt}})) ? 1 : 0</code
+                    >({{Status}} == "completed")
+                    ? hours_between({{CreatedAt}}, {{ClosedAt}})
+                    : 0</code
                   >
                 </p>
               </div>
@@ -527,6 +532,80 @@
                     источника.
                   </span>
                 </label>
+              </div>
+              <div class="join-card__aggregate">
+                <div class="join-card__aggregate-header">
+                  <div>
+                    <span class="field__label">Предагрегация перед соединением</span>
+                    <p class="muted">
+                      Сгруппировать связанный источник до join. Group by должен
+                      совпадать с полем связанного источника.
+                    </p>
+                  </div>
+                  <n-switch
+                    :value="Boolean(join.aggregate)"
+                    @update:value="toggleJoinAggregate(join, $event)"
+                  />
+                </div>
+                <div v-if="join.aggregate" class="join-card__aggregate-body">
+                  <label class="field">
+                    <span class="field__label">Group by</span>
+                    <n-input
+                      :value="
+                        join.aggregate.groupByInput ??
+                        join.aggregate.groupBy?.join(', ') ??
+                        ''
+                      "
+                      placeholder="Например: object_id"
+                      size="large"
+                      @update:value="
+                        updateJoinAggregateGroupByInput(join, $event)
+                      "
+                    />
+                    <span v-if="joinAggregateError(join)" class="error">
+                      {{ joinAggregateError(join) }}
+                    </span>
+                  </label>
+                  <div class="join-aggregate-metrics">
+                    <div
+                      v-for="(metric, metricIndex) in join.aggregate.metrics"
+                      :key="`join-agg-${join.id}-${metricIndex}`"
+                      class="join-aggregate-metric"
+                    >
+                      <n-input
+                        v-model:value="metric.key"
+                        placeholder="Ключ результата"
+                        size="large"
+                      />
+                      <n-input
+                        v-model:value="metric.sourceKey"
+                        placeholder="Поле источника"
+                        size="large"
+                      />
+                      <n-select
+                        v-model:value="metric.op"
+                        :options="joinAggregateOpOptions"
+                        size="large"
+                      />
+                      <n-button
+                        quaternary
+                        circle
+                        size="small"
+                        aria-label="Удалить агрегат"
+                        @click="removeJoinAggregateMetric(join, metricIndex)"
+                      >
+                        <span class="icon icon-close" />
+                      </n-button>
+                    </div>
+                    <n-button
+                      size="small"
+                      quaternary
+                      @click="addJoinAggregateMetric(join)"
+                    >
+                      Добавить агрегат
+                    </n-button>
+                  </div>
+                </div>
               </div>
             </article>
           </section>
@@ -708,6 +787,21 @@
                 </n-button>
               </template>
               Сохранить источник
+            </n-tooltip>
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!selectedSource"
+                  aria-label="Дублировать источник"
+                  @click="duplicateCurrentSource"
+                >
+                  <span class="icon icon-duplicate" />
+                </n-button>
+              </template>
+              Дублировать источник
             </n-tooltip>
             <n-tooltip trigger="hover">
               <template #trigger>
@@ -966,6 +1060,21 @@
                   </n-button>
                 </template>
                 Сохранить конфигурацию
+              </n-tooltip>
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    quaternary
+                    circle
+                    size="large"
+                    :disabled="!selectedConfigId"
+                    aria-label="Дублировать конфигурацию"
+                    @click="duplicateCurrentConfig"
+                  >
+                    <span class="icon icon-duplicate" />
+                  </n-button>
+                </template>
+                Дублировать конфигурацию
               </n-tooltip>
               <n-tooltip trigger="hover">
                 <template #trigger>
@@ -1438,6 +1547,21 @@
               </template>
               Сохранить представление
             </n-tooltip>
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  size="large"
+                  :disabled="!selectedPresentationId"
+                  aria-label="Дублировать представление"
+                  @click="duplicateCurrentPresentation"
+                >
+                  <span class="icon icon-duplicate" />
+                </n-button>
+              </template>
+              Дублировать представление
+            </n-tooltip>
           </div>
           <div class="viz-grid">
             <label class="field">
@@ -1630,6 +1754,7 @@ import {
   fetchJoinPayload,
   extractJoinsFromBody,
   parseJoinConfig,
+  applyComputedFields,
 } from '@/shared/lib/sourceJoins'
 
 const dataSourcesStore = useDataSourcesStore()
@@ -1681,6 +1806,13 @@ const joinTypeOptions = [
   { label: 'LEFT (все строки основного источника)', value: 'left' },
   { label: 'INNER (только совпадения)', value: 'inner' },
 ]
+const joinAggregateOpOptions = [
+  { label: 'Количество', value: 'count' },
+  { label: 'Уникальные', value: 'count_distinct' },
+  { label: 'Сумма', value: 'sum' },
+  { label: 'Среднее', value: 'avg' },
+  { label: 'Значение', value: 'value' },
+]
 const pushdownModeOptions = [
   { label: 'JSON-RPC params', value: 'jsonrpc_params' },
   { label: 'REST query', value: 'rest_query' },
@@ -1713,6 +1845,10 @@ const COMPUTED_FIELD_ALLOWED_NAMES = new Set([
   'text',
   'len',
   'empty',
+  'ts',
+  'datediff',
+  'hours_between',
+  'days_between',
   'true',
   'false',
   'null',
@@ -2585,6 +2721,17 @@ function toNumericValue(value) {
 function computeAggregatedValue(values = [], metric) {
   const list = Array.isArray(values) ? values : []
   if (!metric) return list.length ? list[0] ?? null : null
+  if (metric.aggregator === 'count') {
+    return list.length
+  }
+  if (metric.aggregator === 'count_distinct') {
+    const unique = new Set(
+      list
+        .filter((value) => value !== null && typeof value !== 'undefined')
+        .map((value) => normalizeDistinctKey(value)),
+    )
+    return unique.size
+  }
   if (metric.aggregator === 'value') {
     const defined = list.filter((value) => value !== null && value !== undefined)
     return defined.length === 1 ? defined[0] : null
@@ -2597,6 +2744,19 @@ function computeAggregatedValue(values = [], metric) {
     return numeric.reduce((sum, value) => sum + value, 0) / numeric.length
   }
   return numeric.reduce((sum, value) => sum + value, 0)
+}
+
+function normalizeDistinctKey(value) {
+  if (value === null) return 'null:'
+  if (typeof value === 'undefined') return 'undefined:'
+  if (typeof value === 'object') {
+    try {
+      return `object:${JSON.stringify(value)}`
+    } catch {
+      return `object:${String(value)}`
+    }
+  }
+  return `${typeof value}:${String(value)}`
 }
 
 function formatMetricDisplay(value, metric) {
@@ -2619,6 +2779,7 @@ const FALLBACK_AGGREGATORS = {
   sum: { label: 'Сумма', fvFieldVal: 1349, pvFieldVal: 1569 },
   avg: { label: 'Среднее', fvFieldVal: 1351, pvFieldVal: 1571 },
   value: { label: 'Значение', fvFieldVal: 0, pvFieldVal: 0 },
+  count_distinct: { label: 'Уникальные', fvFieldVal: 0, pvFieldVal: 0 },
 }
 const aggregatorRecords = ref([])
 const aggregatorMap = computed(() => {
@@ -4781,6 +4942,12 @@ const showChart = computed(
   () => isPivotSource.value && chartConfig.value && vizType.value !== 'table',
 )
 
+function buildCopyName(rawName = '', fallbackLabel = 'Копия') {
+  const base = String(rawName || '').trim() || fallbackLabel
+  const suffix = ' (копия)'
+  return base.endsWith(suffix) ? base : `${base}${suffix}`
+}
+
 function startCreatingSource(name = '') {
   const normalized = name?.trim() || ''
   isCreatingSource.value = true
@@ -4819,6 +4986,22 @@ function jumpToSource() {
 
 function jumpToConfig() {
   scrollToConfigStep()
+}
+
+function duplicateCurrentSource() {
+  const source = selectedSource.value
+  if (!source) return
+  isCreatingSource.value = true
+  loadDraftFromSource(source)
+  sourceDraft.id = ''
+  sourceDraft.name = buildCopyName(
+    sourceDraft.name || source.name || '',
+    'Источник',
+  )
+  dataSource.value = ''
+  sourceSearch.value = sourceDraft.name || ''
+  pendingNewSourceName.value = ''
+  detailsVisible.value = true
 }
 
 function quickEditConfig() {
@@ -5065,6 +5248,7 @@ async function loadFields() {
         return applyRequestFields(rows, requestPayloads[index]?.meta?.fields)
       })
     }
+    baseRecords = applyComputedFields(baseRecords, sourceDraft.computedFields || [])
     let mergedRecords = baseRecords
     let joinErrors = []
     if (joins.length && baseRecords.length) {
@@ -5084,6 +5268,10 @@ async function loadFields() {
         .filter((item) => item.error)
         .map((item) => item.error)
     }
+    mergedRecords = applyComputedFields(
+      mergedRecords,
+      sourceDraft.computedFields || [],
+    )
     records.value = mergedRecords
     fields.value = extractFieldDescriptors(mergedRecords)
     result.value = mergedRecords
@@ -5257,7 +5445,7 @@ async function buildRecordsFromBatchStatus(
   )
   return results.flatMap((item, index) => {
     if (!item || item.ok === false) return []
-    const rows = extractRecordsFromResponse(item.data)
+    const rows = extractRecordsFromResponse(item)
     const fields = fieldMaps[index] || {}
     return applyRequestFields(rows, fields)
   })
@@ -5344,7 +5532,11 @@ async function fetchJoinResults(joins = []) {
             error: `${formatBatchError(status)} (${label})`,
           }
         }
-        return { index, join, records }
+        return {
+          index,
+          join,
+          records: applyComputedFields(records, targetSource.computedFields || []),
+        }
       } catch (err) {
         return {
           index,
@@ -5376,7 +5568,11 @@ async function fetchJoinResults(joins = []) {
         const records = extractRecordsFromResponse(response)
         return applyRequestFields(records, payload[responseIndex]?.meta?.fields)
       })
-      return { index, join, records: rows }
+      return {
+        index,
+        join,
+        records: applyComputedFields(rows, targetSource.computedFields || []),
+      }
     } catch (err) {
       return {
         index,
@@ -5767,12 +5963,41 @@ function resetFilterValues() {
 function extractRecordsFromResponse(payload) {
   if (Array.isArray(payload)) return payload
   if (!payload || typeof payload !== 'object') return []
-  if (Array.isArray(payload.records)) return payload.records
-  if (Array.isArray(payload.data)) return payload.data
-  if (Array.isArray(payload.result)) return payload.result
-  if (payload.result && Array.isArray(payload.result.records))
-    return payload.result.records
+  const candidates = [
+    payload.records,
+    payload.result?.records,
+    payload.data?.records,
+    payload.result?.data?.records,
+    payload.data?.result?.records,
+    payload.result?.data,
+    payload.data?.result,
+    payload.result,
+    payload.data,
+    payload.items,
+    payload.rows,
+    payload.list,
+    payload,
+  ]
+  for (const candidate of candidates) {
+    const normalized = normalizeRecordCollection(candidate)
+    if (normalized.length) return normalized
+  }
   return []
+}
+
+function normalizeRecordCollection(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'object') return []
+  const keys = Object.keys(value)
+  if (!keys.length) return []
+  const isIndexed = keys.every((key) => /^\d+$/.test(key))
+  if (isIndexed) {
+    return keys
+      .sort((a, b) => Number(a) - Number(b))
+      .map((key) => value[key])
+  }
+  return [value]
 }
 
 const DATE_PART_VALUE_LIMIT = 50
@@ -5923,6 +6148,8 @@ function detectAggregatorKey(record = {}) {
     .trim()
     .toLowerCase()
   if (!rawName) return null
+  if (rawName.includes('уник') || rawName.includes('distinct'))
+    return 'count_distinct'
   if (rawName.includes('колич') || rawName.includes('count')) return 'count'
   if (
     rawName.includes('сред') ||
@@ -6022,6 +6249,7 @@ function resolveVisualizationChartType(record) {
   if (!record) return 'table'
   const name = String(record.name || record.Name || '').toLowerCase()
   const has = (...tokens) => tokens.some((token) => name.includes(token))
+  if (has('kpi', 'карточ', 'показател')) return 'kpi'
   if (has('круг', 'pie')) return 'pie'
   if (has('линей', 'line')) return 'line'
   if (has('столб', 'column', 'bar', 'гист', 'граф')) return 'bar'
@@ -6399,23 +6627,29 @@ function loadDraftFromSource(source) {
     resetSourceDraft()
     return
   }
+  const sourceBody = source.rawBody || ''
   const remoteBody =
     source.remoteMeta?.MethodBody ||
     source.remoteMeta?.methodBody ||
     source.remoteMeta?.methodbody ||
     ''
-  const sourceBody = source.rawBody || ''
-  const parsedBody = parseSourceBodyForJoins(remoteBody || sourceBody)
+  // Prefer the current local body to avoid restoring stale computed fields
+  // from remoteMeta.MethodBody right after local save.
+  const bodyForDraft = sourceBody || remoteBody
+  const parsedBody = parseSourceBodyForJoins(bodyForDraft)
   const remoteJoins = parseJoinConfig(
     source.remoteMeta?.joinConfig || source.remoteMeta?.JoinConfig,
   )
+  const parsedJoins = Array.isArray(parsedBody.joins) ? parsedBody.joins : []
+  const joinsForDraft = parsedJoins.length
+    ? parsedJoins
+    : Array.isArray(source.joins) && source.joins.length
+      ? source.joins
+      : remoteJoins
   resetSourceDraft({
     ...source,
-    rawBody:
-      parsedBody.cleanedBody || sourceBody || remoteBody || EMPTY_BODY_TEMPLATE,
-    joins: normalizeJoinList(
-      parsedBody.joins || source.joins || remoteJoins || [],
-    ),
+    rawBody: parsedBody.cleanedBody || bodyForDraft || EMPTY_BODY_TEMPLATE,
+    joins: normalizeJoinList(joinsForDraft || []),
     headers: {
       'Content-Type': 'application/json',
       ...(source.headers || {}),
@@ -6469,6 +6703,87 @@ function updateJoinFieldsInput(join, value = '') {
     .map((item) => item.trim())
     .filter(Boolean)
   join.fields = parsed
+}
+
+function ensureJoinAggregate(join) {
+  if (!join) return
+  if (!join.aggregate || typeof join.aggregate !== 'object') {
+    join.aggregate = { groupBy: [], groupByInput: '', metrics: [] }
+  }
+  if (!Array.isArray(join.aggregate.groupBy)) {
+    join.aggregate.groupBy = []
+  }
+  if (!Array.isArray(join.aggregate.metrics)) {
+    join.aggregate.metrics = []
+  }
+  if (typeof join.aggregate.groupByInput !== 'string') {
+    join.aggregate.groupByInput = join.aggregate.groupBy.join(', ')
+  }
+}
+
+function normalizeJoinKey(value) {
+  return String(value || '').trim()
+}
+
+function toggleJoinAggregate(join, enabled) {
+  if (!join) return
+  if (!enabled) {
+    join.aggregate = null
+    return
+  }
+  ensureJoinAggregate(join)
+  const foreignKey = normalizeJoinKey(join.foreignKey)
+  if (!join.aggregate.groupBy.length && foreignKey) {
+    join.aggregate.groupBy = [foreignKey]
+  }
+  if (!join.aggregate.groupByInput.trim() && join.aggregate.groupBy.length) {
+    join.aggregate.groupByInput = join.aggregate.groupBy.join(', ')
+  }
+}
+
+function updateJoinAggregateGroupByInput(join, value = '') {
+  if (!join || !join.aggregate) return
+  const rawValue = String(value ?? '')
+  join.aggregate.groupByInput = rawValue
+  const parsed = rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  join.aggregate.groupBy = parsed
+}
+
+function addJoinAggregateMetric(join) {
+  if (!join) return
+  ensureJoinAggregate(join)
+  join.aggregate.metrics.push({
+    key: '',
+    sourceKey: '',
+    op: 'count',
+  })
+}
+
+function removeJoinAggregateMetric(join, index) {
+  if (!join?.aggregate || !Array.isArray(join.aggregate.metrics)) return
+  if (index < 0 || index >= join.aggregate.metrics.length) return
+  join.aggregate.metrics.splice(index, 1)
+}
+
+function joinAggregateError(join) {
+  if (!join?.aggregate) return ''
+  const foreignKey = normalizeJoinKey(join.foreignKey)
+  const groupBy = Array.isArray(join.aggregate.groupBy)
+    ? join.aggregate.groupBy.map(normalizeJoinKey).filter(Boolean)
+    : []
+  if (!foreignKey) {
+    return 'Сначала укажите поле связанного источника (foreignKey).'
+  }
+  if (!groupBy.length) {
+    return 'Укажите groupBy. Он должен совпадать с полем связанного источника.'
+  }
+  if (groupBy.length !== 1 || groupBy[0] !== foreignKey) {
+    return `groupBy должен совпадать с «${foreignKey}».`
+  }
+  return ''
 }
 
 function syncReactiveObject(target, source) {
@@ -7472,18 +7787,18 @@ function extractModesFromMeta(list = []) {
 
 function mergeMetricSettings(remoteList = [], settings = []) {
   const result = []
-  const remoteById = new Map(
-    (remoteList || []).map((entry) => [
-      toNumericValue(entry?.idMetricsComplex),
-      entry,
-    ]),
-  )
-  const remoteByField = new Map(
-    (remoteList || []).map((entry) => [
-      entry?.FieldName || entry?.Field,
-      entry,
-    ]),
-  )
+  const remoteById = new Map()
+  const remoteByField = new Map()
+  ;(remoteList || []).forEach((entry) => {
+    const remoteId = resolveMetricRemoteId(entry)
+    if (Number.isFinite(remoteId) && !remoteById.has(remoteId)) {
+      remoteById.set(remoteId, entry)
+    }
+    const fieldKey = extractMetricFieldKey(entry)
+    if (fieldKey && !remoteByField.has(fieldKey)) {
+      remoteByField.set(fieldKey, entry)
+    }
+  })
   const usedRemote = new Set()
   if (Array.isArray(settings) && settings.length) {
     settings.forEach((saved) => {
@@ -7510,12 +7825,18 @@ function mergeMetricSettings(remoteList = [], settings = []) {
         )
         return
       }
+      const savedFieldKey = normalizeMetricFieldKey(saved?.fieldKey)
       const remoteEntry =
         (saved?.remoteId && remoteById.get(toNumericValue(saved.remoteId))) ||
-        (saved?.fieldKey && remoteByField.get(saved.fieldKey))
+        (savedFieldKey && remoteByField.get(savedFieldKey))
       if (remoteEntry) {
         usedRemote.add(remoteEntry)
         result.push(normalizeRemoteMetric(remoteEntry, saved))
+        return
+      }
+      const fallback = normalizeSavedMetric(saved)
+      if (fallback) {
+        result.push(fallback)
       }
     })
   }
@@ -7527,15 +7848,22 @@ function mergeMetricSettings(remoteList = [], settings = []) {
 }
 
 function normalizeRemoteMetric(entry = {}, saved = null, index = 0) {
-  const fieldKey = entry?.FieldName || saved?.fieldKey || ''
+  const remoteId = resolveMetricRemoteId(entry)
+  const fieldKey =
+    extractMetricFieldKey(entry) ||
+    normalizeMetricFieldKey(saved?.fieldKey) ||
+    ''
   const aggregatorKey =
     saved?.aggregator ||
-    resolveAggregatorKeyFromRemote(entry?.fvFieldVal, entry?.pvFieldVal) ||
+    resolveAggregatorKeyFromRemote(
+      entry?.fvFieldVal || entry?.fv || entry?.FieldVal,
+      entry?.pvFieldVal || entry?.pv,
+    ) ||
     'sum'
   return createMetric({
     id:
       saved?.id ||
-      (entry?.idMetricsComplex ? String(entry.idMetricsComplex) : undefined) ||
+      (remoteId ? String(remoteId) : undefined) ||
       `metric-${index}`,
     type: 'base',
     fieldKey,
@@ -7551,13 +7879,69 @@ function normalizeRemoteMetric(entry = {}, saved = null, index = 0) {
       : [],
     detailFilter: saved?.detailFilter,
     remoteMeta: {
-      idMetricsComplex: entry?.idMetricsComplex,
+      idMetricsComplex: remoteId || entry?.idMetricsComplex || entry?.id,
       idFieldVal: entry?.idFieldVal,
       idFieldName: entry?.idFieldName,
-      fvFieldVal: entry?.fvFieldVal,
-      pvFieldVal: entry?.pvFieldVal,
+      fvFieldVal: entry?.fvFieldVal || entry?.fv || entry?.FieldVal,
+      pvFieldVal: entry?.pvFieldVal || entry?.pv,
     },
   })
+}
+
+function normalizeSavedMetric(saved = {}) {
+  const fieldKey = normalizeMetricFieldKey(saved?.fieldKey)
+  if (!fieldKey) return null
+  return createMetric({
+    id: saved?.id,
+    type: 'base',
+    fieldKey,
+    aggregator: saved?.aggregator || 'sum',
+    title: saved?.title || '',
+    enabled: saved?.enabled !== false,
+    showRowTotals: saved?.showRowTotals !== false,
+    showColumnTotals: saved?.showColumnTotals !== false,
+    outputFormat: saved?.outputFormat || 'auto',
+    precision: Number.isFinite(saved?.precision) ? Number(saved.precision) : 2,
+    conditionalFormatting: saved?.conditionalFormatting,
+    detailFields: Array.isArray(saved?.detailFields)
+      ? [...saved.detailFields]
+      : [],
+    detailFilter: saved?.detailFilter,
+    remoteMeta: saved?.remoteId ? { idMetricsComplex: saved.remoteId } : {},
+  })
+}
+
+function normalizeMetricFieldKey(value) {
+  if (value === null || typeof value === 'undefined') return ''
+  const normalized = String(value).trim()
+  return normalized || ''
+}
+
+function extractMetricFieldKey(entry = {}) {
+  return normalizeMetricFieldKey(
+    entry?.FieldName ||
+      entry?.fieldName ||
+      entry?.Field ||
+      entry?.field ||
+      entry?.FieldKey ||
+      entry?.fieldKey ||
+      entry?.nameFieldName ||
+      entry?.nameField,
+  )
+}
+
+function resolveMetricRemoteId(entry = {}) {
+  const candidates = [
+    entry?.idMetricsComplex,
+    entry?.id,
+    entry?.Id,
+    entry?.ID,
+  ]
+  for (const candidate of candidates) {
+    const numeric = toNumericValue(candidate)
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return null
 }
 
 function handleConfigSearch(value = '') {
@@ -7579,11 +7963,9 @@ function handleConfigSearch(value = '') {
 
 function createConfigFromSearch() {
   if (!pendingConfigName.value.trim()) return
-  configName.value = pendingConfigName.value.trim()
-  selectedConfigId.value = ''
+  const nextName = pendingConfigName.value.trim()
   pendingConfigName.value = ''
-  currentConfigMeta.value = null
-  layoutDetailsVisible.value = true
+  prepareConfigAsNew(nextName)
 }
 
 function handlePresentationSearch(value = '') {
@@ -7612,6 +7994,39 @@ function createPresentationFromSearch() {
   presentationDescription.value = ''
   presentationDetailsVisible.value = true
   selectedVisualizationId.value = ''
+}
+
+function duplicateCurrentConfig() {
+  const baseName =
+    configName.value.trim() || selectedConfig.value?.name || 'Конфигурация'
+  prepareConfigAsNew(buildCopyName(baseName, 'Конфигурация'))
+}
+
+function prepareConfigAsNew(name = '') {
+  selectedConfigId.value = ''
+  currentConfigMeta.value = null
+  pivotMetrics.forEach((metric) => {
+    metric.remoteMeta = null
+  })
+  configName.value = name
+  layoutDetailsVisible.value = true
+}
+
+function duplicateCurrentPresentation() {
+  if (!selectedPresentationId.value) return
+  const baseName =
+    presentationName.value.trim() ||
+    selectedPresentation.value?.name ||
+    'Представление'
+  const nextName = buildCopyName(baseName, 'Представление')
+  const currentDescription = presentationDescription.value
+  const currentVisualization = selectedVisualizationId.value
+  selectedPresentationId.value = ''
+  currentPresentationMeta.value = null
+  presentationName.value = nextName
+  presentationDescription.value = currentDescription
+  selectedVisualizationId.value = currentVisualization
+  presentationDetailsVisible.value = true
 }
 
 function togglePresentationDetails() {
@@ -9251,6 +9666,35 @@ function resolveMetricLabelById(metricId) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+}
+.join-card__aggregate {
+  border-top: 1px dashed var(--s360-color-border-subtle, #e5e7eb);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.join-card__aggregate-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.join-card__aggregate-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.join-aggregate-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.join-aggregate-metric {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: center;
 }
 .result-tabs {
   border: 1px solid var(--s360-color-border-subtle, #e5e7eb);

@@ -141,7 +141,7 @@ async function buildRecordsFromBatchStatus(status, paramsList = []) {
   )
   return results.flatMap((item, index) => {
     if (!item || item.ok === false) return []
-    const rows = extractRecordsFromResponse(item.data)
+    const rows = extractRecordsFromResponse(item)
     const fields = fieldMaps[index] || {}
     return applyRequestFields(rows, fields)
   })
@@ -307,13 +307,41 @@ function applyRequestFields(records, fields = {}) {
 function extractRecordsFromResponse(payload) {
   if (Array.isArray(payload)) return payload
   if (!payload || typeof payload !== 'object') return []
-  if (Array.isArray(payload.records)) return payload.records
-  if (Array.isArray(payload.data)) return payload.data
-  if (Array.isArray(payload.result)) return payload.result
-  if (payload.result && Array.isArray(payload.result.records)) {
-    return payload.result.records
+  const candidates = [
+    payload.records,
+    payload.result?.records,
+    payload.data?.records,
+    payload.result?.data?.records,
+    payload.data?.result?.records,
+    payload.result?.data,
+    payload.data?.result,
+    payload.result,
+    payload.data,
+    payload.items,
+    payload.rows,
+    payload.list,
+    payload,
+  ]
+  for (const candidate of candidates) {
+    const normalized = normalizeRecordCollection(candidate)
+    if (normalized.length) return normalized
   }
   return []
+}
+
+function normalizeRecordCollection(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'object') return []
+  const keys = Object.keys(value)
+  if (!keys.length) return []
+  const isIndexed = keys.every((key) => /^\d+$/.test(key))
+  if (isIndexed) {
+    return keys
+      .sort((a, b) => Number(a) - Number(b))
+      .map((key) => value[key])
+  }
+  return [value]
 }
 
 function isPlainObject(value) {
